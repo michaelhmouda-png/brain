@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "../../../../lib/supabaseServer";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 
 export async function PATCH(
   request: Request,
@@ -7,7 +7,19 @@ export async function PATCH(
 ) {
   const body = await request.json();
   const { id } = await params;
-  const supabaseServer = createSupabaseServer();
+  
+  // Use authenticated client (respects RLS)
+  const supabaseAuth = await createSupabaseServerAuth();
+  
+  // Verify user is authenticated
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
 
   const updates = {
     name: body.name,
@@ -19,7 +31,7 @@ export async function PATCH(
     locations: Number(body.locations),
   };
 
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseAuth
     .from("companies")
     .update(updates)
     .eq("id", id)

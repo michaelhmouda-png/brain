@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "../../../../lib/supabaseServer";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 
 export async function PATCH(
   request: Request,
@@ -7,6 +7,19 @@ export async function PATCH(
 ) {
   const body = await request.json();
   const { id } = await params;
+
+  // Use authenticated client (respects RLS)
+  const supabaseAuth = await createSupabaseServerAuth();
+  
+  // Verify user is authenticated
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
 
   const updates = {
     company_id: body.company_id,
@@ -22,8 +35,7 @@ export async function PATCH(
     status: body.status ?? "active",
   };
 
-  const supabaseServer = createSupabaseServer();
-  const { data, error } = await supabaseServer
+  const { data, error } = await supabaseAuth
     .from("locations")
     .update(updates)
     .eq("id", id)
@@ -42,8 +54,21 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const supabaseServer = createSupabaseServer();
-  const { error } = await supabaseServer.from("locations").delete().eq("id", id);
+  
+  // Use authenticated client (respects RLS)
+  const supabaseAuth = await createSupabaseServerAuth();
+  
+  // Verify user is authenticated
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  }
+
+  const { error } = await supabaseAuth.from("locations").delete().eq("id", id);
 
   if (error) {
     return NextResponse.json({ message: error.message }, { status: 500 });

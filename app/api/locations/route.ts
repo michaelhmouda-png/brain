@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createSupabaseServer } from "../../../lib/supabaseServer";
+import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -9,6 +9,19 @@ export async function POST(request: Request) {
     if (!body[field]) {
       return NextResponse.json({ message: `${field} is required.` }, { status: 400 });
     }
+  }
+
+  // Use authenticated client (respects RLS)
+  const supabaseAuth = await createSupabaseServerAuth();
+  
+  // Verify user is authenticated
+  const {
+    data: { user },
+    error: authError,
+  } = await supabaseAuth.auth.getUser();
+
+  if (authError || !user) {
+    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
   }
 
   const payload = {
@@ -25,8 +38,7 @@ export async function POST(request: Request) {
     status: body.status ?? "active",
   };
 
-  const supabaseServer = createSupabaseServer();
-  const { data, error } = await supabaseServer.from("locations").insert(payload).select().single();
+  const { data, error } = await supabaseAuth.from("locations").insert(payload).select().single();
 
   if (error) {
     return NextResponse.json({ message: error.message }, { status: 500 });
