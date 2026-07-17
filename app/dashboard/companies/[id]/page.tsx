@@ -1,11 +1,11 @@
 import CompanyForm from "../../../../components/CompanyForm";
-import { createSupabase } from "../../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 import type { Company } from "../../../../lib/company";
 
 export const dynamic = "force-dynamic";
 
 async function getCompany(id: string) {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name, logo_url, industry, country, currency, timezone, locations")

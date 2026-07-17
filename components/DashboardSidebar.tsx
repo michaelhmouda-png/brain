@@ -2,23 +2,59 @@
 
 import Link from 'next/link';
 import { useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { logoutUser } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
 
-const menuItems = [
-  { href: '/dashboard', label: 'Dashboard' },
-  { href: '/dashboard/companies', label: 'Companies' },
-  { href: '/dashboard/locations', label: 'Locations' },
-  { href: '/dashboard/departments', label: 'Departments' },
-  { href: '/dashboard/employees', label: 'Employees' },
-  { href: '/dashboard/tasks', label: 'Tasks' },
-  { href: '/dashboard/inventory', label: 'Inventory' },
-  { href: '/dashboard/customers', label: 'Customers' },
-  { href: '/dashboard/cameras', label: 'Cameras' },
-  { href: '/dashboard/ai-assistant', label: 'AI Assistant' },
-  { href: '/dashboard/analytics', label: 'Analytics' },
-  { href: '/dashboard/settings', label: 'Settings' },
+interface NavSection {
+  title: string;
+  items: Array<{
+    href: string;
+    label: string;
+  }>;
+}
+
+const navSections: NavSection[] = [
+  {
+    title: 'DASHBOARD',
+    items: [
+      { href: '/dashboard', label: 'Dashboard' },
+    ],
+  },
+  {
+    title: 'BRAIN',
+    items: [
+      { href: '/dashboard/ai-assistant', label: 'AI Assistant' },
+    ],
+  },
+  {
+    title: 'OPERATIONS',
+    items: [
+      { href: '/dashboard/tasks', label: 'Tasks' },
+      { href: '/dashboard/inventory', label: 'Inventory' },
+    ],
+  },
+  {
+    title: 'PEOPLE',
+    items: [
+      { href: '/dashboard/employees', label: 'Employees' },
+      { href: '/dashboard/customers', label: 'Customers' },
+    ],
+  },
+  {
+    title: 'ORGANIZATION',
+    items: [
+      { href: '/dashboard/companies', label: 'Companies' },
+      { href: '/dashboard/locations', label: 'Locations' },
+      { href: '/dashboard/departments', label: 'Departments' },
+    ],
+  },
+  {
+    title: 'SYSTEM',
+    items: [
+      { href: '/dashboard/settings', label: 'Settings' },
+    ],
+  },
 ];
 
 type DashboardSidebarProps = {
@@ -28,6 +64,7 @@ type DashboardSidebarProps = {
 
 export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [showMenu, setShowMenu] = useState(false);
 
@@ -41,6 +78,13 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
         console.error('Logout failed:', error);
       }
     });
+  };
+
+  const isActive = (href: string): boolean => {
+    if (href === '/dashboard') {
+      return pathname === '/dashboard';
+    }
+    return pathname.startsWith(href);
   };
 
   const roleColors: Record<string, string> = {
@@ -69,15 +113,28 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
         </div>
       </div>
 
-      <nav className="space-y-2">
-        {menuItems.map((item) => (
-          <Link
-            key={item.href}
-            href={item.href}
-            className="group flex items-center rounded-3xl px-4 py-3 text-sm font-semibold text-slate-200 transition hover:bg-white/10 hover:text-white"
-          >
-            <span>{item.label}</span>
-          </Link>
+      <nav className="flex-1 space-y-4 overflow-y-auto">
+        {navSections.map((section) => (
+          <div key={section.title}>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
+              {section.title}
+            </p>
+            <div className="space-y-1">
+              {section.items.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className={`flex items-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                    isActive(item.href)
+                      ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
+                      : 'text-slate-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  <span>{item.label}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
         ))}
       </nav>
 
@@ -115,25 +172,6 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             </button>
           </div>
         )}
-
-        {/* Live Status Section */}
-        <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-5 text-sm text-slate-300">
-          <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">Live status</p>
-          <div className="mt-4 space-y-3">
-            <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-              <span>Active venues</span>
-              <span className="font-semibold text-white">18</span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-              <span>AI alerts</span>
-              <span className="font-semibold text-white">4</span>
-            </div>
-            <div className="flex items-center justify-between rounded-2xl bg-white/5 px-4 py-3">
-              <span>Uptime</span>
-              <span className="font-semibold text-white">99.94%</span>
-            </div>
-          </div>
-        </div>
       </div>
     </aside>
   );

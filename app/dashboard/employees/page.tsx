@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { createSupabase } from "../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
 import type { Employee, EmployeeCompany, EmployeeLocation } from "../../../lib/employee";
 import EmployeeList from "../../../components/EmployeeList";
 
 export const dynamic = "force-dynamic";
 
 async function getEmployees() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
+  
+  // Verify authenticated user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (!user || userError) {
+    throw new Error('User not authenticated');
+  }
   const { data, error } = await supabase
     .from("employees")
     .select(`id, company_id, location_id, department_id, first_name, last_name, role, phone, email, employment_type, salary, hire_date, status, notes, created_at, updated_at, company:companies(id, name), location:locations(id, company_id, name), departments!employees_department_id_fkey(id, name)`)
@@ -25,7 +31,7 @@ async function getEmployees() {
 }
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name")
@@ -39,7 +45,7 @@ async function getCompanies() {
 }
 
 async function getLocations() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("locations")
     .select("id, company_id, name")

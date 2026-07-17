@@ -1,4 +1,4 @@
-import { createSupabase } from "../../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 import type { Location, LocationCompany } from "../../../../lib/location";
 import LocationForm from "../../../../components/LocationForm";
 import LocationDeleteButton from "../../../../components/LocationDeleteButton";
@@ -6,7 +6,7 @@ import LocationDeleteButton from "../../../../components/LocationDeleteButton";
 export const dynamic = "force-dynamic";
 
 async function getLocation(id: string) {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("locations")
     .select(`id, company_id, name, type, country, city, address, timezone, phone, email, capacity, status, created_at, updated_at`)
@@ -21,7 +21,7 @@ async function getLocation(id: string) {
 }
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name")

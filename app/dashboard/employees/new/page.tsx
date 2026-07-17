@@ -1,4 +1,4 @@
-import { createSupabase } from "../../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 import type { EmployeeCompany, EmployeeLocation } from "../../../../lib/employee";
 import type { Department } from "../../../../lib/department";
 import EmployeeForm from "../../../../components/EmployeeForm";
@@ -6,7 +6,7 @@ import EmployeeForm from "../../../../components/EmployeeForm";
 export const dynamic = "force-dynamic";
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name")
@@ -20,7 +20,7 @@ async function getCompanies() {
 }
 
 async function getLocations() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("locations")
     .select("id, company_id, name")
@@ -34,7 +34,7 @@ async function getLocations() {
 }
 
 async function getDepartments() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("departments")
     .select("id, company_id, name")

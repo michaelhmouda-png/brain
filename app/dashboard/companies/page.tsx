@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { createSupabase } from "../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
 import type { Company } from "../../../lib/company";
 
 export const dynamic = "force-dynamic";
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
+  
+  // Verify authenticated user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (!user || userError) {
+    throw new Error('User not authenticated');
+  }
   const { data, error } = await supabase
     .from("companies")
     .select("id, name, logo_url, industry, country, currency, timezone, locations, created_at")

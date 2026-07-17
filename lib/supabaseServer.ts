@@ -1,6 +1,12 @@
+import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+/**
+ * Create an admin Supabase client using service role key.
+ * Use ONLY for admin operations that bypass RLS.
+ * NEVER use with user data unless explicitly needed.
+ */
 export function createSupabaseServer(): SupabaseClient {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -17,11 +23,12 @@ export function createSupabaseServer(): SupabaseClient {
 }
 
 /**
- * Create an authenticated Supabase client for server components using cookies.
- * Reads the auth session from the 'sb-auth-token' cookie (set by browser client).
- * Use this in server components like app/dashboard/layout.tsx
+ * Create an authenticated Supabase client for server components.
+ * Uses @supabase/ssr for proper Next.js SSR cookie handling.
+ * Reads cookies from the current request and forwards authenticated session.
  * 
- * CRITICAL: Must use the same cookie name as browser client!
+ * Use this in server components and functions that need to query data as the authenticated user.
+ * Example: app/dashboard/locations/page.tsx
  */
 export async function createSupabaseServerAuth(): Promise<SupabaseClient> {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
@@ -31,27 +38,23 @@ export async function createSupabaseServerAuth(): Promise<SupabaseClient> {
     throw new Error("Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY.");
   }
 
-  const client = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: false,
+  const cookieStore = await cookies();
+
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {
+          // Cookie setting can fail in some contexts (e.g., after headers sent)
+          // This is expected in server components that only read
+        }
+      },
     },
   });
-
-  const cookieStore = await cookies();
-  
-  // Use the same cookie name as browser client: 'sb-auth-token'
-  const authCookie = cookieStore.get('sb-auth-token')?.value;
-  
-  if (authCookie) {
-    try {
-      const session = JSON.parse(authCookie);
-      if (session?.access_token && session?.refresh_token) {
-        await client.auth.setSession(session);
-      }
-    } catch (e) {
-      console.error('[ServerAuth] Failed to parse auth cookie:', e);
-    }
-  }
-
-  return client;
 }

@@ -1,4 +1,4 @@
-import { createSupabase } from "../../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
 import type { Employee, EmployeeCompany, EmployeeLocation } from "../../../../lib/employee";
 import type { Department } from "../../../../lib/department";
 import EmployeeForm from "../../../../components/EmployeeForm";
@@ -7,7 +7,7 @@ import EmployeeDeleteButton from "../../../../components/EmployeeDeleteButton";
 export const dynamic = "force-dynamic";
 
 async function getEmployee(id: string) {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("employees")
     .select(`id, company_id, location_id, department_id, first_name, last_name, role, phone, email, employment_type, salary, hire_date, status, notes, created_at, updated_at`)
@@ -22,7 +22,7 @@ async function getEmployee(id: string) {
 }
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name")
@@ -36,7 +36,7 @@ async function getCompanies() {
 }
 
 async function getLocations() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("locations")
     .select("id, company_id, name")
@@ -50,7 +50,7 @@ async function getLocations() {
 }
 
 async function getDepartments() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("departments")
     .select("id, company_id, name")

@@ -1,21 +1,31 @@
 import type { ReactNode } from 'react';
-import { redirect } from 'next/navigation';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
-  // Use server-side auth client to check session from cookies
+  // Note: Proxy.ts already redirects unauthenticated users away from /dashboard
+  // This getUser() call is for validation only; we don't redirect here
   const supabase = await createSupabaseServerAuth();
 
   const {
     data: { user },
   } = await supabase.auth.getUser();
 
-  console.log('[DashboardLayout] pathname=/dashboard, user:', user ? user.id : 'null', ', redirect:', user ? 'none' : '/login');
-
+  // If no user, proxy should have already redirected to /login
   if (!user) {
-    console.log('[DashboardLayout] No user found, redirecting to /login');
-    redirect('/login');
+    return (
+      <div className="min-h-screen overflow-hidden bg-[#020202] text-white">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_transparent_20%),radial-gradient(circle_at_80%_20%,_rgba(96,165,250,0.14),_transparent_18%)]" />
+        <div className="relative mx-auto flex min-h-screen max-w-[1700px] items-center justify-center px-4 py-6">
+          <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl max-w-md">
+            <h1 className="text-2xl font-bold text-white">Authentication Error</h1>
+            <p className="mt-4 text-slate-400">
+              Unable to verify your authentication. Please log in again.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const { data: profile } = await supabase
@@ -23,8 +33,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     .select('*')
     .eq('id', user.id)
     .single();
-
-  console.log('[DashboardLayout] profile exists:', !!profile, 'status:', profile?.status);
 
   // Check if user has a profile (account setup required)
   if (!profile) {

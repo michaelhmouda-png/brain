@@ -1,12 +1,18 @@
 import Link from "next/link";
-import { createSupabase } from "../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
 import type { Department, DepartmentCompany, DepartmentLocation } from "../../../lib/department";
 import DepartmentList from "../../../components/DepartmentList";
 
 export const dynamic = "force-dynamic";
 
 async function getDepartments() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
+  
+  // Verify authenticated user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (!user || userError) {
+    throw new Error('User not authenticated');
+  }
   const { data, error } = await supabase
     .from("departments")
     .select(`id, company_id, location_id, name, description, manager_employee_id, status, created_at, updated_at, company:companies(id, name), location:locations(id, company_id, name)`)
@@ -24,7 +30,7 @@ async function getDepartments() {
 }
 
 async function getCompanies() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("companies")
     .select("id, name")
@@ -38,7 +44,7 @@ async function getCompanies() {
 }
 
 async function getLocations() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
   const { data, error } = await supabase
     .from("locations")
     .select("id, company_id, name")

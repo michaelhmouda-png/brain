@@ -1,12 +1,10 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { loginUser } from '@/lib/auth';
+import { getSupabaseBrowserClient } from '@/lib/supabaseClient';
 
 export function LoginForm() {
-  const router = useRouter();
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -16,33 +14,34 @@ export function LoginForm() {
     e.preventDefault();
     setError('');
     setIsLoading(true);
-    console.log('[LoginForm] Starting login...');
 
     try {
-      const { user, profile } = await loginUser(email, password);
-      console.log('[LoginForm] Login successful, user:', user.id, 'profile status:', profile?.status);
+      const supabase = getSupabaseBrowserClient();
+      
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
 
-      if (!profile) {
-        console.log('[LoginForm] No profile found');
-        setError('Your account has not been set up yet. Please contact your administrator.');
+      if (error) {
+        setError(error.message);
         setIsLoading(false);
         return;
       }
 
-      if (profile.status !== 'active') {
-        console.log('[LoginForm] Profile status not active:', profile.status);
-        setError(`Your account is ${profile.status}. Please contact your administrator.`);
+      if (!data.user) {
+        setError('Login failed: no user returned');
         setIsLoading(false);
         return;
       }
 
-      // Session is now stored in cookies by singleton client
-      console.log('[LoginForm] Profile active, redirecting to /dashboard...');
-      // Redirect to dashboard on successful login
-      router.replace('/dashboard');
-      router.refresh();
+      // Do NOT fetch profile before navigation.
+      // Session cookie is now set by @supabase/ssr browser client.
+      // Full page navigation ensures proxy.ts sees the cookie.
+      console.log('[LoginForm] Login successful, navigating to /dashboard');
+      window.location.assign('/dashboard');
     } catch (err) {
-      console.error('[LoginForm] Login error:', err);
+      console.error('[LoginForm] Login failed:', err);
       if (err instanceof Error) {
         setError(err.message);
       } else {

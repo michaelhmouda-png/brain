@@ -1,11 +1,17 @@
 import Link from "next/link";
-import { createSupabase } from "../../../lib/supabaseClient";
+import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
 import type { Location } from "../../../lib/location";
 
 export const dynamic = "force-dynamic";
 
 async function getLocations() {
-  const supabase = createSupabase();
+  const supabase = await createSupabaseServerAuth();
+  
+  // Verify authenticated user
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (!user || userError) {
+    throw new Error('User not authenticated');
+  }
   const { data, error } = await supabase
     .from("locations")
     .select(`id, company_id, name, type, country, city, address, timezone, phone, email, capacity, status, created_at, updated_at, company:companies(id, name)`)

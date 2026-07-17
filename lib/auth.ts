@@ -3,7 +3,6 @@ import type { Profile } from './types';
 
 export async function loginUser(email: string, password: string) {
   const supabase = getSupabaseBrowserClient();
-  console.log('[auth.loginUser] Starting password auth...');
 
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
@@ -11,17 +10,12 @@ export async function loginUser(email: string, password: string) {
   });
 
   if (error) {
-    console.error('[auth.loginUser] Auth error:', error.message);
     throw new Error(error.message);
   }
 
   if (!data.user) {
-    console.error('[auth.loginUser] No user returned from login');
     throw new Error('No user returned from login');
   }
-
-  console.log('[auth.loginUser] Auth success, user:', data.user.id);
-  console.log('[auth.loginUser] Session access_token:', data.session?.access_token ? 'present' : 'null');
 
   // Fetch the user's profile from the database
   const { data: profile, error: profileError } = await supabase
@@ -31,11 +25,9 @@ export async function loginUser(email: string, password: string) {
     .single();
 
   if (profileError && profileError.code !== 'PGRST116') {
-    console.error('[auth.loginUser] Profile fetch error:', profileError);
     throw new Error('Failed to fetch user profile');
   }
 
-  console.log('[auth.loginUser] Profile loaded, status:', profile?.status);
   return { user: data.user, profile: profile as Profile | null };
 }
 
