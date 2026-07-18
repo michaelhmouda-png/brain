@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:security": "node --experimental-strip-types --test __tests__/stage0a-security.test.mjs"
+    "test:security": "node --experimental-strip-types --test __tests__/stage0a-security.test.mjs",
+    "test:provisioning": "node --experimental-strip-types --test __tests__/stage0b-provisioning.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
