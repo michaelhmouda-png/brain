@@ -1,87 +1,51 @@
-import { NextResponse, type NextRequest } from 'next/server';
-import { createSupabaseServerAuth } from '../../../../lib/supabaseServer';
-
 /**
- * Debug endpoint to check database state and authentication
- * Returns: companies count, user auth status, profile info, table schemas
+ * Development-only authenticated status check.
+ *
+ * The environment guard is intentionally the first operation. Outside local
+ * development the route fails closed before loading authentication or database
+ * code and returns no diagnostic information.
  */
-export async function GET(request: NextRequest) {
-  try {
-    const supabase = await createSupabaseServerAuth();
 
-    // 1. Get auth user
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    console.log('[Debug] Auth result:', { userId: user?.id, authError: authError?.message });
+interface AuthenticatedStatusClient {
+  auth: {
+    getUser(): Promise<{
+      data: { user: unknown | null };
+      error: unknown | null;
+    }>;
+  };
+}
 
-    // 2. Get companies count
-    const { data: companies, error: companiesError } = await supabase
-      .from('companies')
-      .select('id, name', { count: 'exact' });
-    console.log('[Debug] Companies:', { count: companies?.length, error: companiesError?.message });
+type LoadAuthenticatedClient = () => Promise<AuthenticatedStatusClient>;
 
-    // 3. Try to query profiles table (will error if it doesn't exist)
-    const { data: profiles, error: profilesTableError } = await supabase
-      .from('profiles')
-      .select('id', { count: 'exact' })
-      .limit(1);
-    console.log('[Debug] Profiles table check:', {
-      exists: profilesTableError?.code !== 'PGRST116', // PGRST116 = "Relation not found"
-      error: profilesTableError?.message,
-      tableError: profilesTableError?.code,
-    });
+async function loadAuthenticatedClient(): Promise<AuthenticatedStatusClient> {
+  const { createSupabaseServerAuth } = await import('../../../../lib/supabaseServer');
+  return createSupabaseServerAuth();
+}
 
-    // 4. If user is authenticated, get their profile
-    let profileData = null;
-    let profileError = null;
-    if (user?.id) {
-      const result = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
-      profileData = result.data;
-      profileError = result.error;
-      console.log('[Debug] Profile lookup for user', user.id, ':', {
-        profileId: profileData?.id,
-        profileCompanyId: profileData?.company_id,
-        profileError: profileError?.message,
-      });
+export function createStatusHandler(
+  loadClient: LoadAuthenticatedClient = loadAuthenticatedClient
+) {
+  return async function GET(): Promise<Response> {
+    if (process.env.NODE_ENV !== 'development') {
+      return new Response(null, { status: 404 });
     }
 
-    return NextResponse.json({
-      status: 'ok',
-      auth: {
-        isAuthenticated: !!user,
-        userId: user?.id,
-        email: user?.email,
-      },
-      database: {
-        companiesCount: companies?.length || 0,
-        companies: companies?.map((c: any) => ({ id: c.id, name: c.name })) || [],
-        profilesTableExists: profilesTableError?.code !== 'PGRST116',
-        profilesTableError: profilesTableError?.message,
-      },
-      profile: {
-        exists: !!profileData,
-        id: profileData?.id,
-        company_id: profileData?.company_id,
-        full_name: profileData?.full_name,
-        role: profileData?.role,
-        status: profileData?.status,
-        error: profileError?.message,
-      },
-      instructions: profilesTableError?.code === 'PGRST116' 
-        ? 'PROFILES TABLE NOT FOUND. Need to create it with: CREATE TABLE profiles (...)'
-        : 'Profiles table exists. If no user is authenticated, use /api/debug/setup-test-user to create one.',
-    });
-  } catch (error) {
-    console.error('[Debug] Error:', error);
-    return NextResponse.json(
-      {
-        status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error',
-      },
-      { status: 500 }
-    );
-  }
+    try {
+      const client = await loadClient();
+      const {
+        data: { user },
+        error,
+      } = await client.auth.getUser();
+
+      if (error || !user) {
+        return new Response(null, { status: 404 });
+      }
+
+      return new Response(null, { status: 204 });
+    } catch {
+      return new Response(null, { status: 404 });
+    }
+  };
 }
+
+export const GET = createStatusHandler();
