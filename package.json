@@ -12,7 +12,8 @@
     "test:proposals": "node --experimental-strip-types --test __tests__/stage0c-action-proposals.test.mjs",
     "test:actor-context": "node --experimental-strip-types --test __tests__/stage-k1-actor-context.test.mjs",
     "test:tenant-scope": "node --experimental-strip-types --test __tests__/stage-k2-tenant-scope.test.mjs",
-    "test:command-envelope": "node --experimental-strip-types --test __tests__/stage-k3-command-envelope.test.mjs"
+    "test:command-envelope": "node --experimental-strip-types --test __tests__/stage-k3-command-envelope.test.mjs",
+    "test:command-handler": "node --experimental-strip-types --test __tests__/stage-k4-command-handler.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

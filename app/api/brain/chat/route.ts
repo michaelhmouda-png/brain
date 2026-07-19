@@ -30,6 +30,8 @@ import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel
 import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createTaskCommand } from '@/lib/brain/tasks/commands/create-task-command';
+import { createTaskCommandHandler } from '@/lib/brain/tasks/commands/create-task-command-handler';
+import { createSupabaseTaskRecordDependencies } from '@/lib/brain/tasks/infrastructure/create-task-record.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4235,6 +4237,7 @@ Status: ${previewStatus}`,
 
 async function executeStoredProposal(
   handlers: ToolHandlers,
+  taskCreateHandler: ReturnType<typeof createTaskCommandHandler>,
   action: ProposalAction,
   payload: Record<string, unknown>,
   context: BrainRequestContext,
@@ -4251,17 +4254,8 @@ async function executeStoredProposal(
         correlationId: command.correlationId,
         causationId: command.causationId,
       });
-      return handlers.createTask({
-        title: command.payload.title,
-        description: command.payload.description ?? undefined,
-        assigned_employee_name: command.payload.assignedEmployeeName ?? undefined,
-        assigned_employee_id: command.payload.assignedEmployeeId ?? undefined,
-        priority: command.payload.priority,
-        urgency: command.payload.urgency ?? undefined,
-        due_date: command.payload.dueDate ?? undefined,
-        status: command.payload.status,
-        confirmed: true,
-      });
+      const result = await taskCreateHandler.execute(command);
+      return { success: true, ...result };
     }
     case 'record_inventory_movement': return handlers.recordInventoryMovement(confirmed as unknown as RecordInventoryMovementInput);
     case 'create_shift': return handlers.createShift(confirmed as unknown as CreateShiftInput);
@@ -4367,10 +4361,12 @@ export async function POST(request: NextRequest) {
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
         const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
+        const taskCreateHandler = createTaskCommandHandler(createSupabaseTaskRecordDependencies(supabase));
         let result: any;
         try {
           result = await executeStoredProposal(
             executionHandlers,
+            taskCreateHandler,
             stored.canonicalAction,
             stored.canonicalPayload,
             requestContext,

@@ -84,9 +84,9 @@ test('approved create_task creates envelope after claim and executes only mapped
   const route=await readFile(new URL('../app/api/brain/chat/route.ts',import.meta.url),'utf8');
   const claim=route.indexOf('claimProposalForExecution');
   const commandCreation=route.indexOf('createTaskCommand({ payload, context, proposalId })');
-  const mutation=route.indexOf('return handlers.createTask({',commandCreation);
+  const mutation=route.indexOf('taskCreateHandler.execute(command)',commandCreation);
   assert.ok(claim>0&&commandCreation>claim&&mutation>commandCreation);
   const adapter=route.slice(commandCreation,route.indexOf("case 'record_inventory_movement'",commandCreation));
-  assert.match(adapter,/title: command\.payload\.title/);assert.match(adapter,/confirmed: true/);
+  assert.match(adapter,/taskCreateHandler\.execute\(command\)/);
   assert.equal(adapter.includes('...payload'),false);assert.equal(adapter.includes('stored.canonicalPayload'),false);
 });
