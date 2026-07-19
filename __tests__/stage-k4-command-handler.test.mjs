@@ -21,6 +21,7 @@ const tenant = Object.freeze({
 });
 const context = Object.freeze({ actor, tenant });
 const proposalId = '44444444-4444-4444-8444-444444444444';
+const eventRecorder = { record: async () => {} };
 
 function command(overrides = {}) {
   return createTaskCommand({
@@ -59,7 +60,7 @@ function dependencyHarness() {
 test('valid task.create command executes through the focused handler', async () => {
   const harness = dependencyHarness();
   const issued = command();
-  const result = await createTaskCommandHandler(harness.dependencies).execute(issued);
+  const result = await createTaskCommandHandler(harness.dependencies, eventRecorder).execute(issued);
   assert.equal(harness.calls.length, 1);
   assert.deepEqual(harness.calls[0], {
     tenantId: tenant.tenantId,
@@ -77,7 +78,7 @@ test('valid task.create command executes through the focused handler', async () 
 
 test('handler receives canonical payload only and unknown fields do not reach infrastructure', async () => {
   const harness = dependencyHarness();
-  await createTaskCommandHandler(harness.dependencies).execute(command());
+  await createTaskCommandHandler(harness.dependencies, eventRecorder).execute(command());
   assert.deepEqual(Object.keys(harness.calls[0].payload).sort(), [
     'assignedEmployeeId', 'assignedEmployeeName', 'description', 'dueDate',
     'priority', 'status', 'title', 'urgency',
@@ -92,13 +93,13 @@ test('malicious business input cannot override tenant or actor identity', async 
     error => error.code === 'INVALID_COMMAND_PAYLOAD',
   );
   const harness = dependencyHarness();
-  await createTaskCommandHandler(harness.dependencies).execute(command());
+  await createTaskCommandHandler(harness.dependencies, eventRecorder).execute(command());
   assert.equal(harness.calls[0].tenantId, tenant.tenantId);
   assert.equal(harness.calls[0].actorId, actor.actorId);
 });
 
 test('unsupported command type and schema version fail closed', async () => {
-  const handler = createTaskCommandHandler(dependencyHarness().dependencies);
+  const handler = createTaskCommandHandler(dependencyHarness().dependencies, eventRecorder);
   const valid = command();
   await assert.rejects(
     handler.execute({ ...valid, commandType: 'task.delete' }),
@@ -114,7 +115,7 @@ test('actor and tenant context mismatch fails before infrastructure', async () =
   const harness = dependencyHarness();
   const valid = command();
   await assert.rejects(
-    createTaskCommandHandler(harness.dependencies).execute({
+    createTaskCommandHandler(harness.dependencies, eventRecorder).execute({
       ...valid,
       tenant: { ...valid.tenant, tenantId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', companyId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
     }),
@@ -125,7 +126,7 @@ test('actor and tenant context mismatch fails before infrastructure', async () =
 
 test('infrastructure failures map to a stable safe handler error', async () => {
   const raw = new Error('password=secret database host details');
-  const handler = createTaskCommandHandler({ createTaskRecord: async () => { throw raw; } });
+  const handler = createTaskCommandHandler({ createTaskRecord: async () => { throw raw; } }, eventRecorder);
   await assert.rejects(
     handler.execute(command()),
     error => error instanceof CreateTaskCommandError &&
@@ -136,7 +137,7 @@ test('infrastructure failures map to a stable safe handler error', async () => {
 test('command identity and idempotency remain unchanged across execution', async () => {
   const issued = command();
   const before = { commandId: issued.commandId, idempotencyKey: issued.idempotencyKey };
-  await createTaskCommandHandler(dependencyHarness().dependencies).execute(issued);
+  await createTaskCommandHandler(dependencyHarness().dependencies, eventRecorder).execute(issued);
   assert.deepEqual({ commandId: issued.commandId, idempotencyKey: issued.idempotencyKey }, before);
   assert.equal(issued.causationId, proposalId);
 });

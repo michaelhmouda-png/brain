@@ -1,12 +1,15 @@
 import type { CommandHandler } from '../../kernel/commands/command-handler.ts';
 import { COMMAND_SCHEMA_VERSION } from '../../kernel/commands/command-envelope.ts';
+import type { DomainEventRecorder } from '../../kernel/events/domain-event-recorder.ts';
 import type { CreateTaskCommand, CreateTaskCommandPayload } from './create-task-command.ts';
+import { createTaskCreatedEvent } from '../events/task-created-event.ts';
 
 export type CreateTaskCommandErrorCode =
   | 'UNSUPPORTED_COMMAND_TYPE'
   | 'UNSUPPORTED_COMMAND_VERSION'
   | 'COMMAND_CONTEXT_MISMATCH'
-  | 'TASK_CREATION_FAILED';
+  | 'TASK_CREATION_FAILED'
+  | 'EVENT_RECORDING_FAILED';
 
 export class CreateTaskCommandError extends Error {
   readonly code: CreateTaskCommandErrorCode;
@@ -66,6 +69,7 @@ function validateCommand(command: CreateTaskCommand): void {
 
 export function createTaskCommandHandler(
   dependencies: CreateTaskCommandDependencies,
+  eventRecorder: DomainEventRecorder,
 ): CommandHandler<CreateTaskCommand, CreateTaskCommandResult> {
   return {
     async execute(command) {
@@ -76,7 +80,7 @@ export function createTaskCommandHandler(
           actorId: command.actor.actorId,
           payload: command.payload,
         });
-        return Object.freeze({
+        const safeResult = Object.freeze({
           taskId: result.taskId,
           title: result.title,
           status: result.status,
@@ -85,6 +89,13 @@ export function createTaskCommandHandler(
           assignedEmployeeName: result.assignedEmployeeName,
           dueDate: result.dueDate,
         });
+        const event = createTaskCreatedEvent({ command, result: safeResult });
+        try {
+          await eventRecorder.record(event);
+        } catch {
+          throw new CreateTaskCommandError('EVENT_RECORDING_FAILED');
+        }
+        return safeResult;
       } catch (error) {
         if (error instanceof CreateTaskCommandError) throw error;
         throw new CreateTaskCommandError('TASK_CREATION_FAILED');

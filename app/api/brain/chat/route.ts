@@ -32,6 +32,7 @@ import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createTaskCommand } from '@/lib/brain/tasks/commands/create-task-command';
 import { createTaskCommandHandler } from '@/lib/brain/tasks/commands/create-task-command-handler';
 import { createSupabaseTaskRecordDependencies } from '@/lib/brain/tasks/infrastructure/create-task-record.server';
+import { createServerDomainEventRecorder } from '@/lib/brain/events/infrastructure/record-domain-event.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4237,7 +4238,7 @@ Status: ${previewStatus}`,
 
 async function executeStoredProposal(
   handlers: ToolHandlers,
-  taskCreateHandler: ReturnType<typeof createTaskCommandHandler>,
+  taskCreateHandler: ReturnType<typeof createTaskCommandHandler> | null,
   action: ProposalAction,
   payload: Record<string, unknown>,
   context: BrainRequestContext,
@@ -4247,6 +4248,7 @@ async function executeStoredProposal(
   switch (action) {
     case 'create_employee': return handlers.createEmployee(confirmed as unknown as CreateEmployeeInput);
     case 'create_task': {
+      if (!taskCreateHandler) throw new Error('TASK_CREATE_HANDLER_UNAVAILABLE');
       const command = createTaskCommand({ payload, context, proposalId });
       console.log('[Brain Chat] Command issued', {
         commandId: command.commandId,
@@ -4361,7 +4363,12 @@ export async function POST(request: NextRequest) {
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
         const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
-        const taskCreateHandler = createTaskCommandHandler(createSupabaseTaskRecordDependencies(supabase));
+        const taskCreateHandler = stored.canonicalAction === 'create_task'
+          ? createTaskCommandHandler(
+              createSupabaseTaskRecordDependencies(supabase),
+              createServerDomainEventRecorder(),
+            )
+          : null;
         let result: any;
         try {
           result = await executeStoredProposal(
