@@ -9,7 +9,8 @@
     "lint": "eslint",
     "test:security": "node --experimental-strip-types --test __tests__/stage0a-security.test.mjs",
     "test:provisioning": "node --experimental-strip-types --test __tests__/stage0b-provisioning.test.mjs",
-    "test:proposals": "node --experimental-strip-types --test __tests__/stage0c-action-proposals.test.mjs"
+    "test:proposals": "node --experimental-strip-types --test __tests__/stage0c-action-proposals.test.mjs",
+    "test:actor-context": "node --experimental-strip-types --test __tests__/stage-k1-actor-context.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

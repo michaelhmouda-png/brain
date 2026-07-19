@@ -4,10 +4,6 @@ import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapPriorityToDatabase, displayPriority } from '@/lib/brain/priorityMapper';
 import {
-  createAccountNotProvisionedResponse,
-  resolveBrainChatProvisioning,
-} from '@/lib/brain/chat-provisioning';
-import {
   TASK_PRIORITY,
   TASK_STATUS,
   displayTaskPriority,
@@ -27,8 +23,9 @@ import {
 } from '@/lib/brain/action-proposals';
 import {
   createServerActionProposalStore,
-  proposalIdentity,
 } from '@/lib/brain/action-proposal-store.server';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4284,45 +4281,16 @@ function safeExecutionMessage(action: ProposalAction): string {
 // Main handler
 export async function POST(request: NextRequest) {
   try {
-    // 1. Authenticate user
+    // 1. Authenticate and resolve the canonical trusted actor before request
+    // parsing, OpenAI, proposal lookup, tools, or tenant-domain access.
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    let actorContext;
+    try {
+      actorContext = await resolveActorContext(supabase);
+    } catch (error) {
+      if (error instanceof ActorContextError) return actorContextErrorResponse(error);
+      return actorContextErrorResponse(new ActorContextError('ACTOR_CONTEXT_UNAVAILABLE'));
     }
-
-    // 2. Resolve persisted tenant and role authority. This boundary must remain
-    // before request parsing, OpenAI initialization, tools, or tenant queries.
-    const provisioning = await resolveBrainChatProvisioning(user.id, {
-      async loadProfile(userId) {
-        const { data, error } = await supabase
-          .from('profiles')
-          .select('id, full_name, role, status, company_id')
-          .eq('id', userId)
-          .maybeSingle();
-
-        return { profile: data, failed: Boolean(error) };
-      },
-      async companyExists(companyId) {
-        const { data, error } = await supabase
-          .from('companies')
-          .select('id')
-          .eq('id', companyId)
-          .maybeSingle();
-
-        return !error && data?.id === companyId;
-      },
-    });
-
-    if (!provisioning.authorized) {
-      return createAccountNotProvisionedResponse();
-    }
-
-    const { profile } = provisioning;
 
     // 4. Parse request body
     const requestBody = await request.json() as {
@@ -4332,8 +4300,6 @@ export async function POST(request: NextRequest) {
       context?: ConversationContext;
     };
     const { messages, proposalId, decision } = requestBody;
-
-    const identity = proposalIdentity(user.id, profile.id, profile.company_id, profile.role);
 
     // Proposal decisions are handled before OpenAI or tenant-domain access. The
     // Stage 0B provisioning boundary above remains the first database boundary.
@@ -4347,7 +4313,7 @@ export async function POST(request: NextRequest) {
 
       if (decision === 'reject') {
         try {
-          const outcome = await rejectProposal(proposalStore, proposalId, identity);
+          const outcome = await rejectProposal(proposalStore, proposalId, actorContext);
           if (outcome !== 'rejected') return NextResponse.json({ error: 'This action cannot be cancelled.', code: 'PROPOSAL_REJECTION_DENIED' }, { status: 409 });
           return NextResponse.json({ message: 'Action cancelled.', role: 'assistant' });
         } catch {
@@ -4356,7 +4322,7 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const claim = await claimProposalForExecution(proposalStore, proposalId, identity);
+        const claim = await claimProposalForExecution(proposalStore, proposalId, actorContext);
         if (claim.outcome === 'executed') return NextResponse.json({ message: claim.safeResult || 'Action already completed.', role: 'assistant' });
         if (claim.outcome !== 'claimed') {
           const code = claim.outcome === 'expired' ? 'PROPOSAL_EXPIRED' : 'PROPOSAL_NOT_EXECUTABLE';
@@ -4364,7 +4330,7 @@ export async function POST(request: NextRequest) {
         }
 
         const stored = claim.proposal;
-        if (!mayExecuteProposal(stored.canonicalAction, profile.role)) {
+        if (!mayExecuteProposal(stored.canonicalAction, actorContext.role)) {
           await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'AUTHORIZATION_DENIED');
           return NextResponse.json({ error: 'You are not permitted to perform this action.', code: 'AUTHORIZATION_DENIED' }, { status: 403 });
         }
@@ -4373,7 +4339,7 @@ export async function POST(request: NextRequest) {
           recentEmployees: [], lastMentionedEmployeeId: null, lastMentionedDepartmentId: null,
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
-        const executionHandlers = new ToolHandlers(supabase, profile.company_id, profile.role, executionContext);
+        const executionHandlers = new ToolHandlers(supabase, actorContext.companyId, actorContext.role, executionContext);
         let result: any;
         try {
           result = await executeStoredProposal(executionHandlers, stored.canonicalAction, stored.canonicalPayload);
@@ -4436,13 +4402,13 @@ export async function POST(request: NextRequest) {
     });
 
     // 6. Use only the tenant assignment validated from persisted profile data.
-    const companyId = profile.company_id;
+    const companyId = actorContext.companyId;
 
     // 7. Create tool handlers with validated company_id
     const handlers = new ToolHandlers(
       supabase,
       companyId,  // guaranteed non-empty string
-      profile.role,
+      actorContext.role,
       conversationContext
     );
 
@@ -4464,7 +4430,7 @@ Respect the authenticated user's role and permissions.
 If information is unavailable, say so.
 Do not claim an action was completed unless a tool completed it.
 Every operational decision should either be made by Brain or improved by Brain.
-Current user: ${profile.full_name || 'Unknown'} (${profile.role})
+Current user: ${actorContext.displayName || 'Unknown'} (${actorContext.role})
 
 CONVERSATION MEMORY — RECENT ENTITIES:
 You have access to recently mentioned employees in this conversation:
@@ -4996,7 +4962,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
           try {
             const proposalStore = createServerActionProposalStore();
             const created = await createProposal(proposalStore, {
-              identity,
+              actor: actorContext,
               action: toolName,
               rawArguments: toolInput,
               preview: { label, rows },

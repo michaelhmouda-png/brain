@@ -1,4 +1,5 @@
 import { createHash, randomUUID } from 'crypto';
+import type { ActorContext } from './kernel/actor-context';
 
 export const PROPOSAL_SCHEMA_VERSION = 1;
 export const PROPOSAL_TTL_MS = 10 * 60 * 1000;
@@ -16,11 +17,15 @@ export type ProposalAction = (typeof PROPOSAL_ACTIONS)[number];
 export type ProposalStatus = 'pending' | 'executing' | 'executed' | 'rejected' | 'expired' | 'failed';
 export type ProposalRisk = 'medium' | 'high';
 
-export interface ProposalIdentity {
+interface ProposalIdentity {
   actorId: string;
   profileId: string;
   tenantId: string;
   role: string;
+}
+
+function proposalIdentity(actor: ActorContext): ProposalIdentity {
+  return { actorId: actor.actorId, profileId: actor.profileId, tenantId: actor.companyId, role: actor.role };
 }
 
 export interface ProposalRecord {
@@ -155,21 +160,22 @@ function stable(value: unknown): string {
   return JSON.stringify(value);
 }
 
-export function hashProposal(action: ProposalAction, payload: Record<string, unknown>, identity: ProposalIdentity, version = PROPOSAL_SCHEMA_VERSION): string {
-  return createHash('sha256').update(stable({ action, payload, actorId: identity.actorId, tenantId: identity.tenantId, version })).digest('hex');
+export function hashProposal(action: ProposalAction, payload: Record<string, unknown>, actor: ActorContext, version = PROPOSAL_SCHEMA_VERSION): string {
+  return createHash('sha256').update(stable({ action, payload, actorId: actor.actorId, tenantId: actor.companyId, version })).digest('hex');
 }
 
-export async function createProposal(store: ProposalStore, input: { identity: ProposalIdentity; action: string; rawArguments: unknown; preview: ProposalRecord['preview']; correlationId?: string; now?: Date }): Promise<ProposalRecord> {
+export async function createProposal(store: ProposalStore, input: { actor: ActorContext; action: string; rawArguments: unknown; preview: ProposalRecord['preview']; now?: Date }): Promise<ProposalRecord> {
   const { action, payload } = canonicalizeProposalArguments(input.action, input.rawArguments);
   const now = input.now ?? new Date();
   const id = randomUUID();
-  const payloadHash = hashProposal(action, payload, input.identity);
+  const identity = proposalIdentity(input.actor);
+  const payloadHash = hashProposal(action, payload, input.actor);
   const record: ProposalRecord = {
-    id, actorId: input.identity.actorId, profileId: input.identity.profileId, tenantId: input.identity.tenantId,
+    id, actorId: identity.actorId, profileId: identity.profileId, tenantId: identity.tenantId,
     canonicalAction: action, canonicalPayload: payload, payloadHash, schemaVersion: PROPOSAL_SCHEMA_VERSION,
     risk: action.startsWith('delete_') || action === 'record_inventory_movement' ? 'high' : 'medium',
     requiredRole: action === 'create_employee' ? 'manager_or_above' : null,
-    preview: input.preview, status: 'pending', correlationId: input.correlationId ?? randomUUID(),
+    preview: input.preview, status: 'pending', correlationId: input.actor.correlationId,
     idempotencyKey: `${id}:${payloadHash}`, createdAt: now.toISOString(), expiresAt: new Date(now.getTime()+PROPOSAL_TTL_MS).toISOString(),
     executedAt: null, safeResult: null,
   };
@@ -177,13 +183,14 @@ export async function createProposal(store: ProposalStore, input: { identity: Pr
   return record;
 }
 
-export async function rejectProposal(store: ProposalStore, id: string, identity: ProposalIdentity) { return store.reject(id, identity); }
+export async function rejectProposal(store: ProposalStore, id: string, actor: ActorContext) { return store.reject(id, proposalIdentity(actor)); }
 
-export async function claimProposalForExecution(store: ProposalStore, id: string, identity: ProposalIdentity, now = new Date()) {
+export async function claimProposalForExecution(store: ProposalStore, id: string, actor: ActorContext, now = new Date()) {
+  const identity = proposalIdentity(actor);
   const claimed = await store.claim(id, identity, now.toISOString());
   if (claimed.outcome !== 'claimed') return claimed;
   const proposal = claimed.proposal;
-  if (proposal.schemaVersion !== PROPOSAL_SCHEMA_VERSION || proposal.actorId !== identity.actorId || proposal.profileId !== identity.profileId || proposal.tenantId !== identity.tenantId || proposal.payloadHash !== hashProposal(proposal.canonicalAction, proposal.canonicalPayload, identity, proposal.schemaVersion)) {
+  if (proposal.schemaVersion !== PROPOSAL_SCHEMA_VERSION || proposal.actorId !== identity.actorId || proposal.profileId !== identity.profileId || proposal.tenantId !== identity.tenantId || proposal.payloadHash !== hashProposal(proposal.canonicalAction, proposal.canonicalPayload, actor, proposal.schemaVersion)) {
     await store.markFailed(proposal.id, proposal.payloadHash, 'PROPOSAL_INTEGRITY_FAILED');
     return { outcome: 'invalid_status' as const };
   }

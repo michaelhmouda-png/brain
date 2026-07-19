@@ -140,7 +140,7 @@ describe('Stage 0B Brain chat provisioning boundary', () => {
     );
     const handlerStart = route.indexOf('export async function POST');
     const provisioningStart = route.indexOf(
-      'const provisioning = await resolveBrainChatProvisioning',
+      'actorContext = await resolveActorContext(supabase)',
       handlerStart
     );
     const requestRead = route.indexOf('await request.json()', provisioningStart);

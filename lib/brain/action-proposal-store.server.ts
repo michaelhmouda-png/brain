@@ -1,7 +1,7 @@
 import 'server-only';
 
 import { createSupabaseServer } from '@/lib/supabaseServer';
-import type { ProposalIdentity, ProposalRecord, ProposalStore } from './action-proposals';
+import type { ProposalRecord, ProposalStore } from './action-proposals';
 
 function dbRow(record: ProposalRecord) {
   return {
@@ -66,8 +66,4 @@ export function createServerActionProposalStore(): ProposalStore {
       if (data !== true) throw new Error('PROPOSAL_TRANSITION_FAILED');
     },
   };
-}
-
-export function proposalIdentity(actorId: string, profileId: string, tenantId: string, role: string): ProposalIdentity {
-  return { actorId, profileId, tenantId, role };
 }

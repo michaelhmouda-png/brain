@@ -10,7 +10,7 @@ import {
 const ACTOR = '11111111-1111-4111-8111-111111111111';
 const PROFILE = ACTOR;
 const TENANT = '22222222-2222-4222-8222-222222222222';
-const identity = { actorId: ACTOR, profileId: PROFILE, tenantId: TENANT, role: 'manager' };
+const identity = { actorId: ACTOR, authUserId: ACTOR, profileId: PROFILE, companyId: TENANT, role: 'manager', status: 'active', actorType: 'human', correlationId: '66666666-6666-4666-8666-666666666666', displayName: 'Manager' };
 
 class DurableMemoryStore {
   constructor(rows = new Map()) { this.rows = rows; }
@@ -31,7 +31,7 @@ class DurableMemoryStore {
 }
 
 async function proposal(store, overrides={}) {
-  return createProposal(store, { identity, action:'create_task', rawArguments:{title:'Clean bar',priority:'high',assigned_employee_id:'33333333-3333-4333-8333-333333333333'}, preview:{label:'Create Task',rows:[{key:'Title',value:'Clean bar'}]}, now:new Date('2026-07-19T10:00:00Z'), ...overrides });
+  return createProposal(store, { actor: identity, action:'create_task', rawArguments:{title:'Clean bar',priority:'high',assigned_employee_id:'33333333-3333-4333-8333-333333333333'}, preview:{label:'Create Task',rows:[{key:'Title',value:'Clean bar'}]}, now:new Date('2026-07-19T10:00:00Z'), ...overrides });
 }
 
 test('canonicalizes and prunes model arguments before persistence', async () => {
@@ -45,13 +45,13 @@ test('hash binds action, canonical arguments, actor, tenant, and schema version'
   assert.notEqual(base,hashProposal('create_shift',payload,identity));
   assert.notEqual(base,hashProposal('create_task',{title:'Other'},identity));
   assert.notEqual(base,hashProposal('create_task',payload,{...identity,actorId:'44444444-4444-4444-8444-444444444444'}));
-  assert.notEqual(base,hashProposal('create_task',payload,{...identity,tenantId:'55555555-5555-4555-8555-555555555555'}));
+  assert.notEqual(base,hashProposal('create_task',payload,{...identity,companyId:'55555555-5555-4555-8555-555555555555'}));
   assert.notEqual(base,hashProposal('create_task',payload,identity,PROPOSAL_SCHEMA_VERSION+1));
 });
 
 test('wrong actor, profile, and tenant cannot claim a proposal', async () => {
   const store=new DurableMemoryStore(); const p=await proposal(store);
-  for(const changed of [{actorId:'44444444-4444-4444-8444-444444444444'},{profileId:'44444444-4444-4444-8444-444444444444'},{tenantId:'44444444-4444-4444-8444-444444444444'}])
+  for(const changed of [{actorId:'44444444-4444-4444-8444-444444444444'},{profileId:'44444444-4444-4444-8444-444444444444'},{companyId:'44444444-4444-4444-8444-444444444444'}])
     assert.equal((await claimProposalForExecution(store,p.id,{...identity,...changed},new Date('2026-07-19T10:01:00Z'))).outcome,'not_found');
 });
 
