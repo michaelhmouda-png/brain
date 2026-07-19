@@ -105,11 +105,12 @@ test('handler failure passes through without returning internal state', async ()
 
 test('approved create_task route delegates K3-K5 orchestration to the application service', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
-  const branch = route.slice(route.indexOf("case 'create_task':"), route.indexOf("case 'record_inventory_movement':"));
-  assert.match(branch, /createTaskApplicationService\.execute\(\{ context, payload, proposalId \}\)/);
-  assert.doesNotMatch(branch, /createTaskCommand|taskCreateHandler\.execute|createTaskCreatedEvent|eventRecorder\.record/);
-  assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('executeStoredProposal('));
-  assert.ok(route.indexOf('executeStoredProposal(') < route.indexOf('markProposalExecuted('));
+  const registry = await readFile(new URL('../lib/brain/actions/approved-action-registry.ts', import.meta.url), 'utf8');
+  assert.match(route, /approvedActionRegistry\.execute/);
+  assert.match(registry, /createTaskApplicationService\.execute/);
+  assert.doesNotMatch(route, /createTaskCommand|taskCreateHandler\.execute|createTaskCreatedEvent|eventRecorder\.record/);
+  assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('approvedActionRegistry.execute'));
+  assert.ok(route.indexOf('approvedActionRegistry.execute') < route.indexOf('markProposalExecuted('));
   assert.match(route, /markProposalFailed\(proposalStore, stored\.id, stored\.payloadHash/);
 });
 
@@ -121,7 +122,9 @@ test('application service owns no HTTP, proposal lifecycle, OpenAI, or conversat
 
 test('other approved mutation branches remain delegated to existing handlers', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
+  const registry = await readFile(new URL('../lib/brain/actions/approved-action-registry.ts', import.meta.url), 'utf8');
   for (const action of ['create_employee', 'record_inventory_movement', 'create_shift', 'create_maintenance_ticket', 'create_incident']) {
-    assert.match(route, new RegExp(`case '${action}': return handlers\\.`));
+    assert.match(registry, new RegExp(`case '${action}': return executeLegacy`));
+    assert.match(route, new RegExp(`${action}: payload => executionHandlers\\.`));
   }
 });

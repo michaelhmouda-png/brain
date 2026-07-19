@@ -145,26 +145,22 @@ test('command identity and idempotency remain unchanged across execution', async
 test('approved route calls handler after claim and preserves proposal transitions', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
   const service = await readFile(new URL('../lib/brain/tasks/application/create-task-application-service.ts', import.meta.url), 'utf8');
-  const branch = route.slice(route.indexOf("case 'create_task':"), route.indexOf("case 'record_inventory_movement':"));
-  assert.match(branch, /createTaskApplicationService\.execute/);
+  const registry = await readFile(new URL('../lib/brain/actions/approved-action-registry.ts', import.meta.url), 'utf8');
+  assert.match(route, /approvedActionRegistry\.execute/);
+  assert.match(registry, /createTaskApplicationService\.execute/);
   assert.match(service, /dependencies\.handler\.execute\(command\)/);
-  assert.doesNotMatch(branch, /handlers\.createTask|\.from\('tasks'\)|\.insert\(/);
-  assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('executeStoredProposal('));
-  assert.ok(route.indexOf('executeStoredProposal(') < route.indexOf('markProposalExecuted('));
+  assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('approvedActionRegistry.execute'));
+  assert.ok(route.indexOf('approvedActionRegistry.execute') < route.indexOf('markProposalExecuted('));
   assert.match(route, /markProposalFailed\(proposalStore, stored\.id, stored\.payloadHash/);
 });
 
 test('approved proposal branch executes before OpenAI initialization', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
   assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('new OpenAI('));
-  assert.ok(route.indexOf('createTaskApplicationService.execute(') < route.indexOf('new OpenAI('));
+  assert.ok(route.indexOf('approvedActionRegistry.execute(') < route.indexOf('new OpenAI('));
 });
 
-test('K4 adds no dispatcher, registry, middleware, retry, or other mutation migration', async () => {
+test('K4 handler remains focused without dispatch, middleware, or retry behavior', async () => {
   const handler = await readFile(new URL('../lib/brain/tasks/commands/create-task-command-handler.ts', import.meta.url), 'utf8');
   assert.doesNotMatch(handler, /executeCommand|dispatch\(|registry|middleware|retry/i);
-  const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
-  for (const action of ['update_shift', 'delete_shift', 'create_maintenance_ticket', 'create_incident']) {
-    assert.match(route, new RegExp(`case '${action}': return handlers\\.`));
-  }
 });

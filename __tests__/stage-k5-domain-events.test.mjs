@@ -171,10 +171,12 @@ test('event recording failure prevents successful handler completion', async () 
 test('route completes proposal only after cohesive task handler succeeds', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
   const handler = await readFile(new URL('../lib/brain/tasks/commands/create-task-command-handler.ts', import.meta.url), 'utf8');
+  const registry = await readFile(new URL('../lib/brain/actions/approved-action-registry.ts', import.meta.url), 'utf8');
   assert.ok(handler.indexOf('createTaskRecord({') < handler.indexOf('eventRecorder.record(event)'));
-  assert.ok(route.indexOf('executeStoredProposal(') < route.indexOf('markProposalExecuted('));
+  assert.match(registry, /createTaskApplicationService\.execute/);
+  assert.ok(route.indexOf('approvedActionRegistry.execute(') < route.indexOf('markProposalExecuted('));
   assert.match(route, /markProposalFailed\(proposalStore, stored\.id, stored\.payloadHash/);
-  assert.ok(route.indexOf('createTaskApplicationService.execute(') < route.indexOf('new OpenAI('));
+  assert.ok(route.indexOf('approvedActionRegistry.execute(') < route.indexOf('new OpenAI('));
 });
 
 test('migration is server-only and enforces one event type per command', async () => {

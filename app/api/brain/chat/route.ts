@@ -29,8 +29,8 @@ import type { ActorContext } from '@/lib/brain/kernel/actor-context';
 import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
 import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
-import type { CreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service';
 import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
+import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4234,39 +4234,6 @@ Status: ${previewStatus}`,
   }
 }
 
-async function executeStoredProposal(
-  handlers: ToolHandlers,
-  createTaskApplicationService: CreateTaskApplicationService | null,
-  action: ProposalAction,
-  payload: Record<string, unknown>,
-  context: BrainRequestContext,
-  proposalId: string
-) {
-  const confirmed = { ...payload, confirmed: true };
-  switch (action) {
-    case 'create_employee': return handlers.createEmployee(confirmed as unknown as CreateEmployeeInput);
-    case 'create_task': {
-      if (!createTaskApplicationService) throw new Error('CREATE_TASK_APPLICATION_UNAVAILABLE');
-      const result = await createTaskApplicationService.execute({ context, payload, proposalId });
-      return { success: true, ...result };
-    }
-    case 'record_inventory_movement': return handlers.recordInventoryMovement(confirmed as unknown as RecordInventoryMovementInput);
-    case 'create_shift': return handlers.createShift(confirmed as unknown as CreateShiftInput);
-    case 'update_shift': return handlers.updateShift(confirmed as unknown as UpdateShiftInput);
-    case 'delete_shift': return handlers.deleteShift(confirmed as unknown as DeleteShiftInput);
-    case 'create_maintenance_ticket': return handlers.createMaintenanceTicket(confirmed as unknown as CreateMaintenanceInput);
-    case 'update_maintenance_ticket': return handlers.updateMaintenanceTicket(confirmed as unknown as UpdateMaintenanceInput);
-    case 'delete_maintenance_ticket': return handlers.deleteMaintenanceTicket(confirmed as unknown as DeleteMaintenanceInput);
-    case 'complete_maintenance_ticket': return handlers.completeMaintenanceTicket(confirmed as unknown as { ticket_id: string; completion_notes?: string; confirmed?: boolean });
-    case 'create_announcement': return handlers.createAnnouncement(confirmed as unknown as CreateAnnouncementInput);
-    case 'update_announcement': return handlers.updateAnnouncement(confirmed as unknown as UpdateAnnouncementInput);
-    case 'delete_announcement': return handlers.deleteAnnouncement(confirmed as unknown as DeleteAnnouncementInput);
-    case 'create_incident': return handlers.createIncident(confirmed as unknown as CreateIncidentInput);
-    case 'update_incident': return handlers.updateIncident(confirmed as unknown as UpdateIncidentInput);
-    case 'delete_incident': return handlers.deleteIncident(confirmed as unknown as DeleteIncidentInput);
-  }
-}
-
 function mayExecuteProposal(action: ProposalAction, role: string): boolean {
   return action !== 'create_employee' || ['super_admin', 'owner', 'manager'].includes(role);
 }
@@ -4357,16 +4324,34 @@ export async function POST(request: NextRequest) {
         const createTaskApplicationService = stored.canonicalAction === 'create_task'
           ? createSupabaseCreateTaskApplicationService(supabase)
           : null;
+        const approvedActionRegistry = createApprovedActionRegistry({
+          createTaskApplicationService,
+          legacyExecutors: {
+            create_employee: payload => executionHandlers.createEmployee(payload as unknown as CreateEmployeeInput),
+            record_inventory_movement: payload => executionHandlers.recordInventoryMovement(payload as unknown as RecordInventoryMovementInput),
+            create_shift: payload => executionHandlers.createShift(payload as unknown as CreateShiftInput),
+            update_shift: payload => executionHandlers.updateShift(payload as unknown as UpdateShiftInput),
+            delete_shift: payload => executionHandlers.deleteShift(payload as unknown as DeleteShiftInput),
+            create_maintenance_ticket: payload => executionHandlers.createMaintenanceTicket(payload as unknown as CreateMaintenanceInput),
+            update_maintenance_ticket: payload => executionHandlers.updateMaintenanceTicket(payload as unknown as UpdateMaintenanceInput),
+            delete_maintenance_ticket: payload => executionHandlers.deleteMaintenanceTicket(payload as unknown as DeleteMaintenanceInput),
+            complete_maintenance_ticket: payload => executionHandlers.completeMaintenanceTicket(payload as unknown as { ticket_id: string; completion_notes?: string; confirmed?: boolean }),
+            create_announcement: payload => executionHandlers.createAnnouncement(payload as unknown as CreateAnnouncementInput),
+            update_announcement: payload => executionHandlers.updateAnnouncement(payload as unknown as UpdateAnnouncementInput),
+            delete_announcement: payload => executionHandlers.deleteAnnouncement(payload as unknown as DeleteAnnouncementInput),
+            create_incident: payload => executionHandlers.createIncident(payload as unknown as CreateIncidentInput),
+            update_incident: payload => executionHandlers.updateIncident(payload as unknown as UpdateIncidentInput),
+            delete_incident: payload => executionHandlers.deleteIncident(payload as unknown as DeleteIncidentInput),
+          },
+        });
         let result: any;
         try {
-          result = await executeStoredProposal(
-            executionHandlers,
-            createTaskApplicationService,
-            stored.canonicalAction,
-            stored.canonicalPayload,
-            requestContext,
-            stored.id
-          );
+          result = await approvedActionRegistry.execute({
+            context: requestContext,
+            action: stored.canonicalAction,
+            payload: stored.canonicalPayload,
+            proposalId: stored.id,
+          });
         } catch {
           await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_FAILED');
           return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_FAILED' }, { status: 500 });

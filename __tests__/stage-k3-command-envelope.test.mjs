@@ -84,8 +84,8 @@ test('approved create_task creates envelope after claim and executes only mapped
   const route=await readFile(new URL('../app/api/brain/chat/route.ts',import.meta.url),'utf8');
   const service=await readFile(new URL('../lib/brain/tasks/application/create-task-application-service.ts',import.meta.url),'utf8');
   const claim=route.indexOf('claimProposalForExecution');
-  const applicationCall=route.indexOf('createTaskApplicationService.execute({ context, payload, proposalId })');
-  assert.ok(claim>0&&applicationCall>claim);
+  const registryCall=route.indexOf('approvedActionRegistry.execute({');
+  assert.ok(claim>0&&registryCall>claim);
   assert.match(service,/createTaskCommand\(\{[\s\S]*context: input\.context,[\s\S]*payload: input\.payload,[\s\S]*proposalId: input\.proposalId/);
   assert.match(service,/dependencies\.handler\.execute\(command\)/);
   assert.equal(service.includes('...input.payload'),false);

@@ -15,7 +15,8 @@
     "test:command-envelope": "node --experimental-strip-types --test __tests__/stage-k3-command-envelope.test.mjs",
     "test:command-handler": "node --experimental-strip-types --test __tests__/stage-k4-command-handler.test.mjs",
     "test:domain-events": "node --experimental-strip-types --test __tests__/stage-k5-domain-events.test.mjs",
-    "test:create-task-application": "node --experimental-strip-types --test __tests__/stage-k6-create-task-application.test.mjs"
+    "test:create-task-application": "node --experimental-strip-types --test __tests__/stage-k6-create-task-application.test.mjs",
+    "test:approved-actions": "node --experimental-strip-types --test __tests__/stage-k7-approved-action-registry.test.mjs"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",
