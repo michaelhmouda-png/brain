@@ -57,11 +57,11 @@ test('correlation ID is generated at the trusted resolver boundary', async () =>
 test('chat and Stage 0C proposal paths consume ActorContext', async () => {
   const route=await readFile(new URL('../app/api/brain/chat/route.ts',import.meta.url),'utf8');
   assert.match(route,/actorContext = await resolveActorContext\(supabase\)/);
-  assert.match(route,/rejectProposal\(proposalStore, proposalId, actorContext\)/);
-  assert.match(route,/claimProposalForExecution\(proposalStore, proposalId, actorContext\)/);
-  assert.match(route,/actor: actorContext/);
+  assert.match(route,/rejectProposal\(proposalStore, proposalId, requestContext\)/);
+  assert.match(route,/claimProposalForExecution\(proposalStore, proposalId, requestContext\)/);
+  assert.match(route,/context: requestContext/);
   const proposals=await readFile(new URL('../lib/brain/action-proposals.ts',import.meta.url),'utf8');
-  assert.match(proposals,/actor: ActorContext/);
+  assert.match(proposals,/context: BrainRequestContext/);
 });
 
 test('ActorContext resolution precedes request parsing and OpenAI', async () => {

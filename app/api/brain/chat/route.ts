@@ -25,7 +25,10 @@ import {
   createServerActionProposalStore,
 } from '@/lib/brain/action-proposal-store.server';
 import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import type { ActorContext } from '@/lib/brain/kernel/actor-context';
 import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
+import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
+import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -60,9 +63,7 @@ interface GetEmployeeSummaryInput {
   employee_id: string;
 }
 
-interface GetCompanySummaryInput {
-  company_id?: string;
-}
+type GetCompanySummaryInput = Record<string, never>;
 
 interface GetEmployeesInput {
   first_name?: string;         // Search by first name (partial match)
@@ -519,12 +520,7 @@ const TOOLS = [
     description: 'Get summary stats for a company including employee count, locations, and departments',
     parameters: {
       type: 'object',
-      properties: {
-        company_id: {
-          type: 'string',
-          description: "Company ID (optional, defaults to user's company)",
-        },
-      },
+      properties: {},
       required: [],
     },
   },
@@ -1625,12 +1621,10 @@ class ToolHandlers {
   }
 
   async getCompanySummary(params: GetCompanySummaryInput) {
-    let companyId = params.company_id || this.userCompanyId;
-
-    // Regular users cannot access other companies
-    if (this.userRole !== 'super_admin' && companyId !== this.userCompanyId) {
-      return { error: 'Access denied to other companies' };
-    }
+    void params;
+    // Tenant authority is fixed when the handler is constructed. Tool/model
+    // arguments cannot select or widen the company boundary.
+    const companyId = this.userCompanyId;
 
     const { data: company } = await this.supabase
       .from('companies')
@@ -4284,12 +4278,19 @@ export async function POST(request: NextRequest) {
     // 1. Authenticate and resolve the canonical trusted actor before request
     // parsing, OpenAI, proposal lookup, tools, or tenant-domain access.
     const supabase = await createSupabaseServerAuth();
-    let actorContext;
+    let actorContext: ActorContext;
     try {
       actorContext = await resolveActorContext(supabase);
     } catch (error) {
       if (error instanceof ActorContextError) return actorContextErrorResponse(error);
       return actorContextErrorResponse(new ActorContextError('ACTOR_CONTEXT_UNAVAILABLE'));
+    }
+    let requestContext: BrainRequestContext;
+    try {
+      requestContext = { actor: actorContext, tenant: tenantScopeFromActor(actorContext) };
+    } catch (error) {
+      if (error instanceof ActorContextError) return actorContextErrorResponse(error);
+      return actorContextErrorResponse(new ActorContextError('TENANT_SCOPE_UNAVAILABLE'));
     }
 
     // 4. Parse request body
@@ -4313,7 +4314,7 @@ export async function POST(request: NextRequest) {
 
       if (decision === 'reject') {
         try {
-          const outcome = await rejectProposal(proposalStore, proposalId, actorContext);
+          const outcome = await rejectProposal(proposalStore, proposalId, requestContext);
           if (outcome !== 'rejected') return NextResponse.json({ error: 'This action cannot be cancelled.', code: 'PROPOSAL_REJECTION_DENIED' }, { status: 409 });
           return NextResponse.json({ message: 'Action cancelled.', role: 'assistant' });
         } catch {
@@ -4322,7 +4323,7 @@ export async function POST(request: NextRequest) {
       }
 
       try {
-        const claim = await claimProposalForExecution(proposalStore, proposalId, actorContext);
+        const claim = await claimProposalForExecution(proposalStore, proposalId, requestContext);
         if (claim.outcome === 'executed') return NextResponse.json({ message: claim.safeResult || 'Action already completed.', role: 'assistant' });
         if (claim.outcome !== 'claimed') {
           const code = claim.outcome === 'expired' ? 'PROPOSAL_EXPIRED' : 'PROPOSAL_NOT_EXECUTABLE';
@@ -4339,7 +4340,7 @@ export async function POST(request: NextRequest) {
           recentEmployees: [], lastMentionedEmployeeId: null, lastMentionedDepartmentId: null,
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
-        const executionHandlers = new ToolHandlers(supabase, actorContext.companyId, actorContext.role, executionContext);
+        const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
         let result: any;
         try {
           result = await executeStoredProposal(executionHandlers, stored.canonicalAction, stored.canonicalPayload);
@@ -4402,7 +4403,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 6. Use only the tenant assignment validated from persisted profile data.
-    const companyId = actorContext.companyId;
+    const companyId = requestContext.tenant.companyId;
 
     // 7. Create tool handlers with validated company_id
     const handlers = new ToolHandlers(
@@ -4962,7 +4963,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
           try {
             const proposalStore = createServerActionProposalStore();
             const created = await createProposal(proposalStore, {
-              actor: actorContext,
+              context: requestContext,
               action: toolName,
               rawArguments: toolInput,
               preview: { label, rows },

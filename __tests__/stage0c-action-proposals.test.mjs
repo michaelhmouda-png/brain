@@ -11,6 +11,8 @@ const ACTOR = '11111111-1111-4111-8111-111111111111';
 const PROFILE = ACTOR;
 const TENANT = '22222222-2222-4222-8222-222222222222';
 const identity = { actorId: ACTOR, authUserId: ACTOR, profileId: PROFILE, companyId: TENANT, role: 'manager', status: 'active', actorType: 'human', correlationId: '66666666-6666-4666-8666-666666666666', displayName: 'Manager' };
+const tenant = Object.freeze({ tenantId: TENANT, companyId: TENANT, scopeType: 'company' });
+const requestContext = { actor: identity, tenant };
 
 class DurableMemoryStore {
   constructor(rows = new Map()) { this.rows = rows; }
@@ -31,7 +33,7 @@ class DurableMemoryStore {
 }
 
 async function proposal(store, overrides={}) {
-  return createProposal(store, { actor: identity, action:'create_task', rawArguments:{title:'Clean bar',priority:'high',assigned_employee_id:'33333333-3333-4333-8333-333333333333'}, preview:{label:'Create Task',rows:[{key:'Title',value:'Clean bar'}]}, now:new Date('2026-07-19T10:00:00Z'), ...overrides });
+  return createProposal(store, { context: requestContext, action:'create_task', rawArguments:{title:'Clean bar',priority:'high',assigned_employee_id:'33333333-3333-4333-8333-333333333333'}, preview:{label:'Create Task',rows:[{key:'Title',value:'Clean bar'}]}, now:new Date('2026-07-19T10:00:00Z'), ...overrides });
 }
 
 test('canonicalizes and prunes model arguments before persistence', async () => {
@@ -41,44 +43,44 @@ test('canonicalizes and prunes model arguments before persistence', async () => 
 
 test('hash binds action, canonical arguments, actor, tenant, and schema version', () => {
   const payload={title:'Clean bar'};
-  const base=hashProposal('create_task',payload,identity);
-  assert.notEqual(base,hashProposal('create_shift',payload,identity));
-  assert.notEqual(base,hashProposal('create_task',{title:'Other'},identity));
-  assert.notEqual(base,hashProposal('create_task',payload,{...identity,actorId:'44444444-4444-4444-8444-444444444444'}));
-  assert.notEqual(base,hashProposal('create_task',payload,{...identity,companyId:'55555555-5555-4555-8555-555555555555'}));
-  assert.notEqual(base,hashProposal('create_task',payload,identity,PROPOSAL_SCHEMA_VERSION+1));
+  const base=hashProposal('create_task',payload,requestContext);
+  assert.notEqual(base,hashProposal('create_shift',payload,requestContext));
+  assert.notEqual(base,hashProposal('create_task',{title:'Other'},requestContext));
+  assert.notEqual(base,hashProposal('create_task',payload,{...requestContext,actor:{...identity,actorId:'44444444-4444-4444-8444-444444444444'}}));
+  assert.notEqual(base,hashProposal('create_task',payload,{actor:{...identity,companyId:'55555555-5555-4555-8555-555555555555'},tenant:{...tenant,tenantId:'55555555-5555-4555-8555-555555555555',companyId:'55555555-5555-4555-8555-555555555555'}}));
+  assert.notEqual(base,hashProposal('create_task',payload,requestContext,PROPOSAL_SCHEMA_VERSION+1));
 });
 
 test('wrong actor, profile, and tenant cannot claim a proposal', async () => {
   const store=new DurableMemoryStore(); const p=await proposal(store);
   for(const changed of [{actorId:'44444444-4444-4444-8444-444444444444'},{profileId:'44444444-4444-4444-8444-444444444444'},{companyId:'44444444-4444-4444-8444-444444444444'}])
-    assert.equal((await claimProposalForExecution(store,p.id,{...identity,...changed},new Date('2026-07-19T10:01:00Z'))).outcome,'not_found');
+    assert.equal((await claimProposalForExecution(store,p.id,{actor:{...identity,...changed},tenant:changed.companyId ? {...tenant,tenantId:changed.companyId,companyId:changed.companyId} : tenant},new Date('2026-07-19T10:01:00Z'))).outcome,'not_found');
 });
 
 test('expired and rejected proposals fail closed', async () => {
   const store=new DurableMemoryStore(); const expired=await proposal(store);
-  assert.equal((await claimProposalForExecution(store,expired.id,identity,new Date('2026-07-19T10:11:00Z'))).outcome,'expired');
-  const rejected=await proposal(store); assert.equal(await rejectProposal(store,rejected.id,identity),'rejected');
-  assert.equal((await claimProposalForExecution(store,rejected.id,identity,new Date('2026-07-19T10:01:00Z'))).outcome,'invalid_status');
+  assert.equal((await claimProposalForExecution(store,expired.id,requestContext,new Date('2026-07-19T10:11:00Z'))).outcome,'expired');
+  const rejected=await proposal(store); assert.equal(await rejectProposal(store,rejected.id,requestContext),'rejected');
+  assert.equal((await claimProposalForExecution(store,rejected.id,requestContext,new Date('2026-07-19T10:01:00Z'))).outcome,'invalid_status');
 });
 
 test('concurrent confirmations produce one claim and executed retries return safe result', async () => {
   const store=new DurableMemoryStore(); const p=await proposal(store);
-  const results=await Promise.all(Array.from({length:8},()=>claimProposalForExecution(store,p.id,identity,new Date('2026-07-19T10:01:00Z'))));
+  const results=await Promise.all(Array.from({length:8},()=>claimProposalForExecution(store,p.id,requestContext,new Date('2026-07-19T10:01:00Z'))));
   assert.equal(results.filter(r=>r.outcome==='claimed').length,1);
   const claimed=results.find(r=>r.outcome==='claimed'); await markProposalExecuted(store,p.id,claimed.proposal.payloadHash,'Task created successfully.');
-  assert.deepEqual(await claimProposalForExecution(store,p.id,identity,new Date('2026-07-19T10:02:00Z')),{outcome:'executed',safeResult:'Task created successfully.'});
+  assert.deepEqual(await claimProposalForExecution(store,p.id,requestContext,new Date('2026-07-19T10:02:00Z')),{outcome:'executed',safeResult:'Task created successfully.'});
 });
 
 test('proposal state survives recreation of the service/store adapter', async () => {
   const rows=new Map(); const first=new DurableMemoryStore(rows); const p=await proposal(first);
   const recreated=new DurableMemoryStore(rows);
-  assert.equal((await claimProposalForExecution(recreated,p.id,identity,new Date('2026-07-19T10:01:00Z'))).outcome,'claimed');
+  assert.equal((await claimProposalForExecution(recreated,p.id,requestContext,new Date('2026-07-19T10:01:00Z'))).outcome,'claimed');
 });
 
 test('stored payload hash mismatch fails closed and marks failed', async () => {
   const store=new DurableMemoryStore(); const p=await proposal(store); store.rows.get(p.id).canonicalPayload.title='Altered';
-  assert.equal((await claimProposalForExecution(store,p.id,identity,new Date('2026-07-19T10:01:00Z'))).outcome,'invalid_status');
+  assert.equal((await claimProposalForExecution(store,p.id,requestContext,new Date('2026-07-19T10:01:00Z'))).outcome,'invalid_status');
   assert.equal(store.rows.get(p.id).status,'failed');
 });
 
