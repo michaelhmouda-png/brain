@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import type { SupabaseClient } from '@supabase/supabase-js';
@@ -18,12 +17,22 @@ import {
   isValidTaskPriority,
   isValidTaskStatus,
 } from '@/lib/brain/taskConstants';
+import {
+  claimProposalForExecution,
+  createProposal,
+  markProposalExecuted,
+  markProposalFailed,
+  rejectProposal,
+  type ProposalAction,
+} from '@/lib/brain/action-proposals';
+import {
+  createServerActionProposalStore,
+  proposalIdentity,
+} from '@/lib/brain/action-proposal-store.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
 // Module-level (per server instance). Max 1 000 entries to cap memory.
-const processedActionIds = new Set<string>();
-const MAX_PROCESSED_IDS = 1000;
 
 // ─── UUID helper ───────────────────────────────────────────────────────────────
 // Returns the trimmed UUID string, null for empty/non-string, or throws for invalid.
@@ -2091,15 +2100,9 @@ class ToolHandlers {
 
     // 5. Build preview if not confirmed
     if (!params.confirmed) {
-      const pendingActionId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const previewStatus = params.status || 'pending';
       return {
         preview: true,
-        pendingAction: {
-          id: pendingActionId,
-          tool: 'create_task',
-          arguments: params,
-        },
         message: `Please confirm this task:
 
 Task: ${params.title.trim()}
@@ -3096,7 +3099,6 @@ Status: ${previewStatus}`,
 
     // Show confirmation preview if not yet confirmed
     if (!params.confirmed) {
-      const pendingActionId = `inv_mvt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const actionWord: Record<string, string> = {
         purchase: 'Add (purchase)',
         usage: 'Remove (usage)',
@@ -3117,11 +3119,6 @@ Status: ${previewStatus}`,
       else if (willGoBelowMinimum) lines.push(`Warning: Stock will fall below minimum (${item.minimum_quantity} ${item.unit}).`);
       return {
         preview: true,
-        pendingAction: {
-          id: pendingActionId,
-          tool: 'record_inventory_movement',
-          arguments: params,
-        },
         message: lines.join('\n'),
       };
     }
@@ -4244,6 +4241,46 @@ Status: ${previewStatus}`,
   }
 }
 
+async function executeStoredProposal(handlers: ToolHandlers, action: ProposalAction, payload: Record<string, unknown>) {
+  const confirmed = { ...payload, confirmed: true };
+  switch (action) {
+    case 'create_employee': return handlers.createEmployee(confirmed as unknown as CreateEmployeeInput);
+    case 'create_task': return handlers.createTask(confirmed as unknown as CreateTaskInput);
+    case 'record_inventory_movement': return handlers.recordInventoryMovement(confirmed as unknown as RecordInventoryMovementInput);
+    case 'create_shift': return handlers.createShift(confirmed as unknown as CreateShiftInput);
+    case 'update_shift': return handlers.updateShift(confirmed as unknown as UpdateShiftInput);
+    case 'delete_shift': return handlers.deleteShift(confirmed as unknown as DeleteShiftInput);
+    case 'create_maintenance_ticket': return handlers.createMaintenanceTicket(confirmed as unknown as CreateMaintenanceInput);
+    case 'update_maintenance_ticket': return handlers.updateMaintenanceTicket(confirmed as unknown as UpdateMaintenanceInput);
+    case 'delete_maintenance_ticket': return handlers.deleteMaintenanceTicket(confirmed as unknown as DeleteMaintenanceInput);
+    case 'complete_maintenance_ticket': return handlers.completeMaintenanceTicket(confirmed as unknown as { ticket_id: string; completion_notes?: string; confirmed?: boolean });
+    case 'create_announcement': return handlers.createAnnouncement(confirmed as unknown as CreateAnnouncementInput);
+    case 'update_announcement': return handlers.updateAnnouncement(confirmed as unknown as UpdateAnnouncementInput);
+    case 'delete_announcement': return handlers.deleteAnnouncement(confirmed as unknown as DeleteAnnouncementInput);
+    case 'create_incident': return handlers.createIncident(confirmed as unknown as CreateIncidentInput);
+    case 'update_incident': return handlers.updateIncident(confirmed as unknown as UpdateIncidentInput);
+    case 'delete_incident': return handlers.deleteIncident(confirmed as unknown as DeleteIncidentInput);
+  }
+}
+
+function mayExecuteProposal(action: ProposalAction, role: string): boolean {
+  return action !== 'create_employee' || ['super_admin', 'owner', 'manager'].includes(role);
+}
+
+function safeExecutionMessage(action: ProposalAction): string {
+  const labels: Partial<Record<ProposalAction, string>> = {
+    create_employee: 'Employee created successfully.', create_task: 'Task created successfully.',
+    record_inventory_movement: 'Inventory movement recorded successfully.', create_shift: 'Shift created successfully.',
+    update_shift: 'Shift updated successfully.', delete_shift: 'Shift deleted successfully.',
+    create_maintenance_ticket: 'Maintenance ticket created successfully.', update_maintenance_ticket: 'Maintenance ticket updated successfully.',
+    delete_maintenance_ticket: 'Maintenance ticket deleted successfully.', complete_maintenance_ticket: 'Maintenance ticket completed successfully.',
+    create_announcement: 'Announcement created successfully.', update_announcement: 'Announcement updated successfully.',
+    delete_announcement: 'Announcement deleted successfully.', create_incident: 'Incident report created successfully.',
+    update_incident: 'Incident report updated successfully.', delete_incident: 'Incident report deleted successfully.',
+  };
+  return labels[action] ?? 'Action completed successfully.';
+}
+
 // Main handler
 export async function POST(request: NextRequest) {
   try {
@@ -4289,12 +4326,84 @@ export async function POST(request: NextRequest) {
 
     // 4. Parse request body
     const requestBody = await request.json() as {
-      messages: any[];
-      pendingAction?: { id: string; tool: string; arguments: Record<string, unknown> };
-      confirmed?: boolean;
+      messages?: any[];
+      proposalId?: string;
+      decision?: 'approve' | 'reject';
       context?: ConversationContext;
     };
-    const { messages, pendingAction, confirmed } = requestBody;
+    const { messages, proposalId, decision } = requestBody;
+
+    const identity = proposalIdentity(user.id, profile.id, profile.company_id, profile.role);
+
+    // Proposal decisions are handled before OpenAI or tenant-domain access. The
+    // Stage 0B provisioning boundary above remains the first database boundary.
+    if (typeof proposalId === 'string' && (decision === 'approve' || decision === 'reject')) {
+      let proposalStore;
+      try {
+        proposalStore = createServerActionProposalStore();
+      } catch {
+        return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+      }
+
+      if (decision === 'reject') {
+        try {
+          const outcome = await rejectProposal(proposalStore, proposalId, identity);
+          if (outcome !== 'rejected') return NextResponse.json({ error: 'This action cannot be cancelled.', code: 'PROPOSAL_REJECTION_DENIED' }, { status: 409 });
+          return NextResponse.json({ message: 'Action cancelled.', role: 'assistant' });
+        } catch {
+          return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+        }
+      }
+
+      try {
+        const claim = await claimProposalForExecution(proposalStore, proposalId, identity);
+        if (claim.outcome === 'executed') return NextResponse.json({ message: claim.safeResult || 'Action already completed.', role: 'assistant' });
+        if (claim.outcome !== 'claimed') {
+          const code = claim.outcome === 'expired' ? 'PROPOSAL_EXPIRED' : 'PROPOSAL_NOT_EXECUTABLE';
+          return NextResponse.json({ error: 'This action can no longer be executed.', code }, { status: 409 });
+        }
+
+        const stored = claim.proposal;
+        if (!mayExecuteProposal(stored.canonicalAction, profile.role)) {
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'AUTHORIZATION_DENIED');
+          return NextResponse.json({ error: 'You are not permitted to perform this action.', code: 'AUTHORIZATION_DENIED' }, { status: 403 });
+        }
+
+        const executionContext: ConversationContext = {
+          recentEmployees: [], lastMentionedEmployeeId: null, lastMentionedDepartmentId: null,
+          recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
+        };
+        const executionHandlers = new ToolHandlers(supabase, profile.company_id, profile.role, executionContext);
+        let result: any;
+        try {
+          result = await executeStoredProposal(executionHandlers, stored.canonicalAction, stored.canonicalPayload);
+        } catch {
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_FAILED');
+          return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_FAILED' }, { status: 500 });
+        }
+
+        if (!result?.success) {
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_REJECTED');
+          return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_REJECTED' }, { status: 409 });
+        }
+        const safeMessage = safeExecutionMessage(stored.canonicalAction);
+        try {
+          await markProposalExecuted(proposalStore, stored.id, stored.payloadHash, safeMessage);
+        } catch {
+          // The domain mutation may already have committed. Never replay it.
+          // Operations can alert on this safe code and query stale executing rows
+          // through trusted server tooling during the future reconciliation stage.
+          console.error('[Brain Chat] Proposal requires reconciliation', {
+            code: 'PROPOSAL_EXECUTION_STATE_UNCERTAIN', proposalId: stored.id,
+            correlationId: stored.correlationId, action: stored.canonicalAction,
+          });
+          return NextResponse.json({ error: 'Action result requires reconciliation.', code: 'PROPOSAL_EXECUTION_STATE_UNCERTAIN' }, { status: 503 });
+        }
+        return NextResponse.json({ message: safeMessage, role: 'assistant' });
+      } catch {
+        return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+      }
+    }
 
     // [Phase 0B] Log incoming request diagnostic
     console.log('[Brain Diagnostic] ════════════════════════════════════════════');
@@ -4341,212 +4450,6 @@ export async function POST(request: NextRequest) {
     console.log('[Brain Diagnostic] ツールハンドラー initialized', {
       provisioningValidation: 'passed',
     });
-
-    // ── DIRECT CONFIRMATION PATH ─────────────────────────────────────────────
-    // When the browser sends back a stored pendingAction with confirmed=true,
-    // we execute the mutation directly — the AI is NOT called.
-    if (pendingAction && confirmed === true && typeof pendingAction.id === 'string') {
-      const actionId = pendingAction.id;
-      const actionTool = pendingAction.tool;
-      console.log('[Brain Chat] Confirmation received | action:', actionId, '| tool:', actionTool);
-
-      // Idempotency: reject if this action already succeeded
-      if (processedActionIds.has(actionId)) {
-        return NextResponse.json({ message: 'This action has already been executed.', role: 'assistant' });
-      }
-
-      // Pessimistic lock — add BEFORE execution so concurrent confirms are rejected
-      processedActionIds.add(actionId);
-      if (processedActionIds.size > MAX_PROCESSED_IDS) {
-        const first = processedActionIds.values().next().value;
-        if (first !== undefined) processedActionIds.delete(first);
-      }
-
-      let result: any;
-
-      try {
-        switch (actionTool) {
-          case 'create_employee':
-            result = await handlers.createEmployee({
-              ...(pendingAction.arguments as unknown as CreateEmployeeInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'create_task':
-            result = await handlers.createTask({
-              ...(pendingAction.arguments as unknown as CreateTaskInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'record_inventory_movement':
-            result = await handlers.recordInventoryMovement({
-              ...(pendingAction.arguments as unknown as RecordInventoryMovementInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: SHIFT MANAGEMENT ────────────────────────────────
-          case 'create_shift':
-            result = await handlers.createShift({
-              ...(pendingAction.arguments as unknown as CreateShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_shift':
-            result = await handlers.updateShift({
-              ...(pendingAction.arguments as unknown as UpdateShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_shift':
-            result = await handlers.deleteShift({
-              ...(pendingAction.arguments as unknown as DeleteShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: MAINTENANCE ─────────────────────────────────────
-          case 'create_maintenance_ticket':
-            result = await handlers.createMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as CreateMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_maintenance_ticket':
-            result = await handlers.updateMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as UpdateMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_maintenance_ticket':
-            result = await handlers.deleteMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as DeleteMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'complete_maintenance_ticket':
-            result = await handlers.completeMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as { ticket_id: string; completion_notes?: string }),
-              confirmed: true,
-            });
-            break;
-
-          case 'list_maintenance_tickets':
-            result = await handlers.listMaintenanceTickets(
-              pendingAction.arguments as unknown as { status?: string; priority?: string; search?: string; limit?: number }
-            );
-            break;
-
-          // ─── PHASE 1: ANNOUNCEMENTS ───────────────────────────────────
-          case 'create_announcement':
-            result = await handlers.createAnnouncement({
-              ...(pendingAction.arguments as unknown as CreateAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_announcement':
-            result = await handlers.updateAnnouncement({
-              ...(pendingAction.arguments as unknown as UpdateAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_announcement':
-            result = await handlers.deleteAnnouncement({
-              ...(pendingAction.arguments as unknown as DeleteAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: INCIDENTS ───────────────────────────────────────
-          case 'create_incident':
-            result = await handlers.createIncident({
-              ...(pendingAction.arguments as unknown as CreateIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_incident':
-            result = await handlers.updateIncident({
-              ...(pendingAction.arguments as unknown as UpdateIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_incident':
-            result = await handlers.deleteIncident({
-              ...(pendingAction.arguments as unknown as DeleteIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          default:
-            processedActionIds.delete(actionId); // Release lock — not a real action
-            return NextResponse.json({ error: 'Unknown pending action tool.' }, { status: 400 });
-        }
-      } catch {
-        processedActionIds.delete(actionId); // Release lock on unexpected error
-        console.error('[Brain Chat] Confirmation execution failed', {
-          code: 'CONFIRMATION_EXECUTION_FAILED',
-        });
-        return NextResponse.json({ message: 'Execution failed. Please try again.', role: 'assistant', pendingAction });
-      }
-
-      const r = result as any;
-
-      if (r?.success) {
-        console.log('[Brain Chat] Confirmation success | action:', actionId);
-
-        // Build natural-language success message per tool
-        let successMessage = r.message || 'Action completed successfully.';
-
-        if (actionTool === 'create_employee') {
-          const fullName = `${r.first_name} ${r.last_name}`.trim();
-          const lines = [`${fullName} was created successfully as ${r.role}.`];
-          if (r.department) lines.push(`• Department: ${r.department}`);
-          if (r.status) lines.push(`• Status: ${r.status}`);
-          lines.push(`• ID: ${r.id}`);
-          successMessage = lines.join('\n');
-
-          conversationContext.recentEmployees.unshift({
-            id: r.id,
-            firstName: r.first_name,
-            lastName: r.last_name,
-            fullName,
-            role: r.role,
-            department: r.department,
-            departmentId: (pendingAction.arguments as any).department_id || null,
-            locationId: (pendingAction.arguments as any).location_id || null,
-            email: (pendingAction.arguments as any).email,
-            phone: (pendingAction.arguments as any).phone,
-          });
-          conversationContext.lastMentionedEmployeeId = r.id;
-          if (conversationContext.recentEmployees.length > 10) {
-            conversationContext.recentEmployees = conversationContext.recentEmployees.slice(0, 10);
-          }
-        }
-
-        return NextResponse.json({ message: successMessage, role: 'assistant', context: conversationContext });
-      }
-
-      // Mutation failed — release lock so user can retry
-      processedActionIds.delete(actionId);
-      console.log('[Brain Chat] Confirmation failed | action:', actionId, '| reason:', r?.error);
-      return NextResponse.json({
-        message: r?.error || 'Action failed. Please try again.',
-        role: 'assistant',
-        pendingAction,
-        context: conversationContext,
-      });
-    }
 
     // 7. Build instructions and initial input for Responses API
     const recentEmployeesList = conversationContext.recentEmployees
@@ -5085,22 +4988,29 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
             confirmMessage = lines.join('\n');
           }
 
-          const pendingActionId = toolName === 'create_employee'
-            ? randomUUID()
-            : (tr.pendingAction?.id || randomUUID());
+          const rows = Array.isArray(tr.fields)
+            ? tr.fields.map((field: any) => ({ key: String(field.label || 'Field'), value: String(field.value ?? '') }))
+            : Object.entries(tr.details || {}).map(([key, value]) => ({ key, value: String(value ?? '') }));
+          const label = String(tr.action || toolName.replaceAll('_', ' '));
 
-          console.log('[Brain Chat] Preview generated | tool:', toolName, '| action:', pendingActionId);
-
-          return NextResponse.json({
-            message: confirmMessage,
-            role: 'assistant',
-            pendingAction: tr.pendingAction ?? {
-              id: pendingActionId,
-              tool: toolName,
-              arguments: toolInput,
-            },
-            context: conversationContext,
-          });
+          try {
+            const proposalStore = createServerActionProposalStore();
+            const created = await createProposal(proposalStore, {
+              identity,
+              action: toolName,
+              rawArguments: toolInput,
+              preview: { label, rows },
+            });
+            console.log('[Brain Chat] Proposal created', { proposalId: created.id, correlationId: created.correlationId, action: created.canonicalAction, status: created.status });
+            return NextResponse.json({
+              message: confirmMessage,
+              role: 'assistant',
+              proposal: { id: created.id, label, rows, expiresAt: created.expiresAt },
+              context: conversationContext,
+            });
+          } catch {
+            return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+          }
         }
         // ─────────────────────────────────────────────────────────────────────
 
