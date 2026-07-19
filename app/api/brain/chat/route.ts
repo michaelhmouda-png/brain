@@ -29,10 +29,8 @@ import type { ActorContext } from '@/lib/brain/kernel/actor-context';
 import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
 import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
-import { createTaskCommand } from '@/lib/brain/tasks/commands/create-task-command';
-import { createTaskCommandHandler } from '@/lib/brain/tasks/commands/create-task-command-handler';
-import { createSupabaseTaskRecordDependencies } from '@/lib/brain/tasks/infrastructure/create-task-record.server';
-import { createServerDomainEventRecorder } from '@/lib/brain/events/infrastructure/record-domain-event.server';
+import type { CreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service';
+import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4238,7 +4236,7 @@ Status: ${previewStatus}`,
 
 async function executeStoredProposal(
   handlers: ToolHandlers,
-  taskCreateHandler: ReturnType<typeof createTaskCommandHandler> | null,
+  createTaskApplicationService: CreateTaskApplicationService | null,
   action: ProposalAction,
   payload: Record<string, unknown>,
   context: BrainRequestContext,
@@ -4248,15 +4246,8 @@ async function executeStoredProposal(
   switch (action) {
     case 'create_employee': return handlers.createEmployee(confirmed as unknown as CreateEmployeeInput);
     case 'create_task': {
-      if (!taskCreateHandler) throw new Error('TASK_CREATE_HANDLER_UNAVAILABLE');
-      const command = createTaskCommand({ payload, context, proposalId });
-      console.log('[Brain Chat] Command issued', {
-        commandId: command.commandId,
-        commandType: command.commandType,
-        correlationId: command.correlationId,
-        causationId: command.causationId,
-      });
-      const result = await taskCreateHandler.execute(command);
+      if (!createTaskApplicationService) throw new Error('CREATE_TASK_APPLICATION_UNAVAILABLE');
+      const result = await createTaskApplicationService.execute({ context, payload, proposalId });
       return { success: true, ...result };
     }
     case 'record_inventory_movement': return handlers.recordInventoryMovement(confirmed as unknown as RecordInventoryMovementInput);
@@ -4363,17 +4354,14 @@ export async function POST(request: NextRequest) {
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
         const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
-        const taskCreateHandler = stored.canonicalAction === 'create_task'
-          ? createTaskCommandHandler(
-              createSupabaseTaskRecordDependencies(supabase),
-              createServerDomainEventRecorder(),
-            )
+        const createTaskApplicationService = stored.canonicalAction === 'create_task'
+          ? createSupabaseCreateTaskApplicationService(supabase)
           : null;
         let result: any;
         try {
           result = await executeStoredProposal(
             executionHandlers,
-            taskCreateHandler,
+            createTaskApplicationService,
             stored.canonicalAction,
             stored.canonicalPayload,
             requestContext,

@@ -174,7 +174,7 @@ test('route completes proposal only after cohesive task handler succeeds', async
   assert.ok(handler.indexOf('createTaskRecord({') < handler.indexOf('eventRecorder.record(event)'));
   assert.ok(route.indexOf('executeStoredProposal(') < route.indexOf('markProposalExecuted('));
   assert.match(route, /markProposalFailed\(proposalStore, stored\.id, stored\.payloadHash/);
-  assert.ok(route.indexOf('taskCreateHandler.execute(command)') < route.indexOf('new OpenAI('));
+  assert.ok(route.indexOf('createTaskApplicationService.execute(') < route.indexOf('new OpenAI('));
 });
 
 test('migration is server-only and enforces one event type per command', async () => {

@@ -82,11 +82,11 @@ test('mismatched request context fails before envelope creation',()=>{
 
 test('approved create_task creates envelope after claim and executes only mapped payload',async()=>{
   const route=await readFile(new URL('../app/api/brain/chat/route.ts',import.meta.url),'utf8');
+  const service=await readFile(new URL('../lib/brain/tasks/application/create-task-application-service.ts',import.meta.url),'utf8');
   const claim=route.indexOf('claimProposalForExecution');
-  const commandCreation=route.indexOf('createTaskCommand({ payload, context, proposalId })');
-  const mutation=route.indexOf('taskCreateHandler.execute(command)',commandCreation);
-  assert.ok(claim>0&&commandCreation>claim&&mutation>commandCreation);
-  const adapter=route.slice(commandCreation,route.indexOf("case 'record_inventory_movement'",commandCreation));
-  assert.match(adapter,/taskCreateHandler\.execute\(command\)/);
-  assert.equal(adapter.includes('...payload'),false);assert.equal(adapter.includes('stored.canonicalPayload'),false);
+  const applicationCall=route.indexOf('createTaskApplicationService.execute({ context, payload, proposalId })');
+  assert.ok(claim>0&&applicationCall>claim);
+  assert.match(service,/createTaskCommand\(\{[\s\S]*context: input\.context,[\s\S]*payload: input\.payload,[\s\S]*proposalId: input\.proposalId/);
+  assert.match(service,/dependencies\.handler\.execute\(command\)/);
+  assert.equal(service.includes('...input.payload'),false);
 });

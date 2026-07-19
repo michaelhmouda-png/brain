@@ -144,9 +144,10 @@ test('command identity and idempotency remain unchanged across execution', async
 
 test('approved route calls handler after claim and preserves proposal transitions', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
+  const service = await readFile(new URL('../lib/brain/tasks/application/create-task-application-service.ts', import.meta.url), 'utf8');
   const branch = route.slice(route.indexOf("case 'create_task':"), route.indexOf("case 'record_inventory_movement':"));
-  assert.match(branch, /createTaskCommand\(\{ payload, context, proposalId \}\)/);
-  assert.match(branch, /taskCreateHandler\.execute\(command\)/);
+  assert.match(branch, /createTaskApplicationService\.execute/);
+  assert.match(service, /dependencies\.handler\.execute\(command\)/);
   assert.doesNotMatch(branch, /handlers\.createTask|\.from\('tasks'\)|\.insert\(/);
   assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('executeStoredProposal('));
   assert.ok(route.indexOf('executeStoredProposal(') < route.indexOf('markProposalExecuted('));
@@ -156,7 +157,7 @@ test('approved route calls handler after claim and preserves proposal transition
 test('approved proposal branch executes before OpenAI initialization', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
   assert.ok(route.indexOf('claimProposalForExecution') < route.indexOf('new OpenAI('));
-  assert.ok(route.indexOf('taskCreateHandler.execute(command)') < route.indexOf('new OpenAI('));
+  assert.ok(route.indexOf('createTaskApplicationService.execute(') < route.indexOf('new OpenAI('));
 });
 
 test('K4 adds no dispatcher, registry, middleware, retry, or other mutation migration', async () => {
