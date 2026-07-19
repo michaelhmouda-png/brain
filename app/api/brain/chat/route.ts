@@ -29,6 +29,7 @@ import type { ActorContext } from '@/lib/brain/kernel/actor-context';
 import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
 import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
+import { createTaskCommand } from '@/lib/brain/tasks/commands/create-task-command';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4232,11 +4233,36 @@ Status: ${previewStatus}`,
   }
 }
 
-async function executeStoredProposal(handlers: ToolHandlers, action: ProposalAction, payload: Record<string, unknown>) {
+async function executeStoredProposal(
+  handlers: ToolHandlers,
+  action: ProposalAction,
+  payload: Record<string, unknown>,
+  context: BrainRequestContext,
+  proposalId: string
+) {
   const confirmed = { ...payload, confirmed: true };
   switch (action) {
     case 'create_employee': return handlers.createEmployee(confirmed as unknown as CreateEmployeeInput);
-    case 'create_task': return handlers.createTask(confirmed as unknown as CreateTaskInput);
+    case 'create_task': {
+      const command = createTaskCommand({ payload, context, proposalId });
+      console.log('[Brain Chat] Command issued', {
+        commandId: command.commandId,
+        commandType: command.commandType,
+        correlationId: command.correlationId,
+        causationId: command.causationId,
+      });
+      return handlers.createTask({
+        title: command.payload.title,
+        description: command.payload.description ?? undefined,
+        assigned_employee_name: command.payload.assignedEmployeeName ?? undefined,
+        assigned_employee_id: command.payload.assignedEmployeeId ?? undefined,
+        priority: command.payload.priority,
+        urgency: command.payload.urgency ?? undefined,
+        due_date: command.payload.dueDate ?? undefined,
+        status: command.payload.status,
+        confirmed: true,
+      });
+    }
     case 'record_inventory_movement': return handlers.recordInventoryMovement(confirmed as unknown as RecordInventoryMovementInput);
     case 'create_shift': return handlers.createShift(confirmed as unknown as CreateShiftInput);
     case 'update_shift': return handlers.updateShift(confirmed as unknown as UpdateShiftInput);
@@ -4343,7 +4369,13 @@ export async function POST(request: NextRequest) {
         const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
         let result: any;
         try {
-          result = await executeStoredProposal(executionHandlers, stored.canonicalAction, stored.canonicalPayload);
+          result = await executeStoredProposal(
+            executionHandlers,
+            stored.canonicalAction,
+            stored.canonicalPayload,
+            requestContext,
+            stored.id
+          );
         } catch {
           await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_FAILED');
           return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_FAILED' }, { status: 500 });
