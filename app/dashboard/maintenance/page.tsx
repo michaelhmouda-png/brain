@@ -72,7 +72,7 @@ export default function MaintenancePage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg shadow p-4 flex gap-2">
+      <div className="mobile-scroll-region flex gap-2 overflow-x-auto rounded-lg bg-white p-4 shadow" aria-label="Maintenance status filters">
         {['open', 'assigned', 'in_progress', 'completed'].map((status) => (
           <button
             key={status}
@@ -96,15 +96,15 @@ export default function MaintenancePage() {
           </div>
         ) : (
           tickets.map((ticket) => (
-            <div key={ticket.id} className="bg-white rounded-lg shadow p-6 hover:shadow-lg transition-shadow">
-              <div className="flex justify-between items-start mb-4">
-                <div>
+            <div key={ticket.id} className="rounded-lg bg-white p-4 shadow transition-shadow hover:shadow-lg sm:p-6">
+              <div className="mb-4 flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0">
                   <h3 className="text-lg font-bold text-gray-900">{ticket.title}</h3>
                   <div className="text-sm text-gray-600 mt-1">
                     Area: {ticket.area} | Equipment: {ticket.equipment}
                   </div>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <span className={`px-3 py-1 rounded-full text-xs font-semibold ${getPriorityColor(ticket.priority)}`}>
                     {ticket.priority}
                   </span>
@@ -114,7 +114,7 @@ export default function MaintenancePage() {
                 </div>
               </div>
 
-              <div className="flex justify-between items-center">
+              <div className="flex flex-col justify-between gap-2 sm:flex-row sm:items-center">
                 <div className="text-sm text-gray-600">
                   {ticket.assigned_to ? (
                     <>Assigned to: {ticket.assigned_to.first_name} {ticket.assigned_to.last_name}</>

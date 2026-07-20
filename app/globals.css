@@ -15,6 +15,14 @@
 html,
 body {
   min-height: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+html {
+  background: #020202;
+  text-size-adjust: 100%;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
@@ -27,6 +35,75 @@ body {
 
 * {
   box-sizing: border-box;
+}
+
+img,
+svg,
+video,
+canvas {
+  max-width: 100%;
+}
+
+:where(button, a, input, select, textarea):focus-visible {
+  outline: 2px solid rgb(34 211 238);
+  outline-offset: 2px;
+}
+
+.safe-area-x {
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+}
+
+.safe-area-top {
+  padding-top: env(safe-area-inset-top);
+}
+
+.safe-area-bottom {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.dashboard-main {
+  min-width: 0;
+  width: 100%;
+}
+
+.mobile-scroll-region {
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+@media (max-width: 1023px) {
+  :where(button, [role='button'], input, select, textarea) {
+    min-height: 44px;
+  }
+
+  :where(input, select, textarea) {
+    font-size: 16px;
+  }
+
+  main {
+    min-width: 0;
+  }
+
+  .dashboard-main .p-8 {
+    padding: 1rem;
+  }
+
+  .dashboard-main .grid-cols-5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dashboard-main :where(pre, code) {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 374px) {
+  .dashboard-main .grid-cols-2,
+  .dashboard-main .grid-cols-5 {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 ::selection {

@@ -53,7 +53,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
             <span className="text-3xl font-black tracking-[0.25em]">B</span>

@@ -31,7 +31,7 @@ export default async function LocationsPage() {
   const locations = await getLocations();
 
   return (
-    <section className="space-y-8 rounded-[36px] border border-white/10 bg-white/5 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+    <section className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:p-6 lg:space-y-8 lg:rounded-[36px] lg:p-8">
       <div className="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Locations</p>
@@ -66,8 +66,8 @@ export default async function LocationsPage() {
         </article>
       </div>
 
-      <div className="overflow-hidden rounded-[32px] border border-white/10 bg-slate-950/80 text-slate-200 shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
-        <table className="min-w-full border-separate border-spacing-0 text-left">
+      <div className="mobile-scroll-region overflow-x-auto rounded-3xl border border-white/10 bg-slate-950/80 text-slate-200 shadow-[0_20px_80px_rgba(0,0,0,0.35)]" role="region" aria-label="Locations table" tabIndex={0}>
+        <table className="min-w-[760px] border-separate border-spacing-0 text-left lg:min-w-full">
           <thead className="bg-white/5 text-sm uppercase tracking-[0.27em] text-slate-400">
             <tr>
               <th className="px-6 py-4">Location</th>

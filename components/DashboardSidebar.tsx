@@ -1,8 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { useState, useTransition } from 'react';
+import { useEffect, useRef, useState, useTransition } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { Menu, X } from 'lucide-react';
 import { logoutUser } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
 
@@ -30,8 +31,13 @@ const navSections: NavSection[] = [
   {
     title: 'OPERATIONS',
     items: [
+      { href: '/dashboard/operations', label: 'Operations' },
       { href: '/dashboard/tasks', label: 'Tasks' },
+      { href: '/dashboard/shifts', label: 'Shifts' },
+      { href: '/dashboard/maintenance', label: 'Maintenance' },
       { href: '/dashboard/inventory', label: 'Inventory' },
+      { href: '/dashboard/incidents', label: 'Incidents' },
+      { href: '/dashboard/announcements', label: 'Announcements' },
     ],
   },
   {
@@ -52,6 +58,8 @@ const navSections: NavSection[] = [
   {
     title: 'SYSTEM',
     items: [
+      { href: '/dashboard/analytics', label: 'Analytics' },
+      { href: '/dashboard/cameras', label: 'Cameras' },
       { href: '/dashboard/settings', label: 'Settings' },
     ],
   },
@@ -67,6 +75,46 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
   const [showMenu, setShowMenu] = useState(false);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!showMenu) return;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    closeButtonRef.current?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowMenu(false);
+        menuButtonRef.current?.focus();
+        return;
+      }
+      if (event.key === 'Tab' && drawerRef.current) {
+        const focusable = Array.from(
+          drawerRef.current.querySelectorAll<HTMLElement>(
+            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
+          )
+        );
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (!first || !last) return;
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showMenu]);
 
   const handleLogout = () => {
     startTransition(async () => {
@@ -101,8 +149,8 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
     employee: 'Employee',
   };
 
-  return (
-    <aside className="hidden w-full max-w-[300px] shrink-0 flex-col rounded-[36px] border border-white/10 bg-white/5 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:flex">
+  const navigation = (
+    <>
       <div className="mb-8 flex items-center gap-4">
         <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
           <span className="text-2xl font-black tracking-[0.25em]">B</span>
@@ -124,7 +172,8 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
                 <Link
                   key={item.href}
                   href={item.href}
-                  className={`flex items-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
+                  onClick={() => setShowMenu(false)}
+                  className={`flex min-h-11 items-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
                     isActive(item.href)
                       ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
                       : 'text-slate-400 hover:text-white hover:bg-white/5'
@@ -166,13 +215,79 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             <button
               onClick={handleLogout}
               disabled={isPending}
-              className="mt-3 w-full rounded-2xl border border-white/10 px-3 py-2 text-xs font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
+              className="mt-3 min-h-11 w-full rounded-2xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isPending ? 'Signing out...' : 'Sign out'}
             </button>
           </div>
         )}
       </div>
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      <header className="safe-area-x safe-area-top fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-[#050505]/95 backdrop-blur-xl lg:hidden">
+        <div className="flex min-h-16 items-center justify-between gap-3">
+          <Link href="/dashboard" className="flex min-h-11 items-center gap-3 rounded-xl" aria-label="Brain dashboard">
+            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/10 font-black tracking-[0.2em] text-cyan-300 ring-1 ring-cyan-400/20">B</span>
+            <span>
+              <span className="block text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Brain</span>
+              <span className="block text-xs text-slate-400">Hospitality OS</span>
+            </span>
+          </Link>
+          <button
+            ref={menuButtonRef}
+            type="button"
+            onClick={() => setShowMenu(true)}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white"
+            aria-label="Open navigation"
+            aria-expanded={showMenu}
+            aria-controls="mobile-dashboard-navigation"
+          >
+            <Menu aria-hidden="true" className="h-5 w-5" />
+          </button>
+        </div>
+      </header>
+
+      {showMenu && (
+        <div className="fixed inset-0 z-50 lg:hidden" role="presentation">
+          <button
+            type="button"
+            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
+            onClick={() => setShowMenu(false)}
+            aria-label="Close navigation"
+          />
+          <aside
+            ref={drawerRef}
+            id="mobile-dashboard-navigation"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Dashboard navigation"
+            className="safe-area-bottom safe-area-top mobile-scroll-region absolute inset-y-0 left-0 flex w-[min(88vw,22rem)] flex-col overflow-y-auto border-r border-white/10 bg-[#080b12] p-5 shadow-2xl"
+          >
+            <div className="mb-3 flex justify-end">
+              <button
+                ref={closeButtonRef}
+                type="button"
+                onClick={() => {
+                  setShowMenu(false);
+                  menuButtonRef.current?.focus();
+                }}
+                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-slate-200"
+                aria-label="Close navigation"
+              >
+                <X aria-hidden="true" className="h-5 w-5" />
+              </button>
+            </div>
+            {navigation}
+          </aside>
+        </div>
+      )}
+
+      <aside className="hidden w-full max-w-[300px] shrink-0 flex-col rounded-[36px] border border-white/10 bg-white/5 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:flex">
+        {navigation}
+      </aside>
+    </>
   );
 }

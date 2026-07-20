@@ -59,6 +59,7 @@ export default function BrainChat() {
   const [commandState, setCommandState] = useState<CommandState>('idle');
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [rateLimitRemaining, setRateLimitRemaining] = useState(10);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   // Track IDs that have been submitted to prevent double-execution on fast taps
@@ -66,7 +67,12 @@ export default function BrainChat() {
 
   // Auto-scroll to bottom
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (container) {
+      container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' });
+    } else {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   };
 
   useEffect(() => {
@@ -208,9 +214,9 @@ export default function BrainChat() {
   };
 
   return (
-    <div className="flex h-full flex-col bg-gradient-to-br from-[#0a0e27] via-[#1a1f3a] to-[#0d1117]">
+    <div className="flex h-[calc(100dvh-5.5rem-env(safe-area-inset-top)-env(safe-area-inset-bottom))] min-h-[30rem] max-w-full flex-col overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-[#0a0e27] via-[#1a1f3a] to-[#0d1117] sm:rounded-3xl lg:h-[calc(100dvh-3rem)]">
       {/* Header */}
-      <div className="border-b border-cyan-500/10 bg-black/40 px-6 py-4 backdrop-blur-sm">
+      <div className="shrink-0 border-b border-cyan-500/10 bg-black/40 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-cyan-400/10 ring-1 ring-cyan-400/30">
@@ -223,7 +229,7 @@ export default function BrainChat() {
           </div>
           {/* Command state indicator */}
           {commandState !== 'idle' && (
-            <div className="flex items-center gap-2">
+            <div className="flex max-w-[45%] items-center gap-2 text-right">
               {commandState === 'thinking' && (
                 <span className="flex items-center gap-1.5 text-xs text-cyan-400">
                   <RefreshCw className="w-3 h-3 animate-spin" />
@@ -260,9 +266,9 @@ export default function BrainChat() {
       </div>
 
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div ref={messagesContainerRef} className="mobile-scroll-region min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6" aria-live="polite">
         {messages.length === 0 ? (
-          <div className="flex h-full flex-col items-center justify-center space-y-8">
+          <div className="flex min-h-full flex-col items-center justify-center space-y-5 py-4 sm:space-y-8">
             <div className="text-center">
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-400/10 ring-1 ring-cyan-400/20">
                 <span className="text-4xl font-black text-cyan-400">B</span>
@@ -282,7 +288,7 @@ export default function BrainChat() {
                   <button
                     key={i}
                     onClick={() => handleSuggestedQuestion(question)}
-                    className="rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-4 py-2 text-left text-sm text-cyan-300 transition hover:border-cyan-500/40 hover:bg-cyan-500/10"
+                    className="min-h-11 rounded-lg border border-cyan-500/20 bg-cyan-500/5 px-4 py-2 text-left text-sm text-cyan-300 transition hover:border-cyan-500/40 hover:bg-cyan-500/10"
                   >
                     {question}
                   </button>
@@ -305,13 +311,13 @@ export default function BrainChat() {
                   </div>
                 )}
                 <div
-                  className={`max-w-md rounded-lg px-4 py-3 ${
+                  className={`min-w-0 max-w-[min(85%,32rem)] rounded-lg px-4 py-3 ${
                     message.role === 'user'
                       ? 'bg-cyan-600/20 text-cyan-100'
                       : 'bg-slate-800/50 text-slate-100'
                   }`}
                 >
-                  <p className="text-sm leading-relaxed">{message.content}</p>
+                  <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{message.content}</p>
                   <p className="mt-1 text-xs opacity-50">
                     {message.timestamp.toLocaleTimeString([], {
                       hour: '2-digit',
@@ -347,38 +353,38 @@ export default function BrainChat() {
 
       {/* Rate limit indicator */}
       {messages.length > 0 && (
-        <div className="border-t border-slate-700/50 bg-black/40 px-6 py-2 text-xs text-slate-400 backdrop-blur-sm">
+        <div className="shrink-0 border-t border-slate-700/50 bg-black/40 px-3 py-2 text-xs text-slate-400 backdrop-blur-sm sm:px-6">
           Requests remaining: {rateLimitRemaining}
         </div>
       )}
 
       {/* Confirmation Card */}
       {pendingAction && (
-        <div className="border-t border-amber-500/30 bg-amber-950/20 px-6 py-4 backdrop-blur-sm">
+        <div className="mobile-scroll-region max-h-[38dvh] shrink-0 overflow-y-auto border-t border-amber-500/30 bg-amber-950/20 px-3 py-3 backdrop-blur-sm sm:px-6 sm:py-4">
           <div className="space-y-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-semibold text-amber-300">
                 {describePendingAction(pendingAction).label} — Confirm before proceeding
               </p>
               <button
                 onClick={cancelPendingAction}
-                className="shrink-0 rounded px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-700 hover:text-white flex items-center gap-1"
+                className="flex min-h-11 shrink-0 items-center gap-1 rounded px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-700 hover:text-white"
               >
                 <XCircle className="w-3 h-3" />
                 Cancel
               </button>
             </div>
             {describePendingAction(pendingAction).rows.map((row) => (
-              <div key={row.key} className="flex items-center gap-3 text-sm">
-                <span className="w-24 shrink-0 text-xs text-slate-500">{row.key}</span>
-                <span className="text-slate-200 font-medium">{row.value}</span>
+              <div key={row.key} className="grid grid-cols-[minmax(5rem,0.35fr)_minmax(0,1fr)] items-start gap-3 text-sm">
+                <span className="text-xs text-slate-500">{row.key}</span>
+                <span className="break-words font-medium text-slate-200">{row.value}</span>
               </div>
             ))}
-            <div className="flex gap-2 pt-1">
+            <div className="grid grid-cols-2 gap-2 pt-1 sm:flex">
               <button
                 onClick={() => sendMessage('Confirm')}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:opacity-50"
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
                 Confirm
@@ -386,7 +392,7 @@ export default function BrainChat() {
               <button
                 onClick={editPendingAction}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
+                className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
               >
                 <Edit2 className="w-4 h-4" />
                 Edit
@@ -397,13 +403,13 @@ export default function BrainChat() {
       )}
 
       {/* Input Area */}
-      <div className="border-t border-cyan-500/10 bg-black/40 p-6 backdrop-blur-sm">
-        <div className="flex gap-3">
+      <div className="safe-area-bottom shrink-0 border-t border-cyan-500/10 bg-black/70 p-3 backdrop-blur-sm sm:p-6">
+        <div className="flex gap-2 sm:gap-3">
           <input
             type="text"
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
-            onKeyPress={(e) => {
+            onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 sendMessage(inputValue);
@@ -411,12 +417,13 @@ export default function BrainChat() {
             }}
             placeholder="Ask Brain anything about your company..."
             disabled={isLoading || rateLimitRemaining <= 0}
-            className="flex-1 rounded-lg border border-cyan-500/20 bg-slate-900/50 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-500/50 focus:bg-slate-900 focus:outline-none disabled:opacity-50"
+            aria-label="Message Brain"
+            className="min-w-0 flex-1 rounded-lg border border-cyan-500/20 bg-slate-900/50 px-3 py-3 text-base text-white placeholder-slate-500 transition focus:border-cyan-500/50 focus:bg-slate-900 focus:outline-none disabled:opacity-50 sm:px-4"
           />
           <button
             onClick={() => sendMessage(inputValue)}
             disabled={isLoading || !inputValue.trim() || rateLimitRemaining <= 0}
-            className="flex items-center justify-center rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-6 py-3 font-medium text-white transition hover:from-cyan-500 hover:to-cyan-400 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-3 font-medium text-white transition hover:from-cyan-500 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
           >
             {isLoading ? (
               <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />

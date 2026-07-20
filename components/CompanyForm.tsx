@@ -92,7 +92,7 @@ export default function CompanyForm({ initialData, mode }: CompanyFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 rounded-[36px] border border-white/10 bg-slate-950/80 p-8 shadow-[0_40px_120px_rgba(0,0,0,0.35)]">
+    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl border border-white/10 bg-slate-950/80 p-4 shadow-[0_40px_120px_rgba(0,0,0,0.35)] sm:p-6 lg:space-y-8 lg:rounded-[36px] lg:p-8">
       <div>
         <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">{mode === "create" ? "Create company" : "Edit company"}</p>
         <h1 className="mt-4 text-4xl font-black text-white">{mode === "create" ? "Add new brand" : "Update company profile"}</h1>

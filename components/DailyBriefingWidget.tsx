@@ -194,7 +194,7 @@ export function DailyBriefingWidget() {
       <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
         <h2 className="text-sm font-semibold text-gray-300 mb-4">Business Brain Score</h2>
         
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className={`text-5xl font-bold ${getScoreColor(briefing?.brain_score.total || 0)}`}>
               {briefing?.brain_score.total}
@@ -203,7 +203,7 @@ export function DailyBriefingWidget() {
           </div>
           
           {/* Category breakdown mini charts */}
-          <div className="grid grid-cols-5 gap-3">
+          <div className="grid grid-cols-2 gap-3 min-[430px]:grid-cols-3 sm:grid-cols-5">
             {Object.entries(briefing?.brain_score.categories || {}).map(([category, score]) => (
               <div key={category} className="text-center">
                 <div className="text-2xl font-semibold text-gray-300 mb-1">

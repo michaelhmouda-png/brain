@@ -44,7 +44,7 @@ export default function EmployeeList({ employees, companies, locations }: Employ
   );
 
   return (
-    <div className="space-y-8 rounded-[36px] border border-white/10 bg-white/5 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+    <div className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:p-6 lg:space-y-8 lg:rounded-[36px] lg:p-8">
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <label className="space-y-2 text-sm text-slate-300">
           <span className="font-semibold text-white">Company</span>
@@ -112,8 +112,8 @@ export default function EmployeeList({ employees, companies, locations }: Employ
         </label>
       </div>
 
-      <div className="overflow-hidden rounded-[32px] border border-white/10 bg-slate-950/80 text-slate-200 shadow-[0_20px_80px_rgba(0,0,0,0.35)]">
-        <table className="min-w-full border-separate border-spacing-0 text-left">
+      <div className="mobile-scroll-region overflow-x-auto rounded-3xl border border-white/10 bg-slate-950/80 text-slate-200 shadow-[0_20px_80px_rgba(0,0,0,0.35)]" role="region" aria-label="Employees table" tabIndex={0}>
+        <table className="min-w-[760px] border-separate border-spacing-0 text-left lg:min-w-full">
           <thead className="bg-white/5 text-sm uppercase tracking-[0.27em] text-slate-400">
             <tr>
               <th className="px-6 py-4">Name</th>
@@ -147,7 +147,7 @@ export default function EmployeeList({ employees, companies, locations }: Employ
                   <td className="px-6 py-5 align-middle text-sm">
                     <Link
                       href={`/dashboard/employees/${employee.id}`}
-                      className="rounded-full bg-white/5 px-4 py-2 text-slate-200 transition hover:bg-white/10"
+                      className="inline-flex min-h-11 items-center rounded-full bg-white/5 px-4 py-2 text-slate-200 transition hover:bg-white/10"
                     >
                       Edit
                     </Link>
