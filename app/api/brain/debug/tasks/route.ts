@@ -28,6 +28,24 @@ import {
 
 export const runtime = 'nodejs';
 
+function formatAssignedEmployee(employees: unknown): string {
+  if (!Array.isArray(employees) || employees.length === 0) {
+    return 'Unassigned';
+  }
+
+  const employee = employees[0];
+  if (!employee || typeof employee !== 'object') {
+    return 'Unassigned';
+  }
+
+  const { first_name: firstName, last_name: lastName } = employee as Record<string, unknown>;
+  if (typeof firstName !== 'string' || typeof lastName !== 'string') {
+    return 'Unassigned';
+  }
+
+  return `${firstName} ${lastName}`;
+}
+
 export async function POST(request: NextRequest) {
   // Only allow in non-production environments
   if (process.env.NODE_ENV === 'production') {
@@ -121,11 +139,12 @@ export async function POST(request: NextRequest) {
       // Filter by assigned employee (client-side after fetching)
       let filtered = tasks;
       if (assignedEmployeeName) {
-        const nameParts = assignedEmployeeName.trim().toLowerCase().split(/\s+/);
-        filtered = tasks.filter((task: any) => {
-          if (!task.employees) return false;
-          const empName = `${task.employees.first_name} ${task.employees.last_name}`.toLowerCase();
-          return nameParts.every((part: string) => empName.includes(part));
+        const nameParts: string[] = assignedEmployeeName.trim().toLowerCase().split(/\s+/);
+        filtered = tasks.filter((task) => {
+          const employeeName = formatAssignedEmployee(task.employees);
+          if (employeeName === 'Unassigned') return false;
+          const normalizedEmployeeName = employeeName.toLowerCase();
+          return nameParts.every((part) => normalizedEmployeeName.includes(part));
         });
       }
 
@@ -145,13 +164,13 @@ export async function POST(request: NextRequest) {
           stage: 'task_search_multiple',
           error: `Multiple tasks match the criteria. Please be more specific.`,
           foundCount: filtered.length,
-          candidates: filtered.map((t: any) => ({
+          candidates: filtered.map((t) => ({
             id: t.id,
             title: t.title,
             priority: displayTaskPriority(t.priority),
             status: displayTaskStatus(t.status),
             due_date: t.due_date,
-            assigned_to: t.employees ? `${t.employees.first_name} ${t.employees.last_name}` : 'Unassigned',
+            assigned_to: formatAssignedEmployee(t.employees),
           })),
         });
       }
@@ -167,7 +186,7 @@ export async function POST(request: NextRequest) {
           status: displayTaskStatus(task.status),
           status_db: task.status,      // Show actual database value
           due_date: task.due_date,
-          assigned_to: task.employees ? `${task.employees.first_name} ${task.employees.last_name}` : 'Unassigned',
+          assigned_to: formatAssignedEmployee(task.employees),
           assigned_employee_id: task.assigned_employee_id,
         },
       });
