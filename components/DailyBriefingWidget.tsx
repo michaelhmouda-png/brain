@@ -40,7 +40,7 @@ export function DailyBriefingWidget() {
     setError(null);
     
     try {
-      const response = await fetch('/api/brain/daily-briefing');
+      const response = await fetch('/api/brain/daily-briefing', { cache: 'no-store' });
       
       if (response.status === 401) {
         setError('Please sign in to view your briefing.');

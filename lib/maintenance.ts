@@ -44,7 +44,7 @@ export class MaintenanceService {
 
     let query = this.supabase
       .from('maintenance_tickets')
-      .select('*, assigned_to:employees(id, first_name, last_name), created_by:profiles(id, email), location:locations(id, name)', {
+      .select('*, assigned_to:employees(id, first_name, last_name), created_by:profiles(id, full_name), location:locations(id, name)', {
         count: 'exact',
       })
       .eq('company_id', this.companyId);
@@ -72,7 +72,7 @@ export class MaintenanceService {
     query = query.range(offset, offset + pageSize - 1);
 
     const { data, error, count } = await query;
-    if (error) console.error('[Maintenance Service] List tickets error:', error.message);
+    if (error) throw new Error('MAINTENANCE_LIST_FAILED', { cause: error });
 
     return {
       data: data || [],
@@ -86,7 +86,7 @@ export class MaintenanceService {
   async getTickets(status?: string, assignedToId?: string) {
     let query = this.supabase
       .from('maintenance_tickets')
-      .select('*, assigned_to:employees(id, first_name, last_name), created_by:profiles(id, email)')
+      .select('*, assigned_to:employees(id, first_name, last_name), created_by:profiles(id, full_name)')
       .eq('company_id', this.companyId);
 
     if (status) {
@@ -157,7 +157,7 @@ export class MaintenanceService {
   }
 
   async updateTicketStatus(ticketId: string, status: string, completionNotes?: string) {
-    const updateData: any = { status };
+    const updateData: Record<string, string | undefined> = { status };
 
     if (status === 'completed') {
       updateData.completed_at = new Date().toISOString();
@@ -192,7 +192,7 @@ export class MaintenanceService {
     return data;
   }
 
-  async updateTicket(ticketId: string, updates: Record<string, any>) {
+  async updateTicket(ticketId: string, updates: Record<string, unknown>) {
     const { data, error } = await this.supabase
       .from('maintenance_tickets')
       .update(updates)

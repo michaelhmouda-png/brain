@@ -12,6 +12,22 @@ async function withFetch(responseFactory, callback) {
   }
 }
 
+test('authenticated operational collection requests bypass browser caching', async () => {
+  const originalFetch = globalThis.fetch;
+  let observedOptions;
+  globalThis.fetch = async (_input, options) => {
+    observedOptions = options;
+    return Response.json([]);
+  };
+  try {
+    await fetchJsonCollection('Test route', '/api/test', new AbortController().signal);
+    assert.equal(observedOptions.cache, 'no-store');
+    assert.equal(observedOptions.credentials, 'same-origin');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test('accepts a direct JSON array response', async () => {
   await withFetch(
     () => Response.json([{ id: 'one' }]),

@@ -2,50 +2,20 @@
 
 import { useEffect, useState } from 'react';
 import {
+  ClientApiError,
   fetchJsonCollection,
-  isRecord,
   logRouteDiagnostic,
-  stringField,
   userFacingRouteError,
 } from '@/lib/client-api';
-
-interface MaintenanceTicket {
-  id: string;
-  title: string;
-  priority: string;
-  status: string;
-  area: string;
-  equipment: string;
-  due_date: string;
-  assigned_to?: { first_name: string; last_name: string };
-}
-
-function normalizeTicket(value: unknown): MaintenanceTicket | null {
-  if (!isRecord(value)) return null;
-  const id = stringField(value, 'id');
-  if (!id) return null;
-  const relation = Array.isArray(value.assigned_to) ? value.assigned_to[0] : value.assigned_to;
-  const assignedTo = isRecord(relation)
-    ? { first_name: stringField(relation, 'first_name'), last_name: stringField(relation, 'last_name') }
-    : undefined;
-  return {
-    id,
-    title: stringField(value, 'title') || 'Untitled ticket',
-    priority: stringField(value, 'priority') || 'low',
-    status: stringField(value, 'status') || 'open',
-    area: stringField(value, 'area') || stringField(value, 'affected_area'),
-    equipment: stringField(value, 'equipment') || stringField(value, 'equipment_name'),
-    due_date: stringField(value, 'due_date'),
-    assigned_to: assignedTo,
-  };
-}
+import { normalizeMaintenanceTicket, type MaintenanceTicket } from '@/lib/maintenance-list';
 
 export default function MaintenancePage() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
-  const [filter, setFilter] = useState<string>('open');
+  const [filter, setFilter] = useState<string>('all');
+  const [authorizationError, setAuthorizationError] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -54,17 +24,21 @@ export default function MaintenancePage() {
     async function loadTickets() {
       setLoading(true);
       setError(null);
+      setAuthorizationError(false);
       try {
+        const statusQuery = filter === 'all' ? '' : `?status=${encodeURIComponent(filter)}`;
         const data = await fetchJsonCollection(
           'Maintenance',
-          `/api/maintenance?status=${encodeURIComponent(filter)}`,
+          `/api/maintenance${statusQuery}`,
           controller.signal
         );
-        if (active) setTickets(data.map(normalizeTicket).filter((item): item is MaintenanceTicket => item !== null));
+        if (active) setTickets(data.map(normalizeMaintenanceTicket).filter((item): item is MaintenanceTicket => item !== null));
       } catch (error) {
         if (!active) return;
         logRouteDiagnostic('Maintenance', error);
         setTickets([]);
+        const status = error instanceof ClientApiError ? error.diagnostic.status : undefined;
+        setAuthorizationError(status === 401 || status === 403);
         setError(userFacingRouteError(error));
       } finally {
         window.clearTimeout(timeout);
@@ -72,7 +46,7 @@ export default function MaintenancePage() {
       }
     }
 
-    loadTickets();
+    void Promise.resolve().then(loadTickets);
     return () => {
       active = false;
       window.clearTimeout(timeout);
@@ -114,23 +88,24 @@ export default function MaintenancePage() {
     return (
       <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-center text-red-100" role="alert">
         <p>{error}</p>
-        <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">
-          Try again
-        </button>
+        {!authorizationError && <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">Try again</button>}
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+        <div>
         <h1 className="text-3xl font-bold text-gray-900">Maintenance Management</h1>
         <p className="text-gray-600 mt-2">Track and manage maintenance tickets</p>
+        </div>
+        <button type="button" onClick={() => setRetryKey((value) => value + 1)} disabled={loading} className="min-h-11 rounded-lg bg-indigo-600 px-4 font-semibold text-white disabled:opacity-60">Refresh</button>
       </div>
 
       {/* Filters */}
       <div className="mobile-scroll-region flex gap-2 overflow-x-auto rounded-lg bg-white p-4 shadow" aria-label="Maintenance status filters">
-        {['open', 'assigned', 'in_progress', 'completed'].map((status) => (
+        {['all', 'open', 'assigned', 'in_progress', 'completed'].map((status) => (
           <button
             key={status}
             onClick={() => setFilter(status)}
@@ -158,7 +133,7 @@ export default function MaintenancePage() {
                 <div className="min-w-0">
                   <h3 className="text-lg font-bold text-gray-900">{ticket.title}</h3>
                   <div className="text-sm text-gray-600 mt-1">
-                    Area: {ticket.area} | Equipment: {ticket.equipment}
+                    {ticket.location ? `Location: ${ticket.location}` : 'No location specified'}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">

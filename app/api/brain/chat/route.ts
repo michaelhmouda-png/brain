@@ -32,6 +32,8 @@ import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
 import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
 import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
+import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quota.server';
+import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -3887,6 +3889,23 @@ Status: ${previewStatus}`,
       return { error: 'title is required.' };
     }
 
+    const location = await validateMaintenanceLocation(
+      params.location_id,
+      this.userCompanyId,
+      async (locationId, companyId) => {
+        const { data, error } = await this.supabase
+          .from('locations')
+          .select('id')
+          .eq('id', locationId)
+          .eq('company_id', companyId)
+          .maybeSingle();
+        return !error && data?.id === locationId;
+      },
+    );
+    if (!location.valid) {
+      return { error: 'Location is not available for this company.' };
+    }
+
     // Get current user for created_by_id
     const { data: { user } } = await this.supabase.auth.getUser();
     if (!user) return { error: 'No authenticated user.' };
@@ -3916,7 +3935,7 @@ Status: ${previewStatus}`,
         title: params.title,
         description: params.description || null,
         priority: params.priority || 'medium',
-        location_id: params.location_id || null,
+        location_id: location.locationId,
         assigned_to_id: params.assigned_to_id || null,
         due_date: params.due_date || null,
         status: 'open',
@@ -4329,9 +4348,21 @@ function logActionApprovalFailure(operation: string, error: unknown): void {
   });
 }
 
+type BrainChatRequestMessage = { role: 'user' | 'assistant'; content: string };
+
+function isValidBrainChatMessages(value: unknown): value is BrainChatRequestMessage[] {
+  return Array.isArray(value) && value.length > 0 && value.every((message) => {
+    if (typeof message !== 'object' || message === null || Array.isArray(message)) return false;
+    const candidate = message as Record<string, unknown>;
+    return (candidate.role === 'user' || candidate.role === 'assistant') &&
+      typeof candidate.content === 'string' && candidate.content.trim().length > 0;
+  });
+}
+
 // Main handler
 export async function POST(request: NextRequest) {
   let failureStage = 'request.initialize';
+  let admittedQuota: BrainChatQuota | null = null;
   try {
     // 1. Authenticate and resolve the canonical trusted actor before request
     // parsing, OpenAI, proposal lookup, tools, or tenant-domain access.
@@ -4357,7 +4388,7 @@ export async function POST(request: NextRequest) {
     // 4. Parse request body
     failureStage = 'request.parse';
     const requestBody = await request.json() as {
-      messages?: any[];
+      messages?: unknown;
       proposalId?: string;
       decision?: 'approve' | 'reject';
       context?: unknown;
@@ -4490,10 +4521,35 @@ export async function POST(request: NextRequest) {
     const conversationContext = normalizeConversationContext(requestBody.context);
 
     failureStage = 'request.validate_messages';
-    if (!Array.isArray(messages) || messages.length === 0) {
+    if (!isValidBrainChatMessages(messages)) {
       return NextResponse.json(
         { error: 'Invalid messages format' },
         { status: 400 }
+      );
+    }
+
+    // Consume allowance only after trusted authentication/provisioning and a
+    // valid AI message request, but before any OpenAI initialization or call.
+    // Once admitted, upstream failures intentionally retain the consumption.
+    failureStage = 'brain_chat_quota.admit';
+    let quotaAdmission;
+    try {
+      quotaAdmission = await admitBrainChatRequest(supabase);
+    } catch {
+      return NextResponse.json(
+        { error: 'AI request quota is temporarily unavailable.', code: 'BRAIN_CHAT_QUOTA_UNAVAILABLE' },
+        { status: 503 },
+      );
+    }
+    admittedQuota = {
+      limit: quotaAdmission.limit,
+      remaining: quotaAdmission.remaining,
+      resetAt: quotaAdmission.resetAt,
+    };
+    if (!quotaAdmission.admitted) {
+      return NextResponse.json(
+        { error: 'AI request limit reached. Please try again after the quota resets.', code: 'BRAIN_CHAT_QUOTA_EXCEEDED', quota: admittedQuota },
+        { status: 429 },
       );
     }
 
@@ -5196,11 +5252,12 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
       message: finalText,
       role: 'assistant',
       context: conversationContext,
+      quota: admittedQuota,
     });
   } catch (error) {
     console.error('[API Brain Chat] Request failed', requestFailureDiagnostic(error, failureStage));
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Internal server error', ...(admittedQuota ? { quota: admittedQuota } : {}) },
       { status: 500 }
     );
   }

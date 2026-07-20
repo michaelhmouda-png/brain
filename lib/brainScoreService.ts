@@ -109,15 +109,15 @@ export class BrainScoreService {
     }
 
     const today = new Date().toISOString().split('T')[0];
-    const completed = tasks.filter((t: any) => t.status === 'Completed').length;
+    const completed = tasks.filter((task) => task.status === 'completed').length;
     const completionRate = (completed / tasks.length) * 100;
 
     const overdue = tasks.filter(
-      (t: any) => t.status !== 'Completed' && t.due_date && t.due_date < today
+      (task) => task.status !== 'completed' && task.due_date && task.due_date < today
     ).length;
 
     const criticalOverdue = tasks.filter(
-      (t: any) => t.priority === 'Critical' && t.status !== 'Completed' && t.due_date && t.due_date < today
+      (task) => task.priority === 'critical' && task.status !== 'completed' && task.due_date && task.due_date < today
     ).length;
 
     metrics.tasks = {

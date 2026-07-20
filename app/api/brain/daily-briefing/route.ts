@@ -1,38 +1,48 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { DailyBriefingService } from '@/lib/dailyBriefingService';
+import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
-export async function GET(request: NextRequest) {
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  Pragma: 'no-cache',
+  Vary: 'Cookie, Authorization',
+};
+
+export async function GET() {
   try {
     // 1. Authenticate user
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) {
       return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+        { error: authorization.status === 401 ? 'Unauthorized' : 'Company information not found' },
+        { status: authorization.status, headers: NO_STORE_HEADERS }
       );
     }
 
     // 2. Get user's profile to resolve company_id
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('id, company_id, full_name')
-      .eq('id', user.id)
-      .single();
+      .select('full_name')
+      .eq('id', authorization.profileId)
+      .eq('company_id', authorization.companyId)
+      .maybeSingle();
 
-    if (profileError || !profile || !profile.company_id) {
+    if (profileError || !profile) {
       return NextResponse.json(
         { error: 'Company information not found' },
-        { status: 403 }
+        { status: 403, headers: NO_STORE_HEADERS }
       );
     }
 
     // 3. Generate daily briefing
     const briefingService = new DailyBriefingService(
       supabase,
-      profile.company_id,
+      authorization.companyId,
       profile.full_name
     );
 
@@ -40,15 +50,13 @@ export async function GET(request: NextRequest) {
 
     // 4. Return briefing
     return NextResponse.json(briefing, {
-      headers: {
-        'Cache-Control': 'private, max-age=300', // Cache for 5 minutes
-      },
+      headers: NO_STORE_HEADERS,
     });
   } catch (error) {
     console.error('[Daily Briefing API] Error:', error);
     return NextResponse.json(
       { error: 'Failed to generate daily briefing' },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

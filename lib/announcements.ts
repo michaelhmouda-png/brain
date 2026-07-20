@@ -38,7 +38,7 @@ export class AnnouncementsService {
 
     let query = this.supabase
       .from('announcements')
-      .select('*, created_by:profiles(id, email)', {
+      .select('*, created_by:profiles(id, full_name)', {
         count: 'exact',
       })
       .eq('company_id', this.companyId);
@@ -68,7 +68,7 @@ export class AnnouncementsService {
     query = query.range(offset, offset + pageSize - 1);
 
     const { data, error, count } = await query;
-    if (error) console.error('[Announcements Service] List announcements error:', error.message);
+    if (error) throw new Error('ANNOUNCEMENT_LIST_FAILED', { cause: error });
 
     return {
       data: data || [],
@@ -82,7 +82,7 @@ export class AnnouncementsService {
   async getAnnouncements(includeExpired: boolean = false) {
     let query = this.supabase
       .from('announcements')
-      .select('*, created_by:profiles(id, email)')
+      .select('*, created_by:profiles(id, full_name)')
       .eq('company_id', this.companyId);
 
     if (!includeExpired) {
@@ -91,7 +91,7 @@ export class AnnouncementsService {
     }
 
     const { data, error } = await query.order('published_at', { ascending: false });
-    if (error) console.error('[Announcements Service] Get announcements error:', error.message);
+    if (error) throw new Error('ANNOUNCEMENT_LIST_FAILED', { cause: error });
     return data || [];
   }
 
@@ -127,11 +127,11 @@ export class AnnouncementsService {
       .select()
       .single();
 
-    if (error) console.error('[Announcements Service] Create announcement error:', error.message);
+    if (error || !data) throw new Error('ANNOUNCEMENT_CREATE_FAILED', { cause: error ?? undefined });
     return data;
   }
 
-  async updateAnnouncement(announcementId: string, updates: Record<string, any>) {
+  async updateAnnouncement(announcementId: string, updates: Record<string, unknown>) {
     const { data, error } = await this.supabase
       .from('announcements')
       .update(updates)

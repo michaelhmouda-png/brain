@@ -11,6 +11,15 @@ import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  Pragma: 'no-cache',
+  Vary: 'Cookie, Authorization',
+};
+
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
@@ -18,7 +27,7 @@ export async function GET(req: NextRequest) {
     if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'No company found' },
-        { status: authorization.status }
+        { status: authorization.status, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -42,7 +51,7 @@ export async function GET(req: NextRequest) {
     // Handle overdue tickets special case
     if (overdue === 'true') {
       const tickets = await maintenanceService.getOverdueTickets();
-      return NextResponse.json({ data: tickets, total: tickets.length });
+      return NextResponse.json({ data: tickets, total: tickets.length }, { headers: NO_STORE_HEADERS });
     }
 
     // List with full pagination, search, and filtering
@@ -59,10 +68,10 @@ export async function GET(req: NextRequest) {
       dueDateTo,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error('[Maintenance API] GET error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
 
