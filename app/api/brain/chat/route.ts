@@ -36,8 +36,11 @@ import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quo
 import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
 import {
   classifyTaskRequestScope,
+  resolveCompanyTaskEmployee,
+  resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
+  taskRequestNeedsUnfilteredCompanyTasks,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
 
@@ -1444,6 +1447,7 @@ class ToolHandlers {
     private conversationContext?: ConversationContext,
     private employeeId: string | null = null,
     private taskRequestScopeIntent: TaskRequestScopeIntent = 'default',
+    private unfilteredCompanyTaskRequest = false,
   ) {}
 
   async getCurrentUserProfile() {
@@ -2509,8 +2513,27 @@ Status: ${previewStatus}`,
       visibility,
       this.taskRequestScopeIntent,
     );
-    const limit = Math.min(params.limit || 20, 100);
+    const limit = resolveTaskResultLimit(params.limit, this.unfilteredCompanyTaskRequest);
     const today = new Date().toISOString().split('T')[0];
+
+    let requestedAssigneeId: string | null = null;
+    if (applyModelAssigneeFilter && params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
+      const { data: companyEmployees, error: employeeDirectoryError } = await this.supabase
+        .from('employees')
+        .select('id, first_name, last_name')
+        .eq('company_id', this.userCompanyId);
+      if (employeeDirectoryError || !Array.isArray(companyEmployees)) {
+        return { error: 'Failed to resolve the requested employee.', code: 'TASK_EMPLOYEE_LOOKUP_FAILED' };
+      }
+      const resolution = resolveCompanyTaskEmployee(companyEmployees, params.assigned_employee_name);
+      if (resolution.kind === 'not_found') {
+        return { tasks: [], count: 0, code: 'TASK_EMPLOYEE_NOT_FOUND' };
+      }
+      if (resolution.kind === 'ambiguous') {
+        return { error: 'More than one employee matches that name. Please be more specific.', code: 'TASK_EMPLOYEE_AMBIGUOUS' };
+      }
+      requestedAssigneeId = resolution.employee.id;
+    }
 
     // ── Step 1: Query tasks only (no join — avoids schema cache relationship errors) ──
     let query = this.supabase
@@ -2523,17 +2546,19 @@ Status: ${previewStatus}`,
     // their authenticated profile. Model arguments can only narrow this set.
     if (visibility.kind === 'assigned') {
       query = query.eq('assigned_employee_id', visibility.employeeId);
+    } else if (requestedAssigneeId) {
+      query = query.eq('assigned_employee_id', requestedAssigneeId);
     }
 
     // [Phase 0B] Filter by title (partial match, case-insensitive)
-    if (params.title) {
+    if (!this.unfilteredCompanyTaskRequest && params.title) {
       const titleFilter = params.title.trim().toLowerCase();
       query = query.ilike('title', `%${titleFilter}%`);
       console.log('[Brain Diagnostic] getTasks title filter:', { search: titleFilter });
     }
 
     // [Phase 0B] Normalize status parameter from capitalized to lowercase before query
-    if (params.status) {
+    if (!this.unfilteredCompanyTaskRequest && params.status) {
       const canonicalStatusVal = canonicalStatus(params.status);
       console.log('[Brain Diagnostic] getTasks status normalization:', {
         input: params.status,
@@ -2545,7 +2570,7 @@ Status: ${previewStatus}`,
     }
 
     // [Phase 0B] Normalize priority parameter from capitalized to lowercase before query
-    if (params.priority) {
+    if (!this.unfilteredCompanyTaskRequest && params.priority) {
       const canonicalPriorityVal = canonicalPriority(params.priority);
       console.log('[Brain Diagnostic] getTasks priority normalization:', {
         input: params.priority,
@@ -2557,7 +2582,7 @@ Status: ${previewStatus}`,
     }
 
     // Filter by due date
-    if (params.due_date) {
+    if (!this.unfilteredCompanyTaskRequest && params.due_date) {
       const dueDateStr = params.due_date.trim().toLowerCase();
       if (dueDateStr === 'today') {
         query = query.eq('due_date', today);
@@ -2652,23 +2677,8 @@ Status: ${previewStatus}`,
       });
     }
 
-    // ── Step 3: Filter by employee name (client-side, using fetched map) ──
-    let filtered = taskRows;
-    if (applyModelAssigneeFilter && params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
-      const searchName = params.assigned_employee_name.trim().toLowerCase();
-      filtered = taskRows.filter((task: any) => {
-        const fullName = (employeeMap[task.assigned_employee_id] || '').toLowerCase();
-        return fullName.includes(searchName);
-      });
-      console.log('[Brain Diagnostic] getTasks employee filter:', {
-        search: searchName,
-        beforeFilter: taskRows.length,
-        afterFilter: filtered.length,
-      });
-    }
-
-    // ── Step 4: Format response ──
-    const tasks = filtered.map((task: any) => ({
+    // ── Step 3: Format response ──
+    const tasks = taskRows.map((task: any) => ({
       id: task.id,
       title: task.title,
       description: task.description,
@@ -4579,6 +4589,9 @@ export async function POST(request: NextRequest) {
     const taskRequestScopeIntent = latestUserMessage
       ? classifyTaskRequestScope(latestUserMessage.content)
       : 'default';
+    const unfilteredCompanyTaskRequest = latestUserMessage
+      ? taskRequestNeedsUnfilteredCompanyTasks(latestUserMessage.content)
+      : false;
 
     // Consume allowance only after trusted authentication/provisioning and a
     // valid AI message request, but before any OpenAI initialization or call.
@@ -4623,6 +4636,7 @@ export async function POST(request: NextRequest) {
       conversationContext,
       actorContext.employeeId,
       taskRequestScopeIntent,
+      unfilteredCompanyTaskRequest,
     );
 
     // Do not log tenant, role, profile, or caller-supplied context details.
@@ -4767,6 +4781,7 @@ When a user asks to see tasks (e.g., "Show today's pending tasks", "What tasks a
   * "3 tasks are overdue: [task titles, assigned to, and due dates]"
   * "All tasks are completed."
 - Always show count and key details (title, who it's assigned to, due date if relevant)
+- For an explicit all/company/team task request, report every task returned by get_tasks, including unassigned tasks; do not silently reduce the result to the caller's assignments
 
 UPDATE TASKS:
 When a user asks to change a task (e.g., "Change Maroun's task priority to High", "Assign the cleaning task to Khaled"):

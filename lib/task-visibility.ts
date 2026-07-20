@@ -11,14 +11,30 @@ export type TaskVisibilityScope =
 
 export type TaskRequestScopeIntent = 'self' | 'company' | 'default';
 
-export function taskRequestUsesSelfScope(message: string): boolean {
-  const normalized = message
+export type CompanyTaskEmployee = {
+  id: string;
+  firstName: string;
+  lastName: string;
+};
+
+export type CompanyTaskEmployeeResolution =
+  | { kind: 'matched'; employee: CompanyTaskEmployee }
+  | { kind: 'not_found' }
+  | { kind: 'ambiguous' };
+
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function normalizeTaskIntentText(message: string): string {
+  return message
     .normalize('NFKC')
-    .replace(/[’‘]/g, "'")
+    .replace(/[\u2018\u2019]/g, "'")
     .toLowerCase()
     .replace(/\s+/g, ' ')
     .trim();
+}
 
+export function taskRequestUsesSelfScope(message: string): boolean {
+  const normalized = normalizeTaskIntentText(message);
   return [
     /\bmy (?:assigned )?tasks?\b/,
     /\bmy (?:work|workload|assignments?)\b/,
@@ -34,13 +50,7 @@ export function taskRequestUsesSelfScope(message: string): boolean {
 }
 
 export function taskRequestUsesCompanyScope(message: string): boolean {
-  const normalized = message
-    .normalize('NFKC')
-    .replace(/[’‘]/g, "'")
-    .toLowerCase()
-    .replace(/\s+/g, ' ')
-    .trim();
-
+  const normalized = normalizeTaskIntentText(message);
   return [
     /\ball (?:(?:pending|open|active|overdue|completed|critical|high priority) )?tasks?\b/,
     /\b(?:company|team|everyone's|everybody's) tasks?\b/,
@@ -49,10 +59,18 @@ export function taskRequestUsesCompanyScope(message: string): boolean {
   ].some((pattern) => pattern.test(normalized));
 }
 
+export function taskRequestNeedsUnfilteredCompanyTasks(message: string): boolean {
+  const normalized = normalizeTaskIntentText(message);
+  const withoutAnyStatus = normalized.replace(/\b(?:of )?any status\b/g, '');
+  const hasNarrowing = /\b(?:pending|open|active|overdue|completed|critical|high priority|due|today|tomorrow|assigned to)\b/
+    .test(withoutAnyStatus);
+  return !hasNarrowing && (
+    /\ball tasks?\b/.test(withoutAnyStatus) ||
+    /\b(?:company|team) tasks?\b/.test(withoutAnyStatus)
+  );
+}
+
 export function classifyTaskRequestScope(message: string): TaskRequestScopeIntent {
-  // Explicit first-person assignment remains self-scoped even when the caller
-  // asks for "all my tasks". Otherwise explicit company wording wins over any
-  // stale conversational or model-generated assignee value.
   if (taskRequestUsesSelfScope(message)) return 'self';
   if (taskRequestUsesCompanyScope(message)) return 'company';
   return 'default';
@@ -80,4 +98,48 @@ export function shouldApplyModelTaskAssigneeFilter(
   intent: TaskRequestScopeIntent,
 ): boolean {
   return visibility.kind === 'company' && intent !== 'company';
+}
+
+export function resolveTaskResultLimit(modelLimit: unknown, unfilteredCompanyRequest: boolean): number {
+  if (unfilteredCompanyRequest) return 100;
+  if (typeof modelLimit !== 'number' || !Number.isFinite(modelLimit)) return 20;
+  return Math.max(1, Math.min(Math.trunc(modelLimit), 100));
+}
+
+function normalizeEmployeeLookupName(value: string): string {
+  return value
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[\u2018\u2019']s\b/gi, '')
+    .replace(/[\u2018\u2019']/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export function resolveCompanyTaskEmployee(
+  rows: readonly Record<string, unknown>[],
+  requestedName: string,
+): CompanyTaskEmployeeResolution {
+  const search = normalizeEmployeeLookupName(requestedName);
+  if (!search) return { kind: 'not_found' };
+
+  const employees = rows.flatMap((row): CompanyTaskEmployee[] => {
+    if (!UUID_PATTERN.test(String(row.id ?? '')) || typeof row.first_name !== 'string') return [];
+    return [{
+      id: String(row.id),
+      firstName: row.first_name,
+      lastName: typeof row.last_name === 'string' ? row.last_name : '',
+    }];
+  });
+  const exact = employees.filter((employee) =>
+    normalizeEmployeeLookupName(`${employee.firstName} ${employee.lastName}`) === search);
+  const matches = exact.length > 0 ? exact : employees.filter((employee) => {
+    const fullName = normalizeEmployeeLookupName(`${employee.firstName} ${employee.lastName}`);
+    return fullName.split(' ').includes(search) || fullName.includes(search);
+  });
+
+  if (matches.length === 0) return { kind: 'not_found' };
+  if (matches.length > 1) return { kind: 'ambiguous' };
+  return { kind: 'matched', employee: matches[0] };
 }

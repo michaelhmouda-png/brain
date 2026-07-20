@@ -4,9 +4,12 @@ import path from 'node:path';
 import test from 'node:test';
 import {
   classifyTaskRequestScope,
+  resolveCompanyTaskEmployee,
+  resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
   taskRequestUsesCompanyScope,
+  taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestUsesSelfScope,
 } from '../lib/task-visibility.ts';
 import { loadCompanyTasks } from '../lib/task-list.ts';
@@ -90,6 +93,55 @@ test('task scope is derived independently for sequential and fresh requests', ()
   assert.equal(classifyTaskRequestScope('Find cleaning tasks'), 'default');
 });
 
+test('company-wide all-task intent is unfiltered while pending company intent remains filtered', () => {
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show all tasks (any status)'), true);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show all tasks'), true);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show company tasks'), true);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show all pending tasks'), false);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show all tasks due tomorrow'), false);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show all tasks assigned to Carla'), false);
+  assert.equal(taskRequestNeedsUnfilteredCompanyTasks('Show my tasks'), false);
+});
+
+test('named task assignees resolve uniquely inside the authorized company directory', () => {
+  const employees = [
+    { id: '33333333-3333-4333-8333-333333333333', first_name: 'Carla', last_name: 'el rayes' },
+    { id: '44444444-4444-4444-8444-444444444444', first_name: 'Elie', last_name: 'Bteish' },
+    { id: '55555555-5555-4555-8555-555555555555', first_name: 'Khaled', last_name: 'Ismaeil' },
+    { id: EMPLOYEE, first_name: 'Maroun', last_name: 'Mhanna' },
+  ];
+  assert.deepEqual(resolveCompanyTaskEmployee(employees, 'Carla'), {
+    kind: 'matched',
+    employee: { id: employees[0].id, firstName: 'Carla', lastName: 'el rayes' },
+  });
+  assert.equal(resolveCompanyTaskEmployee(employees, 'Carla’s').kind, 'matched');
+  assert.equal(resolveCompanyTaskEmployee(employees, 'Nobody').kind, 'not_found');
+  assert.equal(resolveCompanyTaskEmployee([
+    ...employees,
+    { id: '66666666-6666-4666-8666-666666666666', first_name: 'Carla', last_name: 'Other' },
+  ], 'Carla').kind, 'ambiguous');
+});
+
+test('task result limits are server-bounded and all-company requests ignore model limits', () => {
+  assert.equal(resolveTaskResultLimit(5, true), 100);
+  assert.equal(resolveTaskResultLimit(10, false), 10);
+  assert.equal(resolveTaskResultLimit(1000, false), 100);
+  assert.equal(resolveTaskResultLimit(-5, false), 1);
+  assert.equal(resolveTaskResultLimit('20', false), 20);
+});
+
+test('multiple employees and unassigned tasks survive an unfiltered company result', () => {
+  const rows = [
+    { id: 'task-carla', assigned_employee_id: '33333333-3333-4333-8333-333333333333' },
+    { id: 'task-khaled', assigned_employee_id: '55555555-5555-4555-8555-555555555555' },
+    { id: 'task-maroun', assigned_employee_id: EMPLOYEE },
+    { id: 'task-unassigned', assigned_employee_id: null },
+  ];
+  assert.equal(rows.length, 4);
+  assert.equal(rows.some((task) => task.assigned_employee_id === null), true);
+  assert.equal(rows.filter((task) => task.assigned_employee_id === EMPLOYEE).length, 1);
+});
+
 test('assigned task list scope is passed as an immutable employee UUID', async () => {
   const calls = [];
   const tasks = await loadCompanyTasks({
@@ -121,13 +173,17 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(api, /query = query\.eq\('assigned_employee_id', assignedEmployeeId\)/);
   assert.match(brain, /resolveTaskVisibilityScope\(\{[\s\S]*employeeId: this\.employeeId/);
   assert.match(brain, /classifyTaskRequestScope\(latestUserMessage\.content\)/);
+  assert.match(brain, /taskRequestNeedsUnfilteredCompanyTasks\(latestUserMessage\.content\)/);
   const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
   const ownScope = getTasks.indexOf("query = query.eq('assigned_employee_id', visibility.employeeId)");
-  const modelNameFilter = getTasks.indexOf('params.assigned_employee_name');
-  assert.ok(ownScope > 0 && modelNameFilter > ownScope);
+  const namedResolution = getTasks.indexOf('resolveCompanyTaskEmployee');
+  const taskLimit = getTasks.indexOf('query.limit(limit)');
+  assert.ok(ownScope > 0 && namedResolution > 0 && namedResolution < taskLimit);
   assert.doesNotMatch(getTasks, /params\.assigned_employee_id/);
   assert.match(getTasks, /shouldApplyModelTaskAssigneeFilter/);
   assert.match(getTasks, /applyModelAssigneeFilter && params\.assigned_employee_name/);
+  assert.doesNotMatch(getTasks, /fullName\.includes\(searchName\)/);
+  assert.match(brain, /report every task returned by get_tasks, including unassigned tasks/);
 });
 
 test('missing link, RLS drift, and zero assignments have distinct safe diagnostics', () => {
