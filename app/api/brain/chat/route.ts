@@ -123,6 +123,66 @@ interface ConversationContext {
   lastMentionedTaskTitle: string | null;
 }
 
+function emptyConversationContext(): ConversationContext {
+  return {
+    recentEmployees: [],
+    lastMentionedEmployeeId: null,
+    lastMentionedDepartmentId: null,
+    recentTasks: [],
+    lastMentionedTaskId: null,
+    lastMentionedTaskTitle: null,
+  };
+}
+
+function normalizeConversationContext(value: unknown): ConversationContext {
+  const defaults = emptyConversationContext();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return defaults;
+
+  const context = value as Partial<ConversationContext>;
+  return {
+    recentEmployees: Array.isArray(context.recentEmployees) ? context.recentEmployees : [],
+    lastMentionedEmployeeId: typeof context.lastMentionedEmployeeId === 'string'
+      ? context.lastMentionedEmployeeId
+      : null,
+    lastMentionedDepartmentId: typeof context.lastMentionedDepartmentId === 'string'
+      ? context.lastMentionedDepartmentId
+      : null,
+    recentTasks: Array.isArray(context.recentTasks) ? context.recentTasks : [],
+    lastMentionedTaskId: typeof context.lastMentionedTaskId === 'string'
+      ? context.lastMentionedTaskId
+      : null,
+    lastMentionedTaskTitle: typeof context.lastMentionedTaskTitle === 'string'
+      ? context.lastMentionedTaskTitle
+      : null,
+  };
+}
+
+function requestFailureDiagnostic(error: unknown, stage: string) {
+  const record = error && typeof error === 'object'
+    ? error as Record<string, unknown>
+    : null;
+  const scalarCode = record?.code;
+  const scalarStatus = record?.status ?? record?.statusCode;
+
+  return {
+    code: 'BRAIN_CHAT_REQUEST_FAILED',
+    stage,
+    errorName: error instanceof Error
+      ? error.name
+      : typeof record?.name === 'string' ? record.name : 'UnknownError',
+    errorMessage: error instanceof Error
+      ? error.message
+      : typeof record?.message === 'string' ? record.message : String(error),
+    errorCode: typeof scalarCode === 'string' || typeof scalarCode === 'number'
+      ? scalarCode
+      : null,
+    errorStatus: typeof scalarStatus === 'string' || typeof scalarStatus === 'number'
+      ? scalarStatus
+      : null,
+    stack: error instanceof Error && typeof error.stack === 'string' ? error.stack : null,
+  };
+}
+
 // Task management interfaces
 interface CreateTaskInput {
   title: string;                    // required
@@ -4271,12 +4331,15 @@ function logActionApprovalFailure(operation: string, error: unknown): void {
 
 // Main handler
 export async function POST(request: NextRequest) {
+  let failureStage = 'request.initialize';
   try {
     // 1. Authenticate and resolve the canonical trusted actor before request
     // parsing, OpenAI, proposal lookup, tools, or tenant-domain access.
+    failureStage = 'supabase.client.initialize';
     const supabase = await createSupabaseServerAuth();
     let actorContext: ActorContext;
     try {
+      failureStage = 'actor_context.resolve';
       actorContext = await resolveActorContext(supabase);
     } catch (error) {
       if (error instanceof ActorContextError) return actorContextErrorResponse(error);
@@ -4284,6 +4347,7 @@ export async function POST(request: NextRequest) {
     }
     let requestContext: BrainRequestContext;
     try {
+      failureStage = 'tenant_scope.resolve';
       requestContext = { actor: actorContext, tenant: tenantScopeFromActor(actorContext) };
     } catch (error) {
       if (error instanceof ActorContextError) return actorContextErrorResponse(error);
@@ -4291,11 +4355,12 @@ export async function POST(request: NextRequest) {
     }
 
     // 4. Parse request body
+    failureStage = 'request.parse';
     const requestBody = await request.json() as {
       messages?: any[];
       proposalId?: string;
       decision?: 'approve' | 'reject';
-      context?: ConversationContext;
+      context?: unknown;
     };
     const { messages, proposalId, decision } = requestBody;
 
@@ -4421,15 +4486,10 @@ export async function POST(request: NextRequest) {
     });
 
     // Initialize conversation context (tracks recently created employees, last mentioned, etc.)
-    let conversationContext: ConversationContext = requestBody.context || {
-      recentEmployees: [],
-      lastMentionedEmployeeId: null,
-      lastMentionedDepartmentId: null,
-      recentTasks: [],
-      lastMentionedTaskId: null,
-      lastMentionedTaskTitle: null,
-    };
+    failureStage = 'conversation_context.normalize';
+    const conversationContext = normalizeConversationContext(requestBody.context);
 
+    failureStage = 'request.validate_messages';
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
         { error: 'Invalid messages format' },
@@ -4438,6 +4498,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Initialize OpenAI client
+    failureStage = 'openai.client.initialize';
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
@@ -4446,6 +4507,7 @@ export async function POST(request: NextRequest) {
     const companyId = requestContext.tenant.companyId;
 
     // 7. Create tool handlers with validated company_id
+    failureStage = 'tool_handlers.initialize';
     const handlers = new ToolHandlers(
       supabase,
       companyId,  // guaranteed non-empty string
@@ -4459,6 +4521,7 @@ export async function POST(request: NextRequest) {
     });
 
     // 7. Build instructions and initial input for Responses API
+    failureStage = 'prompt.build';
     const recentEmployeesList = conversationContext.recentEmployees
       .map((e) => `- ${e.fullName} (${e.role}, ${e.department || 'No dept'})`)
       .join('\n');
@@ -4791,6 +4854,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
     });
 
     // 8. Initial call to Responses API
+    failureStage = 'openai.responses.create.initial';
     let response = await (openai as any).responses.create({
       model: 'gpt-5-mini',
       instructions: systemInstructions,
@@ -4811,6 +4875,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
       // Execute each tool call and append its output
       for (const toolCall of pendingToolCalls) {
+        failureStage = 'tool_call.parse';
         const toolName: string = toolCall.name;
         const toolInput: Record<string, unknown> = JSON.parse(toolCall.arguments || '{}');
 
@@ -4822,6 +4887,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
         let toolResult: unknown;
         try {
+          failureStage = 'tool_call.execute';
           switch (toolName) {
             case 'get_current_user_profile':
               toolResult = await handlers.getCurrentUserProfile();
@@ -5105,6 +5171,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
       }
 
       // Get next response with updated input
+      failureStage = 'openai.responses.create.follow_up';
       response = await (openai as any).responses.create({
         model: 'gpt-5-mini',
         instructions: systemInstructions,
@@ -5130,10 +5197,8 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
       role: 'assistant',
       context: conversationContext,
     });
-  } catch {
-    console.error('[API Brain Chat] Request failed', {
-      code: 'BRAIN_CHAT_REQUEST_FAILED',
-    });
+  } catch (error) {
+    console.error('[API Brain Chat] Request failed', requestFailureDiagnostic(error, failureStage));
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
