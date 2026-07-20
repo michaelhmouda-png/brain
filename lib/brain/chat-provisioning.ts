@@ -13,6 +13,7 @@ export interface BrainChatProfile {
   role: BrainChatRole;
   status: 'active';
   company_id: string;
+  employee_id: string | null;
 }
 
 interface ProfileRecord {
@@ -21,6 +22,7 @@ interface ProfileRecord {
   role?: unknown;
   status?: unknown;
   company_id?: unknown;
+  employee_id?: unknown;
 }
 
 export interface BrainChatProvisioningAccess {
@@ -65,6 +67,11 @@ export async function resolveBrainChatProvisioning(
 ): Promise<BrainChatProvisioningResult> {
   const loaded = await access.loadProfile(userId);
   const profile = loaded.profile;
+  const employeeId = profile?.employee_id === null || profile?.employee_id === undefined
+    ? null
+    : typeof profile.employee_id === 'string' && UUID_PATTERN.test(profile.employee_id)
+      ? profile.employee_id
+      : undefined;
 
   if (
     loaded.failed ||
@@ -72,6 +79,7 @@ export async function resolveBrainChatProvisioning(
     profile.id !== userId ||
     profile.status !== 'active' ||
     !isBrainChatRole(profile.role) ||
+    employeeId === undefined ||
     typeof profile.company_id !== 'string' ||
     !UUID_PATTERN.test(profile.company_id)
   ) {
@@ -90,6 +98,7 @@ export async function resolveBrainChatProvisioning(
       role: profile.role,
       status: profile.status,
       company_id: profile.company_id,
+      employee_id: employeeId,
     },
   };
 }

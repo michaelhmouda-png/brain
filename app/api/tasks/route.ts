@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { loadCompanyTasks } from '@/lib/task-list';
+import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -26,13 +27,28 @@ export async function GET() {
       );
     }
 
+    const visibility = resolveTaskVisibilityScope(authorization);
+    if (visibility.kind === 'missing_employee_link') {
+      console.warn('[Tasks API] Task visibility denied', {
+        stage: 'task_visibility.resolve',
+        outcome: 'missing_employee_link',
+        persistedRole: authorization.role,
+      });
+      return NextResponse.json(
+        { error: 'Your account is not linked to an employee record', code: 'TASK_EMPLOYEE_LINK_MISSING' },
+        { status: 409, headers: NO_STORE_HEADERS },
+      );
+    }
+
     const tasks = await loadCompanyTasks({
-      async listTasks(companyId) {
-        return supabase
+      async listTasks(companyId, assignedEmployeeId) {
+        let query = supabase
           .from('tasks')
           .select('id, title, description, priority, status, due_date, assigned_employee_id, created_at, updated_at')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false });
+        if (assignedEmployeeId) query = query.eq('assigned_employee_id', assignedEmployeeId);
+        return query;
       },
       async listEmployees(companyId, employeeIds) {
         return supabase
@@ -41,10 +57,51 @@ export async function GET() {
           .eq('company_id', companyId)
           .in('id', employeeIds);
       },
-    }, authorization.companyId);
+    }, authorization.companyId, visibility.kind === 'assigned' ? visibility.employeeId : null);
+
+    if (visibility.kind === 'assigned' && tasks.length === 0) {
+      const { data: diagnosticData, error: diagnosticError } = await supabase.rpc('get_my_task_visibility_diagnostic');
+      const diagnostic = Array.isArray(diagnosticData) ? diagnosticData[0] : diagnosticData;
+      const rawAssignedCount = diagnostic && typeof diagnostic === 'object' && 'assigned_task_count' in diagnostic
+        ? diagnostic.assigned_task_count : null;
+      const assignedCount = typeof rawAssignedCount === 'number'
+        ? rawAssignedCount
+        : typeof rawAssignedCount === 'string' ? Number(rawAssignedCount) : null;
+      if (diagnosticError || assignedCount === null || !Number.isFinite(assignedCount)) {
+        console.error('[Tasks API] Task visibility diagnostic failed', {
+          stage: 'task_visibility.diagnostic',
+          outcome: 'query_failure',
+          persistedRole: authorization.role,
+          errorCode: diagnosticError?.code ?? null,
+        });
+        return NextResponse.json(
+          { error: 'Assigned tasks are temporarily unavailable', code: 'TASK_VISIBILITY_DIAGNOSTIC_FAILED' },
+          { status: 500, headers: NO_STORE_HEADERS },
+        );
+      }
+      if (assignedCount > 0) {
+        console.error('[Tasks API] Task visibility failed', {
+          stage: 'task_visibility.rls', outcome: 'blocked_by_rls', persistedRole: authorization.role,
+          linkedEmployee: true, assignedTaskCount: assignedCount,
+        });
+        return NextResponse.json(
+          { error: 'Assigned tasks are temporarily unavailable', code: 'TASK_VISIBILITY_BLOCKED_BY_RLS' },
+          { status: 500, headers: NO_STORE_HEADERS },
+        );
+      }
+      console.info('[Tasks API] Task visibility empty', {
+        stage: 'task_visibility.query', outcome: 'zero_assigned_tasks', persistedRole: authorization.role,
+        linkedEmployee: true,
+      });
+    }
 
     return NextResponse.json(
-      { data: tasks, total: tasks.length },
+      {
+        data: tasks,
+        total: tasks.length,
+        scope: visibility.kind,
+        diagnostic: tasks.length === 0 && visibility.kind === 'assigned' ? 'NO_ASSIGNED_TASKS' : null,
+      },
       { headers: NO_STORE_HEADERS },
     );
   } catch (error) {

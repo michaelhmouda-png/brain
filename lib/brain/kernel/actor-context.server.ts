@@ -16,7 +16,7 @@ export async function resolveActorContext(supabase: SupabaseClient): Promise<Act
         async loadProfile(userId) {
           const { data, error } = await supabase
             .from('profiles')
-            .select('id, full_name, role, status, company_id')
+            .select('id, full_name, role, status, company_id, employee_id')
             .eq('id', userId)
             .maybeSingle();
           return { profile: data, failed: Boolean(error) };

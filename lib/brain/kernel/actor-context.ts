@@ -21,6 +21,7 @@ export interface ActorContext {
   actorType: 'human';
   correlationId: string;
   displayName: string | null;
+  employeeId: string | null;
 }
 
 export interface HumanActorResolutionInput {
@@ -69,5 +70,6 @@ export async function resolveProvisionedHumanActor(input: HumanActorResolutionIn
     actorType: 'human',
     correlationId,
     displayName: profile.full_name,
+    employeeId: profile.employee_id,
   };
 }

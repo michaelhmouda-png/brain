@@ -15,8 +15,9 @@ function validProfile(overrides = {}) {
     id: USER_ID,
     full_name: 'Provisioned User',
     role: 'employee',
-    status: 'active',
-    company_id: COMPANY_ID,
+        status: 'active',
+        company_id: COMPANY_ID,
+        employee_id: null,
     ...overrides,
   };
 }

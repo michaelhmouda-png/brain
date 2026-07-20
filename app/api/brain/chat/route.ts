@@ -34,6 +34,7 @@ import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-actio
 import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quota.server';
 import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
+import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -1435,7 +1436,8 @@ class ToolHandlers {
     private supabase: SupabaseClient,
     private userCompanyId: string,
     private userRole: string,
-    private conversationContext?: ConversationContext
+    private conversationContext?: ConversationContext,
+    private employeeId: string | null = null,
   ) {}
 
   async getCurrentUserProfile() {
@@ -2487,7 +2489,16 @@ Status: ${previewStatus}`,
 
   // Get Tasks with filtering
   async getTasks(params: GetTasksInput): Promise<any> {
-    console.log('[Brain Diagnostic] getTasks input:', JSON.stringify(params, null, 2));
+    const visibility = resolveTaskVisibilityScope({
+      role: this.userRole as ActorContext['role'],
+      employeeId: this.employeeId,
+    });
+    if (visibility.kind === 'missing_employee_link') {
+      console.warn('[Brain Chat] get_tasks denied', {
+        stage: 'task_visibility.resolve', outcome: 'missing_employee_link', persistedRole: this.userRole,
+      });
+      return { error: 'Your account is not linked to an employee record.', code: 'TASK_EMPLOYEE_LINK_MISSING' };
+    }
     const limit = Math.min(params.limit || 20, 100);
     const today = new Date().toISOString().split('T')[0];
 
@@ -2497,6 +2508,12 @@ Status: ${previewStatus}`,
       .select('id, title, description, priority, status, due_date, assigned_employee_id')
       .eq('company_id', this.userCompanyId)
       .order('due_date', { ascending: true });
+
+    // Non-managing users are always scoped to the employee UUID resolved from
+    // their authenticated profile. Model arguments can only narrow this set.
+    if (visibility.kind === 'assigned') {
+      query = query.eq('assigned_employee_id', visibility.employeeId);
+    }
 
     // [Phase 0B] Filter by title (partial match, case-insensitive)
     if (params.title) {
@@ -2569,6 +2586,38 @@ Status: ${previewStatus}`,
 
     // ── Step 2: Collect unique employee IDs and fetch names in one query ──
     const taskRows = data || [];
+    if (visibility.kind === 'assigned' && taskRows.length === 0) {
+      const { data: diagnosticData, error: diagnosticError } = await this.supabase.rpc('get_my_task_visibility_diagnostic');
+      const diagnostic = Array.isArray(diagnosticData) ? diagnosticData[0] : diagnosticData;
+      const rawCount = diagnostic && typeof diagnostic === 'object' && 'assigned_task_count' in diagnostic
+        ? diagnostic.assigned_task_count : null;
+      const assignedCount = typeof rawCount === 'number' ? rawCount : typeof rawCount === 'string' ? Number(rawCount) : null;
+      if (diagnosticError || assignedCount === null || !Number.isFinite(assignedCount)) {
+        console.error('[Brain Chat] get_tasks diagnostic failed', {
+          stage: 'task_visibility.diagnostic', outcome: 'query_failure', persistedRole: this.userRole,
+          errorCode: diagnosticError?.code ?? null,
+        });
+        return { error: 'Assigned tasks are temporarily unavailable.', code: 'TASK_VISIBILITY_DIAGNOSTIC_FAILED' };
+      }
+      const hasTaskFilters = Boolean(
+        params.title || params.priority || params.status || params.due_date || params.assigned_employee_name,
+      );
+      if (assignedCount > 0 && hasTaskFilters) {
+        return { tasks: [], count: 0, code: 'NO_MATCHING_ASSIGNED_TASKS' };
+      }
+      if (assignedCount > 0) {
+        console.error('[Brain Chat] get_tasks failed', {
+          stage: 'task_visibility.rls', outcome: 'blocked_by_rls', persistedRole: this.userRole,
+          linkedEmployee: true, assignedTaskCount: assignedCount,
+        });
+        return { error: 'Assigned tasks are temporarily unavailable.', code: 'TASK_VISIBILITY_BLOCKED_BY_RLS' };
+      }
+      console.info('[Brain Chat] get_tasks empty', {
+        stage: 'task_visibility.query', outcome: 'zero_assigned_tasks', persistedRole: this.userRole,
+        linkedEmployee: true,
+      });
+      return { tasks: [], count: 0, code: 'NO_ASSIGNED_TASKS' };
+    }
     const employeeIds = [...new Set(
       taskRows.map((t: any) => t.assigned_employee_id).filter(Boolean)
     )];
@@ -2588,7 +2637,10 @@ Status: ${previewStatus}`,
           employeeMap[emp.id] = `${emp.first_name} ${emp.last_name}`;
         }
       }
-      console.log('[Brain Diagnostic] getTasks employee map:', employeeMap);
+      console.log('[Brain Diagnostic] getTasks employee lookup complete', {
+        requestedCount: employeeIds.length,
+        resolvedCount: Object.keys(employeeMap).length,
+      });
     }
 
     // ── Step 3: Filter by employee name (client-side, using fetched map) ──
@@ -2619,20 +2671,6 @@ Status: ${previewStatus}`,
 
     console.log('[Task Query] Results retrieved:', {
       count: tasks.length,
-      taskTitles: tasks.map((t: any) => t.title),
-    });
-
-    // [Phase 0B] Detailed diagnostic log
-    console.log('[Brain Diagnostic] getTasks result:', {
-      count: tasks.length,
-      tasks: tasks.map((t: any) => ({
-        id: t.id,
-        title: t.title,
-        priority: t.priority,
-        status: t.status,
-        due_date: t.due_date,
-        assigned_to: t.assigned_to,
-      })),
     });
 
     return { tasks, count: tasks.length };
@@ -4439,7 +4477,7 @@ export async function POST(request: NextRequest) {
           recentEmployees: [], lastMentionedEmployeeId: null, lastMentionedDepartmentId: null,
           recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
         };
-        const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
+        const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext, actorContext.employeeId);
         const createTaskApplicationService = stored.canonicalAction === 'create_task'
           ? createSupabaseCreateTaskApplicationService(supabase)
           : null;
@@ -4568,7 +4606,8 @@ export async function POST(request: NextRequest) {
       supabase,
       companyId,  // guaranteed non-empty string
       actorContext.role,
-      conversationContext
+      conversationContext,
+      actorContext.employeeId,
     );
 
     // Do not log tenant, role, profile, or caller-supplied context details.

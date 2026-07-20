@@ -37,6 +37,7 @@ for (const role of ['super_admin', 'owner', 'manager', 'employee']) {
       profileId: USER_ID,
       companyId: COMPANY_ID,
       role,
+      employeeId: null,
     });
   });
 }

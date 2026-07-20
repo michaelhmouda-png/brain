@@ -17,7 +17,7 @@ export async function authorizeCompanyApiRequestFromSupabase(
     async loadProfile(userId) {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, company_id, role, status')
+        .select('id, company_id, role, status, employee_id')
         .eq('id', userId)
         .maybeSingle();
       return { profile: data, failed: Boolean(error) };

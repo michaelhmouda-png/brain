@@ -6,6 +6,7 @@ export type CompanyApiProfile = {
   company_id?: unknown;
   role?: unknown;
   status?: unknown;
+  employee_id?: unknown;
 };
 
 export interface CompanyApiAuthorizationAccess {
@@ -21,6 +22,7 @@ export type CompanyApiAuthorization =
       profileId: string;
       companyId: string;
       role: CompanyApiRole;
+      employeeId: string | null;
     }
   | {
       authorized: false;
@@ -60,12 +62,18 @@ export async function authorizeCompanyApiRequest(
   }
 
   const profile = loaded.profile;
+  const employeeId = profile?.employee_id === null || profile?.employee_id === undefined
+    ? null
+    : typeof profile.employee_id === 'string' && UUID_PATTERN.test(profile.employee_id)
+      ? profile.employee_id
+      : undefined;
   if (
     loaded.failed ||
     !profile ||
     profile.id !== userId ||
     profile.status !== 'active' ||
     !isCompanyApiRole(profile.role) ||
+    employeeId === undefined ||
     typeof profile.company_id !== 'string' ||
     !UUID_PATTERN.test(profile.company_id)
   ) {
@@ -88,5 +96,6 @@ export async function authorizeCompanyApiRequest(
     profileId: profile.id,
     companyId: profile.company_id,
     role: profile.role,
+    employeeId,
   };
 }

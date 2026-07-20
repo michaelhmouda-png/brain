@@ -60,6 +60,8 @@ export default function TasksPage() {
           ? 'Your session has expired. Please sign in again.'
           : status === 403
             ? 'Your account is not authorized for a company workspace.'
+            : status === 409
+              ? 'Your account is not linked to an employee record. Ask an owner or manager to complete the link.'
             : 'Tasks could not be loaded. Check your connection and try again.',
       });
     } finally {
@@ -112,7 +114,7 @@ export default function TasksPage() {
         <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-8 text-center">
           <CheckCircle2 className="mx-auto h-8 w-8 text-cyan-300" />
           <p className="mt-4 text-lg font-semibold text-white">No tasks yet</p>
-          <p className="mt-2 text-sm text-slate-400">Tasks created for this company will appear here immediately.</p>
+          <p className="mt-2 text-sm text-slate-400">No tasks are assigned within your authorized task scope.</p>
         </div>
       )}
 

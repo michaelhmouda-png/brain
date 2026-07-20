@@ -20,7 +20,7 @@ type QueryResult = {
 };
 
 export interface TaskListAccess {
-  listTasks(companyId: string): Promise<QueryResult>;
+  listTasks(companyId: string, assignedEmployeeId: string | null): Promise<QueryResult>;
   listEmployees(companyId: string, employeeIds: string[]): Promise<QueryResult>;
 }
 
@@ -49,8 +49,9 @@ function optionalString(row: Record<string, unknown>, field: string): string | n
 export async function loadCompanyTasks(
   access: TaskListAccess,
   companyId: string,
+  assignedEmployeeId: string | null = null,
 ): Promise<TaskListItem[]> {
-  const taskResult = await access.listTasks(companyId);
+  const taskResult = await access.listTasks(companyId, assignedEmployeeId);
   if (taskResult.error || !Array.isArray(taskResult.data)) throw new Error('TASK_LIST_QUERY_FAILED');
 
   const taskRows = taskResult.data.map((value) => {
