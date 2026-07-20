@@ -251,9 +251,9 @@ export function PremiumCommandCenter() {
   return (
     <div className="space-y-6">
       {/* Greeting and Refresh */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-4xl font-bold text-white">{briefing.greeting}</h1>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-3xl font-bold text-white sm:text-4xl">{briefing.greeting}</h1>
           {lastUpdated && (
             <p className="text-xs text-gray-400 mt-2">
               Updated {lastUpdated.toLocaleTimeString()}
@@ -271,13 +271,13 @@ export function PremiumCommandCenter() {
       </div>
 
       {/* Brain Score Hero */}
-      <div className="bg-gradient-to-br from-gray-900 to-gray-800 border border-gray-700 rounded-lg p-8">
+      <div className="rounded-lg border border-gray-700 bg-gradient-to-br from-gray-900 to-gray-800 p-4 sm:p-6 lg:p-8">
         <h2 className="text-sm font-semibold text-gray-400 mb-6">BUSINESS BRAIN SCORE</h2>
         
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {/* Left: Score */}
           <div>
-            <div className={`text-7xl font-bold mb-2 ${health.color}`}>
+            <div className={`mb-2 text-5xl font-bold sm:text-7xl ${health.color}`}>
               {briefing.brain_score.total}
             </div>
             <p className="text-gray-400 text-sm mb-4">out of 100</p>
@@ -315,7 +315,7 @@ export function PremiumCommandCenter() {
           </div>
 
           {/* Right: Categories */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 min-[375px]:grid-cols-2">
             {Object.entries(briefing.brain_score.categories).map(([category, score]) => {
               const categoryHealth = getCategoryStatus(score);
               return (
@@ -328,7 +328,7 @@ export function PremiumCommandCenter() {
                     category === 'customers' ? '/dashboard/customers' :
                     '/dashboard/settings'
                   }
-                  className={`p-4 rounded-lg border transition-all hover:scale-105 cursor-pointer ${getDetailColor(score)}`}
+                  className={`min-h-11 rounded-lg border p-4 transition-all hover:scale-105 cursor-pointer ${getDetailColor(score)}`}
                 >
                   <p className="text-xs font-semibold text-gray-400 mb-1 capitalize">{category}</p>
                   <p className="text-2xl font-bold">{score}</p>
@@ -394,7 +394,7 @@ export function PremiumCommandCenter() {
                 <Link
                   key={idx}
                   href={link.href}
-                  className="flex items-center justify-between p-3 bg-gray-800/50 border border-gray-700 rounded-lg hover:bg-gray-800 hover:border-blue-600 transition-all group"
+                  className="group flex min-h-11 flex-col items-start justify-between gap-2 rounded-lg border border-gray-700 bg-gray-800/50 p-3 transition-all hover:border-blue-600 hover:bg-gray-800 sm:flex-row sm:items-center"
                 >
                   <div className="flex items-start gap-3">
                     <Zap className="w-4 h-4 text-blue-400 flex-shrink-0 mt-1" />
@@ -426,22 +426,22 @@ export function PremiumCommandCenter() {
           
           <div className="space-y-3">
             {timeline.slice(0, 10).map((event) => (
-              <div key={event.id} className="flex gap-3 text-sm">
+              <div key={event.id} className="flex min-w-0 gap-3 text-sm">
                 <div className="flex flex-col items-center gap-1">
                   <div className="text-xs text-gray-500 font-mono">
                     {formatTimelineTime(event.occurred_at)}
                   </div>
                   {getTimelineIcon(event.event_type)}
                 </div>
-                <div className="flex-1">
-                  <div className="flex items-start justify-between mb-1">
-                    <h4 className="font-medium text-gray-200">{event.title}</h4>
-                    <span className="text-xs px-2 py-0.5 rounded bg-gray-800 text-gray-400">
+                <div className="min-w-0 flex-1">
+                  <div className="mb-1 flex flex-col items-start justify-between gap-1 min-[375px]:flex-row">
+                    <h4 className="break-words font-medium text-gray-200">{event.title}</h4>
+                    <span className="shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-400">
                       {event.module}
                     </span>
                   </div>
                   {event.description && (
-                    <p className="text-xs text-gray-400 mb-1">{event.description}</p>
+                    <p className="mb-1 break-words text-xs text-gray-400">{event.description}</p>
                   )}
                 </div>
               </div>

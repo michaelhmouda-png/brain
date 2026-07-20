@@ -49,27 +49,27 @@ export default function ShiftsPage() {
       </div>
 
       {/* Week Navigator */}
-      <div className="bg-white rounded-lg shadow p-4 flex items-center justify-between">
+      <div className="grid grid-cols-2 items-center gap-3 rounded-lg bg-white p-4 shadow sm:grid-cols-[auto_1fr_auto]">
         <button
           onClick={() => handleWeekChange(-7)}
           className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
         >
           ← Previous Week
         </button>
-        <div className="text-lg font-semibold">
+        <div className="order-first col-span-2 text-center text-base font-semibold sm:order-none sm:col-span-1 sm:text-lg">
           Week of {new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </div>
         <button
           onClick={() => handleWeekChange(7)}
-          className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300"
+          className="px-3 py-2 bg-gray-200 rounded hover:bg-gray-300 sm:px-4"
         >
           Next Week →
         </button>
       </div>
 
       {/* Schedules Table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="w-full">
+      <div className="mobile-scroll-region overflow-x-auto rounded-lg bg-white shadow" role="region" aria-label="Weekly shifts table" tabIndex={0}>
+        <table className="min-w-[900px] w-full">
           <thead className="bg-gray-100 border-b">
             <tr>
               <th className="px-6 py-3 text-left text-sm font-semibold text-gray-900">Employee</th>

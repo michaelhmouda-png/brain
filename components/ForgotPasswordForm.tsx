@@ -32,7 +32,7 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-xl">
+      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Reset your password</h1>
           <p className="mt-2 text-sm text-slate-400">

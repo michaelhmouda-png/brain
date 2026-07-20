@@ -64,7 +64,7 @@ export default function AnnouncementsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-start">
+      <div className="flex flex-col items-start justify-between gap-4 sm:flex-row">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Announcements</h1>
           <p className="text-gray-600 mt-2">Company-wide announcements and updates</p>
@@ -84,10 +84,10 @@ export default function AnnouncementsPage() {
           announcements.map((announcement) => (
             <div
               key={announcement.id}
-              className={`rounded-lg shadow p-6 hover:shadow-lg transition-shadow ${getPriorityColor(announcement.priority)}`}
+              className={`rounded-lg p-4 shadow transition-shadow hover:shadow-lg sm:p-6 ${getPriorityColor(announcement.priority)}`}
             >
-              <div className="flex justify-between items-start mb-3">
-                <div className="flex-1">
+              <div className="mb-3 flex flex-col items-start justify-between gap-3 sm:flex-row">
+                <div className="min-w-0 flex-1">
                   <h3 className="text-lg font-bold text-gray-900">{announcement.title}</h3>
                   <p className="text-sm text-gray-600 mt-1">
                     Posted by {announcement.created_by?.email || 'Admin'} on{' '}
@@ -99,7 +99,7 @@ export default function AnnouncementsPage() {
                 </span>
               </div>
 
-              <p className="text-gray-700 mb-3">{announcement.content}</p>
+              <p className="mb-3 whitespace-pre-wrap break-words text-gray-700">{announcement.content}</p>
 
               {announcement.expires_at && (
                 <div className="text-xs text-gray-500">

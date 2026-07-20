@@ -70,12 +70,12 @@ export default async function DashboardLayout({ children }: { children: ReactNod
   }
 
   return (
-    <div className="min-h-screen overflow-hidden bg-[#020202] text-white">
+    <div className="min-h-[100dvh] overflow-x-hidden bg-[#020202] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_transparent_20%),radial-gradient(circle_at_80%_20%,_rgba(96,165,250,0.14),_transparent_18%)]" />
-      <div className="relative mx-auto flex min-h-screen max-w-[1700px] gap-6 px-4 py-6 lg:px-8">
+      <div className="safe-area-x relative mx-auto flex min-h-[100dvh] max-w-[1700px] flex-col gap-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(4.5rem+env(safe-area-inset-top))] lg:flex-row lg:gap-6 lg:px-8 lg:py-6">
         <DashboardSidebar profile={profile} userName={user.email || null} />
 
-        <main className="flex-1">{children}</main>
+        <main className="dashboard-main flex-1">{children}</main>
       </div>
     </div>
   );

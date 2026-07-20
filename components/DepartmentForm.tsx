@@ -86,7 +86,7 @@ export default function DepartmentForm({ initialData, mode, companies, locations
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-8 rounded-[36px] border border-white/10 bg-white/5 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl">
+    <form onSubmit={handleSubmit} className="space-y-6 rounded-3xl border border-white/10 bg-white/5 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:p-6 lg:space-y-8 lg:rounded-[36px] lg:p-8">
       <div className="grid gap-6 md:grid-cols-2">
         <label className="space-y-3 text-sm text-slate-300">
           <span className="font-semibold text-white">Company</span>
