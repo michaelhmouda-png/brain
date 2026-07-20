@@ -10,6 +10,16 @@ import { ActivityTimelineService } from '@/lib/activity-timeline';
 import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
+import { canCreateAnnouncement, parseAnnouncementCreationRequest } from '@/lib/announcement';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'private, no-store, max-age=0',
+  Pragma: 'no-cache',
+  Vary: 'Cookie, Authorization',
+};
 
 export async function GET(req: NextRequest) {
   try {
@@ -18,7 +28,7 @@ export async function GET(req: NextRequest) {
     if (!authorization.authorized) {
       return NextResponse.json(
         { error: authorization.status === 401 ? 'Unauthorized' : 'No company found' },
-        { status: authorization.status }
+        { status: authorization.status, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -46,47 +56,52 @@ export async function GET(req: NextRequest) {
       sortOrder,
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error('[Announcements API] GET error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return NextResponse.json({ error: 'No company found' }, { status: 403 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        { error: authorization.status === 401 ? 'Unauthorized' : 'No company found' },
+        { status: authorization.status, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (!canCreateAnnouncement(authorization.role)) {
+      return NextResponse.json({ error: 'Insufficient permissions' }, { status: 403, headers: NO_STORE_HEADERS });
     }
 
-    const announcementsService = new AnnouncementsService(supabase, profile.company_id);
-    const timelineService = new ActivityTimelineService(supabase, profile.company_id);
-    const notificationService = new NotificationsService(supabase, profile.company_id);
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400, headers: NO_STORE_HEADERS });
+    }
+    const data = parseAnnouncementCreationRequest(body);
+    if (!data) {
+      return NextResponse.json({ error: 'Invalid announcement data' }, { status: 400, headers: NO_STORE_HEADERS });
+    }
 
-    const body = await req.json();
-    const { action, data } = body;
+    const announcementsService = new AnnouncementsService(supabase, authorization.companyId);
+    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
+    const notificationService = new NotificationsService(supabase, authorization.companyId);
 
-    if (action === 'create') {
-      const announcement = await announcementsService.createAnnouncement(
-        data.title,
-        data.content,
-        data.priority || 'normal',
-        user.id,
-        data.expiresAt || null
-      );
+    const announcement = await announcementsService.createAnnouncement(
+      data.title,
+      data.content,
+      data.priority,
+      authorization.profileId,
+      data.expiresAt ?? undefined,
+    );
 
-      await timelineService.logActivity(
-        user.id,
+    await timelineService.logActivity(
+        authorization.profileId,
         'announcement_published',
         'announcement',
         announcement.id,
@@ -95,14 +110,16 @@ export async function POST(req: NextRequest) {
 
       // Notify all employees in company
       const { data: employees } = await supabase
-        .from('employees')
-        .select('user_id')
-        .eq('company_id', profile.company_id);
+        .from('profiles')
+        .select('id')
+        .eq('company_id', authorization.companyId)
+        .eq('status', 'active')
+        .eq('role', 'employee');
 
       if (employees) {
         const employeeUserIds = employees
-          .map((e: any) => e.user_id)
-          .filter((id: string) => id && id !== user.id);
+          .map((employee) => employee.id)
+          .filter((id): id is string => typeof id === 'string' && id !== authorization.profileId);
 
         if (employeeUserIds.length > 0) {
           await notificationService.notifyMultiple(
@@ -116,13 +133,10 @@ export async function POST(req: NextRequest) {
         }
       }
 
-      return NextResponse.json(announcement);
-    }
-
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    return NextResponse.json(announcement, { status: 201, headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error('[Announcements API] POST error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500, headers: NO_STORE_HEADERS });
   }
 }
 
