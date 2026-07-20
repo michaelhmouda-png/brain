@@ -8,8 +8,10 @@ import {
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
+  taskRequestExplicitlyIncludesFilter,
   taskRequestUsesCompanyScope,
   taskRequestNeedsUnfilteredCompanyTasks,
+  taskRequestReferencesCompanyEmployee,
   taskRequestUsesSelfScope,
 } from '../lib/task-visibility.ts';
 import { loadCompanyTasks } from '../lib/task-list.ts';
@@ -114,12 +116,39 @@ test('named task assignees resolve uniquely inside the authorized company direct
     kind: 'matched',
     employee: { id: employees[0].id, firstName: 'Carla', lastName: 'el rayes' },
   });
+  const carla = resolveCompanyTaskEmployee(employees, 'Carla');
+  assert.equal(carla.kind === 'matched' && taskRequestReferencesCompanyEmployee(
+    "Show me Carla's tasks",
+    carla.employee,
+  ), true);
   assert.equal(resolveCompanyTaskEmployee(employees, 'Carla’s').kind, 'matched');
   assert.equal(resolveCompanyTaskEmployee(employees, 'Nobody').kind, 'not_found');
   assert.equal(resolveCompanyTaskEmployee([
     ...employees,
     { id: '66666666-6666-4666-8666-666666666666', first_name: 'Carla', last_name: 'Other' },
   ], 'Carla').kind, 'ambiguous');
+});
+
+test('named assignee requests reject hidden model filters unless explicitly requested', () => {
+  const request = "Show me Carla's tasks";
+  for (const filter of ['title', 'status', 'priority', 'due_date']) {
+    assert.equal(taskRequestExplicitlyIncludesFilter(request, filter), false);
+  }
+  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's pending tasks", 'status'), true);
+  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's critical tasks", 'priority'), true);
+  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's tasks due tomorrow", 'due_date'), true);
+  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's task titled Clean bar", 'title'), true);
+});
+
+test('an active named employee with exactly one task is selected by UUID before pagination', () => {
+  const carlaId = 'c28a6273-79f9-4ca6-ae02-e5be6c472db7';
+  const tasks = [
+    { id: 'carla-only', assigned_employee_id: carlaId, status: 'completed' },
+    { id: 'maroun', assigned_employee_id: EMPLOYEE, status: 'pending' },
+    { id: 'unassigned', assigned_employee_id: null, status: 'pending' },
+  ];
+  const result = tasks.filter((task) => task.assigned_employee_id === carlaId).slice(0, 100);
+  assert.deepEqual(result, [{ id: 'carla-only', assigned_employee_id: carlaId, status: 'completed' }]);
 });
 
 test('task result limits are server-bounded and all-company requests ignore model limits', () => {
@@ -176,12 +205,16 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(brain, /taskRequestNeedsUnfilteredCompanyTasks\(latestUserMessage\.content\)/);
   const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
   const ownScope = getTasks.indexOf("query = query.eq('assigned_employee_id', visibility.employeeId)");
+  const namedScope = getTasks.indexOf("query = query.eq('assigned_employee_id', requestedAssigneeId)");
   const namedResolution = getTasks.indexOf('resolveCompanyTaskEmployee');
   const taskLimit = getTasks.indexOf('query.limit(limit)');
-  assert.ok(ownScope > 0 && namedResolution > 0 && namedResolution < taskLimit);
+  assert.ok(ownScope > 0 && namedScope > 0 && namedResolution > 0);
+  assert.ok(namedResolution < namedScope && namedScope < taskLimit);
   assert.doesNotMatch(getTasks, /params\.assigned_employee_id/);
   assert.match(getTasks, /shouldApplyModelTaskAssigneeFilter/);
   assert.match(getTasks, /applyModelAssigneeFilter && params\.assigned_employee_name/);
+  assert.match(getTasks, /taskRequestReferencesCompanyEmployee/);
+  assert.match(getTasks, /taskRequestExplicitlyIncludesFilter/);
   assert.doesNotMatch(getTasks, /fullName\.includes\(searchName\)/);
   assert.match(brain, /report every task returned by get_tasks, including unassigned tasks/);
 });

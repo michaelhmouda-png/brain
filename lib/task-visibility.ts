@@ -22,6 +22,8 @@ export type CompanyTaskEmployeeResolution =
   | { kind: 'not_found' }
   | { kind: 'ambiguous' };
 
+export type NamedTaskFilterKind = 'title' | 'status' | 'priority' | 'due_date';
+
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function normalizeTaskIntentText(message: string): string {
@@ -106,6 +108,21 @@ export function resolveTaskResultLimit(modelLimit: unknown, unfilteredCompanyReq
   return Math.max(1, Math.min(Math.trunc(modelLimit), 100));
 }
 
+export function taskRequestExplicitlyIncludesFilter(message: string, filter: NamedTaskFilterKind): boolean {
+  const normalized = normalizeTaskIntentText(message);
+  switch (filter) {
+    case 'status':
+      return /\b(?:pending|in progress|completed)\b/.test(normalized);
+    case 'priority':
+      return /\b(?:low|medium|high|critical)(?: priority)?\b/.test(normalized);
+    case 'due_date':
+      return /\b(?:due|today|tomorrow|overdue)\b/.test(normalized) ||
+        /\b\d{4}-\d{2}-\d{2}\b/.test(normalized);
+    case 'title':
+      return /\b(?:titled|called|named|with (?:the )?title|containing)\b/.test(normalized);
+  }
+}
+
 function normalizeEmployeeLookupName(value: string): string {
   return value
     .normalize('NFKD')
@@ -142,4 +159,15 @@ export function resolveCompanyTaskEmployee(
   if (matches.length === 0) return { kind: 'not_found' };
   if (matches.length > 1) return { kind: 'ambiguous' };
   return { kind: 'matched', employee: matches[0] };
+}
+
+export function taskRequestReferencesCompanyEmployee(
+  message: string,
+  employee: CompanyTaskEmployee,
+): boolean {
+  const normalizedMessage = ` ${normalizeEmployeeLookupName(message)} `;
+  const firstName = normalizeEmployeeLookupName(employee.firstName);
+  const fullName = normalizeEmployeeLookupName(`${employee.firstName} ${employee.lastName}`);
+  return Boolean(fullName && normalizedMessage.includes(` ${fullName} `)) ||
+    Boolean(firstName && normalizedMessage.includes(` ${firstName} `));
 }

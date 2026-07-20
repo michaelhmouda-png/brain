@@ -40,7 +40,9 @@ import {
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
+  taskRequestExplicitlyIncludesFilter,
   taskRequestNeedsUnfilteredCompanyTasks,
+  taskRequestReferencesCompanyEmployee,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
 
@@ -1448,6 +1450,7 @@ class ToolHandlers {
     private employeeId: string | null = null,
     private taskRequestScopeIntent: TaskRequestScopeIntent = 'default',
     private unfilteredCompanyTaskRequest = false,
+    private latestUserMessage = '',
   ) {}
 
   async getCurrentUserProfile() {
@@ -2513,7 +2516,6 @@ Status: ${previewStatus}`,
       visibility,
       this.taskRequestScopeIntent,
     );
-    const limit = resolveTaskResultLimit(params.limit, this.unfilteredCompanyTaskRequest);
     const today = new Date().toISOString().split('T')[0];
 
     let requestedAssigneeId: string | null = null;
@@ -2532,8 +2534,22 @@ Status: ${previewStatus}`,
       if (resolution.kind === 'ambiguous') {
         return { error: 'More than one employee matches that name. Please be more specific.', code: 'TASK_EMPLOYEE_AMBIGUOUS' };
       }
-      requestedAssigneeId = resolution.employee.id;
+      if (taskRequestReferencesCompanyEmployee(this.latestUserMessage, resolution.employee)) {
+        requestedAssigneeId = resolution.employee.id;
+      }
     }
+
+    const namedAssigneeRequest = requestedAssigneeId !== null;
+    const ignoreImplicitModelFilters = this.unfilteredCompanyTaskRequest || namedAssigneeRequest;
+    const allowTitleFilter = !ignoreImplicitModelFilters ||
+      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'title');
+    const allowStatusFilter = !ignoreImplicitModelFilters ||
+      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'status');
+    const allowPriorityFilter = !ignoreImplicitModelFilters ||
+      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'priority');
+    const allowDueDateFilter = !ignoreImplicitModelFilters ||
+      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'due_date');
+    const limit = resolveTaskResultLimit(params.limit, ignoreImplicitModelFilters);
 
     // ── Step 1: Query tasks only (no join — avoids schema cache relationship errors) ──
     let query = this.supabase
@@ -2551,14 +2567,14 @@ Status: ${previewStatus}`,
     }
 
     // [Phase 0B] Filter by title (partial match, case-insensitive)
-    if (!this.unfilteredCompanyTaskRequest && params.title) {
+    if (allowTitleFilter && params.title) {
       const titleFilter = params.title.trim().toLowerCase();
       query = query.ilike('title', `%${titleFilter}%`);
       console.log('[Brain Diagnostic] getTasks title filter:', { search: titleFilter });
     }
 
     // [Phase 0B] Normalize status parameter from capitalized to lowercase before query
-    if (!this.unfilteredCompanyTaskRequest && params.status) {
+    if (allowStatusFilter && params.status) {
       const canonicalStatusVal = canonicalStatus(params.status);
       console.log('[Brain Diagnostic] getTasks status normalization:', {
         input: params.status,
@@ -2570,7 +2586,7 @@ Status: ${previewStatus}`,
     }
 
     // [Phase 0B] Normalize priority parameter from capitalized to lowercase before query
-    if (!this.unfilteredCompanyTaskRequest && params.priority) {
+    if (allowPriorityFilter && params.priority) {
       const canonicalPriorityVal = canonicalPriority(params.priority);
       console.log('[Brain Diagnostic] getTasks priority normalization:', {
         input: params.priority,
@@ -2582,7 +2598,7 @@ Status: ${previewStatus}`,
     }
 
     // Filter by due date
-    if (!this.unfilteredCompanyTaskRequest && params.due_date) {
+    if (allowDueDateFilter && params.due_date) {
       const dueDateStr = params.due_date.trim().toLowerCase();
       if (dueDateStr === 'today') {
         query = query.eq('due_date', today);
@@ -2600,6 +2616,19 @@ Status: ${previewStatus}`,
       }
     }
 
+    console.info('[Brain Chat] get_tasks query plan', {
+      scope: visibility.kind,
+      namedAssigneeResolved: namedAssigneeRequest,
+      assignmentPredicate: visibility.kind === 'assigned' ? 'trusted_actor_employee' :
+        namedAssigneeRequest ? 'resolved_company_employee' : 'none',
+      filters: {
+        title: Boolean(allowTitleFilter && params.title),
+        status: Boolean(allowStatusFilter && params.status),
+        priority: Boolean(allowPriorityFilter && params.priority),
+        dueDate: Boolean(allowDueDateFilter && params.due_date),
+      },
+      limit,
+    });
     const { data, error } = await query.limit(limit);
 
     // [Phase 0B] Log Supabase query result
@@ -4637,6 +4666,7 @@ export async function POST(request: NextRequest) {
       actorContext.employeeId,
       taskRequestScopeIntent,
       unfilteredCompanyTaskRequest,
+      latestUserMessage?.content ?? '',
     );
 
     // Do not log tenant, role, profile, or caller-supplied context details.
