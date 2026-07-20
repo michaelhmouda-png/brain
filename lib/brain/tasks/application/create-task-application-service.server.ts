@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 
-import { createServerDomainEventRecorder } from '../../events/infrastructure/record-domain-event.server.ts';
+import { createServerOutboxDomainEventRecorder } from '../../events/infrastructure/record-domain-event.server.ts';
 import { createTaskCommandHandler } from '../commands/create-task-command-handler.ts';
 import { createSupabaseTaskRecordDependencies } from '../infrastructure/create-task-record.server.ts';
 import {
@@ -13,7 +13,7 @@ export function createSupabaseCreateTaskApplicationService(
 ): CreateTaskApplicationService {
   const handler = createTaskCommandHandler(
     createSupabaseTaskRecordDependencies(supabase),
-    createServerDomainEventRecorder(),
+    createServerOutboxDomainEventRecorder(),
   );
   return createCreateTaskApplicationService({ handler });
 }

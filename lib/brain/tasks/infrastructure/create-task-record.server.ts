@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { randomUUID } from 'crypto';
 
 import { resolveDate } from '../../dateResolver.ts';
 import type {
@@ -7,6 +8,8 @@ import type {
   CreateTaskRecordResult,
 } from '../commands/create-task-command-handler.ts';
 import { logApprovedExecutionFailure } from '../../execution-diagnostics.server.ts';
+import { createSupabaseServer } from '../../../supabaseServer.ts';
+import { createTaskCreatedEvent } from '../events/task-created-event.ts';
 
 async function resolveAssignee(
   supabase: SupabaseClient,
@@ -38,6 +41,7 @@ async function resolveAssignee(
 
 async function createTaskRecord(
   supabase: SupabaseClient,
+  serviceSupabase: SupabaseClient,
   input: CreateTaskRecordInput,
 ): Promise<CreateTaskRecordResult> {
   const { data: authData } = await supabase.auth.getUser();
@@ -58,29 +62,49 @@ async function createTaskRecord(
   const dueDateResult = input.payload.dueDate ? resolveDate(input.payload.dueDate) : null;
   if (dueDateResult?.error) throw new Error('INVALID_DUE_DATE');
 
-  const record: Record<string, unknown> = {
-    company_id: input.tenantId,
+  const taskId = randomUUID();
+  const preparedResult: CreateTaskRecordResult = {
+    taskId,
     title: input.payload.title,
-    priority: input.payload.priority,
     status: input.payload.status,
-    created_by: input.actorId,
+    priority: input.payload.priority,
+    assignedEmployeeId: assignee.id,
+    assignedEmployeeName: assignee.name,
+    dueDate: dueDateResult?.date ?? null,
   };
-  if (input.payload.description) record.description = input.payload.description;
-  if (assignee.id) record.assigned_employee_id = assignee.id;
-  if (dueDateResult?.date) record.due_date = dueDateResult.date;
-
-  const { data, error } = await supabase
-    .from('tasks')
-    .insert(record)
-    .select('id, title, priority, status, assigned_employee_id, due_date')
-    .single();
-  if (error || !data) {
+  const event = createTaskCreatedEvent({ command: input.command, result: preparedResult });
+  const { data, error } = await serviceSupabase.rpc('create_task_with_outbox_event', {
+    p_task_id: taskId,
+    p_actor_id: input.actorId,
+    p_profile_id: input.command.actor.profileId,
+    p_tenant_id: input.tenantId,
+    p_title: preparedResult.title,
+    p_description: input.payload.description,
+    p_priority: preparedResult.priority,
+    p_status: preparedResult.status,
+    p_assigned_employee_id: preparedResult.assignedEmployeeId,
+    p_due_date: preparedResult.dueDate,
+    p_event_id: event.eventId,
+    p_event_type: event.eventType,
+    p_event_schema_version: event.schemaVersion,
+    p_aggregate_type: event.aggregateType,
+    p_aggregate_id: event.aggregateId,
+    p_command_id: event.commandId,
+    p_correlation_id: event.correlationId,
+    p_event_causation_id: event.causationId,
+    p_proposal_id: input.proposalId,
+    p_idempotency_key: input.command.idempotencyKey,
+    p_event_payload: event.payload,
+    p_occurred_at: event.occurredAt,
+  });
+  const row = Array.isArray(data) ? data[0] : data;
+  if (error || !row || row.outbox_event_id !== event.eventId || row.task_id !== taskId) {
     const failure = new Error('TASK_INSERT_FAILED', { cause: error ?? undefined });
     if (error) Object.assign(failure, {
       code: error.code,
       details: error.details,
       hint: error.hint,
-      operation: 'task.persistence.insert',
+      operation: 'task.persistence.atomic_outbox_insert',
     });
     logApprovedExecutionFailure({
       proposalId: input.proposalId,
@@ -92,20 +116,22 @@ async function createTaskRecord(
   }
 
   return {
-    taskId: data.id,
-    title: data.title,
-    status: data.status,
-    priority: data.priority,
-    assignedEmployeeId: data.assigned_employee_id ?? null,
+    taskId: row.task_id,
+    title: row.title,
+    status: row.status,
+    priority: row.priority,
+    assignedEmployeeId: row.assigned_employee_id ?? null,
     assignedEmployeeName: assignee.name,
-    dueDate: data.due_date ?? null,
+    dueDate: row.due_date ?? null,
+    outboxEvent: event,
   };
 }
 
 export function createSupabaseTaskRecordDependencies(
   supabase: SupabaseClient,
 ): CreateTaskCommandDependencies {
+  const serviceSupabase = createSupabaseServer();
   return {
-    createTaskRecord: input => createTaskRecord(supabase, input),
+    createTaskRecord: input => createTaskRecord(supabase, serviceSupabase, input),
   };
 }

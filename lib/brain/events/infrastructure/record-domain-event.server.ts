@@ -4,6 +4,7 @@ import {
   type DomainEventRecorder,
   type StoredDomainEvent,
 } from '../../kernel/events/domain-event-recorder.ts';
+import { createTaskCreatedOutboxDelivery } from '../outbox/task-created-outbox-delivery.ts';
 
 export function createServerDomainEventRecorder(): DomainEventRecorder {
   const supabase = createSupabaseServer();
@@ -39,6 +40,46 @@ export function createServerDomainEventRecorder(): DomainEventRecorder {
         throw failure;
       }
       return data as StoredDomainEvent | null;
+    },
+  });
+}
+
+export function createServerOutboxDomainEventRecorder(): DomainEventRecorder {
+  const supabase = createSupabaseServer();
+  const recorder = createServerDomainEventRecorder();
+  return createTaskCreatedOutboxDelivery(recorder, {
+    async markDelivered(eventId, commandId) {
+      const { data, error } = await supabase
+        .from('brain_event_outbox')
+        .update({ delivery_status: 'delivered', delivered_at: new Date().toISOString(), last_safe_error_code: null })
+        .eq('id', eventId)
+        .eq('command_id', commandId)
+        .eq('event_type', 'task.created')
+        .eq('delivery_status', 'pending')
+        .select('id')
+        .maybeSingle();
+      if (!error && data) return 'delivered';
+      if (!error) {
+        const { data: existing, error: lookupError } = await supabase
+          .from('brain_event_outbox')
+          .select('id,command_id,event_type,delivery_status')
+          .eq('id', eventId)
+          .maybeSingle();
+        if (!lookupError && existing?.command_id === commandId &&
+            existing.event_type === 'task.created' && existing.delivery_status === 'delivered') return 'already_delivered';
+      }
+      return 'conflict';
+    },
+    async noteFailure(eventId, commandId, safeCode) {
+      await supabase
+        .from('brain_event_outbox')
+        .update({
+          last_safe_error_code: safeCode,
+          available_at: new Date().toISOString(),
+        })
+        .eq('id', eventId)
+        .eq('command_id', commandId)
+        .eq('delivery_status', 'pending');
     },
   });
 }

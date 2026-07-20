@@ -65,6 +65,9 @@ test('valid task.create command executes through the focused handler', async () 
   assert.deepEqual(harness.calls[0], {
     tenantId: tenant.tenantId,
     actorId: actor.actorId,
+    proposalId,
+    correlationId: issued.correlationId,
+    command: issued,
     payload: issued.payload,
   });
   assert.deepEqual(result, {

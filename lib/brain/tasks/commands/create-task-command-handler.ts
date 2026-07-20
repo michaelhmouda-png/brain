@@ -3,6 +3,7 @@ import { COMMAND_SCHEMA_VERSION } from '../../kernel/commands/command-envelope.t
 import type { DomainEventRecorder } from '../../kernel/events/domain-event-recorder.ts';
 import type { CreateTaskCommand, CreateTaskCommandPayload } from './create-task-command.ts';
 import { createTaskCreatedEvent } from '../events/task-created-event.ts';
+import type { TaskCreatedEvent } from '../events/task-created-event.ts';
 import { logApprovedExecutionFailure } from '../../execution-diagnostics.server.ts';
 
 export type CreateTaskCommandErrorCode =
@@ -27,6 +28,7 @@ export interface CreateTaskRecordInput {
   readonly actorId: string;
   readonly proposalId: string;
   readonly correlationId: string;
+  readonly command: Readonly<CreateTaskCommand>;
   readonly payload: Readonly<CreateTaskCommandPayload>;
 }
 
@@ -38,6 +40,7 @@ export interface CreateTaskRecordResult {
   readonly assignedEmployeeId: string | null;
   readonly assignedEmployeeName: string | null;
   readonly dueDate: string | null;
+  readonly outboxEvent?: Readonly<TaskCreatedEvent>;
 }
 
 export interface CreateTaskCommandDependencies {
@@ -85,6 +88,7 @@ export function createTaskCommandHandler(
             actorId: command.actor.actorId,
             proposalId: command.causationId ?? 'missing',
             correlationId: command.correlationId,
+            command,
             payload: command.payload,
           });
         } catch (error) {
@@ -105,7 +109,7 @@ export function createTaskCommandHandler(
           assignedEmployeeName: result.assignedEmployeeName,
           dueDate: result.dueDate,
         });
-        const event = createTaskCreatedEvent({ command, result: safeResult });
+        const event = result.outboxEvent ?? createTaskCreatedEvent({ command, result: safeResult });
         try {
           await eventRecorder.record(event);
         } catch (error) {
