@@ -2,7 +2,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { resolveTaskVisibilityScope, taskRequestUsesSelfScope } from '../lib/task-visibility.ts';
+import {
+  classifyTaskRequestScope,
+  resolveTaskVisibilityScope,
+  shouldApplyModelTaskAssigneeFilter,
+  taskRequestUsesCompanyScope,
+  taskRequestUsesSelfScope,
+} from '../lib/task-visibility.ts';
 import { loadCompanyTasks } from '../lib/task-list.ts';
 
 const COMPANY = '11111111-1111-4111-8111-111111111111';
@@ -34,18 +40,54 @@ test('self-referential task wording scopes every canonical role to its trusted e
 
   for (const role of ['super_admin', 'owner', 'manager', 'employee']) {
     assert.deepEqual(
-      resolveTaskVisibilityScope({ role, employeeId: EMPLOYEE }, true),
+      resolveTaskVisibilityScope({ role, employeeId: EMPLOYEE }, 'self'),
       { kind: 'assigned', employeeId: EMPLOYEE },
     );
   }
   assert.deepEqual(
-    resolveTaskVisibilityScope({ role: 'manager', employeeId: null }, true),
+    resolveTaskVisibilityScope({ role: 'manager', employeeId: null }, 'self'),
     { kind: 'missing_employee_link' },
   );
   assert.deepEqual(
-    resolveTaskVisibilityScope({ role: 'manager', employeeId: EMPLOYEE }, false),
+    resolveTaskVisibilityScope({ role: 'manager', employeeId: EMPLOYEE }, 'default'),
     { kind: 'company' },
   );
+});
+
+test('explicit company task intent overrides model assignee filters for privileged roles', () => {
+  for (const wording of [
+    'Show all pending tasks',
+    'Show all tasks',
+    'List company tasks',
+    'Show team tasks',
+    'Tasks across the company',
+  ]) {
+    assert.equal(taskRequestUsesCompanyScope(wording), true);
+    assert.equal(classifyTaskRequestScope(wording), 'company');
+  }
+
+  for (const role of ['super_admin', 'owner', 'manager']) {
+    const visibility = resolveTaskVisibilityScope({ role, employeeId: EMPLOYEE }, 'company');
+    assert.deepEqual(visibility, { kind: 'company' });
+    assert.equal(shouldApplyModelTaskAssigneeFilter(visibility, 'company'), false);
+  }
+
+  const employeeVisibility = resolveTaskVisibilityScope({ role: 'employee', employeeId: EMPLOYEE }, 'company');
+  assert.deepEqual(employeeVisibility, { kind: 'assigned', employeeId: EMPLOYEE });
+  assert.equal(shouldApplyModelTaskAssigneeFilter(employeeVisibility, 'company'), false);
+});
+
+test('task scope is derived independently for sequential and fresh requests', () => {
+  const manager = { role: 'manager', employeeId: EMPLOYEE };
+  const firstIntent = classifyTaskRequestScope('Show me my tasks');
+  const secondIntent = classifyTaskRequestScope('Show all pending tasks');
+
+  assert.equal(firstIntent, 'self');
+  assert.deepEqual(resolveTaskVisibilityScope(manager, firstIntent), { kind: 'assigned', employeeId: EMPLOYEE });
+  assert.equal(secondIntent, 'company');
+  assert.deepEqual(resolveTaskVisibilityScope(manager, secondIntent), { kind: 'company' });
+  assert.equal(classifyTaskRequestScope('Show all pending tasks'), 'company');
+  assert.equal(classifyTaskRequestScope('Find cleaning tasks'), 'default');
 });
 
 test('assigned task list scope is passed as an immutable employee UUID', async () => {
@@ -78,13 +120,14 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(api, /resolveTaskVisibilityScope\(authorization\)/);
   assert.match(api, /query = query\.eq\('assigned_employee_id', assignedEmployeeId\)/);
   assert.match(brain, /resolveTaskVisibilityScope\(\{[\s\S]*employeeId: this\.employeeId/);
-  assert.match(brain, /taskRequestUsesSelfScope\(latestUserMessage\.content\)/);
+  assert.match(brain, /classifyTaskRequestScope\(latestUserMessage\.content\)/);
   const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
   const ownScope = getTasks.indexOf("query = query.eq('assigned_employee_id', visibility.employeeId)");
   const modelNameFilter = getTasks.indexOf('params.assigned_employee_name');
   assert.ok(ownScope > 0 && modelNameFilter > ownScope);
   assert.doesNotMatch(getTasks, /params\.assigned_employee_id/);
-  assert.match(getTasks, /!this\.trustedTaskSelfReference && params\.assigned_employee_name/);
+  assert.match(getTasks, /shouldApplyModelTaskAssigneeFilter/);
+  assert.match(getTasks, /applyModelAssigneeFilter && params\.assigned_employee_name/);
 });
 
 test('missing link, RLS drift, and zero assignments have distinct safe diagnostics', () => {
