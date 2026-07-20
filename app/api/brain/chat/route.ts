@@ -1,15 +1,41 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { randomUUID } from 'crypto';
 import OpenAI from 'openai';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapPriorityToDatabase, displayPriority } from '@/lib/brain/priorityMapper';
+import {
+  TASK_PRIORITY,
+  TASK_STATUS,
+  displayTaskPriority,
+  displayTaskStatus,
+  canonicalPriority,
+  canonicalStatus,
+  isValidTaskPriority,
+  isValidTaskStatus,
+} from '@/lib/brain/taskConstants';
+import {
+  claimProposalForExecution,
+  createProposal,
+  markProposalExecuted,
+  markProposalFailed,
+  rejectProposal,
+  type ProposalAction,
+} from '@/lib/brain/action-proposals';
+import {
+  createServerActionProposalStore,
+} from '@/lib/brain/action-proposal-store.server';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import type { ActorContext } from '@/lib/brain/kernel/actor-context';
+import { ActorContextError, actorContextErrorResponse } from '@/lib/brain/kernel/errors';
+import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
+import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
+import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
+import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
+import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
 // Module-level (per server instance). Max 1 000 entries to cap memory.
-const processedActionIds = new Set<string>();
-const MAX_PROCESSED_IDS = 1000;
 
 // ─── UUID helper ───────────────────────────────────────────────────────────────
 // Returns the trimmed UUID string, null for empty/non-string, or throws for invalid.
@@ -40,9 +66,7 @@ interface GetEmployeeSummaryInput {
   employee_id: string;
 }
 
-interface GetCompanySummaryInput {
-  company_id?: string;
-}
+type GetCompanySummaryInput = Record<string, never>;
 
 interface GetEmployeesInput {
   first_name?: string;         // Search by first name (partial match)
@@ -99,6 +123,66 @@ interface ConversationContext {
   lastMentionedTaskTitle: string | null;
 }
 
+function emptyConversationContext(): ConversationContext {
+  return {
+    recentEmployees: [],
+    lastMentionedEmployeeId: null,
+    lastMentionedDepartmentId: null,
+    recentTasks: [],
+    lastMentionedTaskId: null,
+    lastMentionedTaskTitle: null,
+  };
+}
+
+function normalizeConversationContext(value: unknown): ConversationContext {
+  const defaults = emptyConversationContext();
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return defaults;
+
+  const context = value as Partial<ConversationContext>;
+  return {
+    recentEmployees: Array.isArray(context.recentEmployees) ? context.recentEmployees : [],
+    lastMentionedEmployeeId: typeof context.lastMentionedEmployeeId === 'string'
+      ? context.lastMentionedEmployeeId
+      : null,
+    lastMentionedDepartmentId: typeof context.lastMentionedDepartmentId === 'string'
+      ? context.lastMentionedDepartmentId
+      : null,
+    recentTasks: Array.isArray(context.recentTasks) ? context.recentTasks : [],
+    lastMentionedTaskId: typeof context.lastMentionedTaskId === 'string'
+      ? context.lastMentionedTaskId
+      : null,
+    lastMentionedTaskTitle: typeof context.lastMentionedTaskTitle === 'string'
+      ? context.lastMentionedTaskTitle
+      : null,
+  };
+}
+
+function requestFailureDiagnostic(error: unknown, stage: string) {
+  const record = error && typeof error === 'object'
+    ? error as Record<string, unknown>
+    : null;
+  const scalarCode = record?.code;
+  const scalarStatus = record?.status ?? record?.statusCode;
+
+  return {
+    code: 'BRAIN_CHAT_REQUEST_FAILED',
+    stage,
+    errorName: error instanceof Error
+      ? error.name
+      : typeof record?.name === 'string' ? record.name : 'UnknownError',
+    errorMessage: error instanceof Error
+      ? error.message
+      : typeof record?.message === 'string' ? record.message : String(error),
+    errorCode: typeof scalarCode === 'string' || typeof scalarCode === 'number'
+      ? scalarCode
+      : null,
+    errorStatus: typeof scalarStatus === 'string' || typeof scalarStatus === 'number'
+      ? scalarStatus
+      : null,
+    stack: error instanceof Error && typeof error.stack === 'string' ? error.stack : null,
+  };
+}
+
 // Task management interfaces
 interface CreateTaskInput {
   title: string;                    // required
@@ -132,6 +216,7 @@ interface DeleteTaskInput {
 }
 
 interface GetTasksInput {
+  title?: string;                   // partial match on task title
   status?: 'Pending' | 'In Progress' | 'Completed';
   priority?: 'Low' | 'Medium' | 'High' | 'Critical';
   assigned_employee_name?: string;  // partial match
@@ -498,12 +583,7 @@ const TOOLS = [
     description: 'Get summary stats for a company including employee count, locations, and departments',
     parameters: {
       type: 'object',
-      properties: {
-        company_id: {
-          type: 'string',
-          description: "Company ID (optional, defaults to user's company)",
-        },
-      },
+      properties: {},
       required: [],
     },
   },
@@ -655,10 +735,14 @@ const TOOLS = [
     type: 'function' as const,
     name: 'get_tasks',
     description:
-      'Search and list tasks with optional filters. Examples: "Show today\'s pending tasks", "What tasks are overdue?", "List critical tasks"',
+      'Search and list tasks with optional filters. Examples: "Show today\'s pending tasks", "What tasks are overdue?", "List critical tasks", "Find the Restock the bar task"',
     parameters: {
       type: 'object',
       properties: {
+        title: {
+          type: 'string',
+          description: 'Filter by task title (partial match, case-insensitive)',
+        },
         status: {
           type: 'string',
           enum: ['Pending', 'In Progress', 'Completed'],
@@ -1600,12 +1684,10 @@ class ToolHandlers {
   }
 
   async getCompanySummary(params: GetCompanySummaryInput) {
-    let companyId = params.company_id || this.userCompanyId;
-
-    // Regular users cannot access other companies
-    if (this.userRole !== 'super_admin' && companyId !== this.userCompanyId) {
-      return { error: 'Access denied to other companies' };
-    }
+    void params;
+    // Tenant authority is fixed when the handler is constructed. Tool/model
+    // arguments cannot select or widen the company boundary.
+    const companyId = this.userCompanyId;
 
     const { data: company } = await this.supabase
       .from('companies')
@@ -2072,15 +2154,9 @@ class ToolHandlers {
 
     // 5. Build preview if not confirmed
     if (!params.confirmed) {
-      const pendingActionId = `task_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const previewStatus = params.status || 'pending';
       return {
         preview: true,
-        pendingAction: {
-          id: pendingActionId,
-          tool: 'create_task',
-          arguments: params,
-        },
         message: `Please confirm this task:
 
 Task: ${params.title.trim()}
@@ -2409,26 +2485,46 @@ Status: ${previewStatus}`,
 
   // Get Tasks with filtering
   async getTasks(params: GetTasksInput): Promise<any> {
+    console.log('[Brain Diagnostic] getTasks input:', JSON.stringify(params, null, 2));
     const limit = Math.min(params.limit || 20, 100);
     const today = new Date().toISOString().split('T')[0];
 
+    // ── Step 1: Query tasks only (no join — avoids schema cache relationship errors) ──
     let query = this.supabase
       .from('tasks')
-      .select(`
-        id, title, description, priority, status, due_date, assigned_employee_id,
-        employees:assigned_employee_id (first_name, last_name)
-      `)
+      .select('id, title, description, priority, status, due_date, assigned_employee_id')
       .eq('company_id', this.userCompanyId)
       .order('due_date', { ascending: true });
 
-    // Filter by status
-    if (params.status) {
-      query = query.eq('status', params.status);
+    // [Phase 0B] Filter by title (partial match, case-insensitive)
+    if (params.title) {
+      const titleFilter = params.title.trim().toLowerCase();
+      query = query.ilike('title', `%${titleFilter}%`);
+      console.log('[Brain Diagnostic] getTasks title filter:', { search: titleFilter });
     }
 
-    // Filter by priority
+    // [Phase 0B] Normalize status parameter from capitalized to lowercase before query
+    if (params.status) {
+      const canonicalStatusVal = canonicalStatus(params.status);
+      console.log('[Brain Diagnostic] getTasks status normalization:', {
+        input: params.status,
+        canonical: canonicalStatusVal,
+      });
+      if (canonicalStatusVal) {
+        query = query.eq('status', canonicalStatusVal);
+      }
+    }
+
+    // [Phase 0B] Normalize priority parameter from capitalized to lowercase before query
     if (params.priority) {
-      query = query.eq('priority', params.priority);
+      const canonicalPriorityVal = canonicalPriority(params.priority);
+      console.log('[Brain Diagnostic] getTasks priority normalization:', {
+        input: params.priority,
+        canonical: canonicalPriorityVal,
+      });
+      if (canonicalPriorityVal) {
+        query = query.eq('priority', canonicalPriorityVal);
+      }
     }
 
     // Filter by due date
@@ -2441,32 +2537,74 @@ Status: ${previewStatus}`,
         tomorrow.setDate(tomorrow.getDate() + 1);
         query = query.eq('due_date', tomorrow.toISOString().split('T')[0]);
       } else if (dueDateStr === 'overdue') {
-        query = query.lt('due_date', today).in('status', ['Pending', 'In Progress']);
+        query = query.lt('due_date', today).in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS]);
+        console.log('[Brain Diagnostic] getTasks overdue filter:', {
+          statuses: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
+        });
       } else {
-        // Specific date
         query = query.eq('due_date', dueDateStr);
       }
     }
 
     const { data, error } = await query.limit(limit);
 
+    // [Phase 0B] Log Supabase query result
     if (error) {
       console.error('[Brain Chat] Get tasks error:', error.message);
+      console.log('[Brain Diagnostic] getTasks Supabase error', {
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+      });
       return { error: 'Failed to retrieve tasks.' };
     }
 
-    // Filter by employee name (client-side partial match)
-    let filtered = data || [];
+    console.log('[Brain Diagnostic] getTasks Supabase query result', {
+      rowsReturned: (data || []).length,
+      hasTasks: (data || []).length > 0,
+    });
+
+    // ── Step 2: Collect unique employee IDs and fetch names in one query ──
+    const taskRows = data || [];
+    const employeeIds = [...new Set(
+      taskRows.map((t: any) => t.assigned_employee_id).filter(Boolean)
+    )];
+
+    const employeeMap: Record<string, string> = {};
+    if (employeeIds.length > 0) {
+      const { data: empRows, error: empError } = await this.supabase
+        .from('employees')
+        .select('id, first_name, last_name')
+        .in('id', employeeIds);
+
+      if (empError) {
+        console.log('[Brain Diagnostic] getTasks employee lookup error:', empError.message);
+        // Non-fatal: continue with "Unassigned" for all
+      } else {
+        for (const emp of (empRows || [])) {
+          employeeMap[emp.id] = `${emp.first_name} ${emp.last_name}`;
+        }
+      }
+      console.log('[Brain Diagnostic] getTasks employee map:', employeeMap);
+    }
+
+    // ── Step 3: Filter by employee name (client-side, using fetched map) ──
+    let filtered = taskRows;
     if (params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
       const searchName = params.assigned_employee_name.trim().toLowerCase();
-      filtered = filtered.filter((task: any) => {
-        if (!task.employees) return false;
-        const fullName = `${task.employees.first_name} ${task.employees.last_name}`.toLowerCase();
+      filtered = taskRows.filter((task: any) => {
+        const fullName = (employeeMap[task.assigned_employee_id] || '').toLowerCase();
         return fullName.includes(searchName);
+      });
+      console.log('[Brain Diagnostic] getTasks employee filter:', {
+        search: searchName,
+        beforeFilter: taskRows.length,
+        afterFilter: filtered.length,
       });
     }
 
-    // Format response
+    // ── Step 4: Format response ──
     const tasks = filtered.map((task: any) => ({
       id: task.id,
       title: task.title,
@@ -2474,14 +2612,25 @@ Status: ${previewStatus}`,
       priority: task.priority,
       status: task.status,
       due_date: task.due_date,
-      assigned_to: task.employees
-        ? `${task.employees.first_name} ${task.employees.last_name}`
-        : 'Unassigned',
+      assigned_to: employeeMap[task.assigned_employee_id] || 'Unassigned',
     }));
 
     console.log('[Task Query] Results retrieved:', {
       count: tasks.length,
-      taskTitles: tasks.map(t => t.title),
+      taskTitles: tasks.map((t: any) => t.title),
+    });
+
+    // [Phase 0B] Detailed diagnostic log
+    console.log('[Brain Diagnostic] getTasks result:', {
+      count: tasks.length,
+      tasks: tasks.map((t: any) => ({
+        id: t.id,
+        title: t.title,
+        priority: t.priority,
+        status: t.status,
+        due_date: t.due_date,
+        assigned_to: t.assigned_to,
+      })),
     });
 
     return { tasks, count: tasks.length };
@@ -2489,6 +2638,7 @@ Status: ${previewStatus}`,
 
   // Update Task
   async updateTask(params: UpdateTaskInput): Promise<any> {
+    console.log('[Brain Diagnostic] updateTask input:', JSON.stringify(params, null, 2));
     console.log('[Task Update] Request received:', {
       providedTaskId: params.task_id,
       priority: params.priority,
@@ -2501,11 +2651,20 @@ Status: ${previewStatus}`,
     // If task ID not provided, try to use last mentioned task from context
     if (!taskId && this.conversationContext?.lastMentionedTaskId) {
       console.log('[Task Update] Using lastMentionedTaskId from context:', this.conversationContext.lastMentionedTaskId);
+      console.log('[Brain Diagnostic] task resolution | source=context', {
+        contextTaskId: this.conversationContext.lastMentionedTaskId,
+        contextTaskTitle: this.conversationContext.lastMentionedTaskTitle,
+      });
       taskId = this.conversationContext.lastMentionedTaskId;
     }
 
-    // If still no task ID, try fuzzy search using available fields
+    // [Phase 0B] Log task ID resolution
     if (!taskId) {
+      console.log('[Brain Diagnostic] task resolution | stage=FAILED', {
+        explicitTaskId: params.task_id,
+        contextTaskId: this.conversationContext?.lastMentionedTaskId,
+        error: 'No task ID provided and no context available',
+      });
       console.log('[Task Update] No task ID provided, attempting fuzzy search...');
       // For now, return error asking for clarification
       return {
@@ -2514,32 +2673,37 @@ Status: ${previewStatus}`,
       };
     }
 
+    console.log('[Brain Diagnostic] task resolution | stage=RESOLVED', {
+      resolvedTaskId: taskId,
+      source: params.task_id ? 'explicit' : 'context',
+    });
+
     // Validate task ID format
     try {
       nullableUuid(taskId);
     } catch {
+      console.log('[Brain Diagnostic] task resolution | stage=INVALID_FORMAT', { taskId });
       return { success: false, error: 'Invalid task ID format.' };
     }
 
-    // Normalize priority values (capitalize first letter)
-    let normalizedPriority = params.priority;
-    if (normalizedPriority) {
-      const lowerPriority = normalizedPriority.toLowerCase();
-      if (lowerPriority === 'low') normalizedPriority = 'Low';
-      else if (lowerPriority === 'medium') normalizedPriority = 'Medium';
-      else if (lowerPriority === 'high') normalizedPriority = 'High';
-      else if (lowerPriority === 'critical') normalizedPriority = 'Critical';
-      console.log('[Task Update] Priority normalized:', params.priority, '->', normalizedPriority);
+    // Normalize priority values to canonical lowercase for database
+    const canonicalPriorityValue = params.priority ? canonicalPriority(params.priority) : undefined;
+    if (params.priority && !canonicalPriorityValue) {
+      console.log('[Brain Diagnostic] updateTask priority normalization FAILED:', params.priority);
+      return { success: false, error: `Invalid priority value "${params.priority}". Must be one of: ${Object.values(TASK_PRIORITY).join(', ')}.` };
+    }
+    if (canonicalPriorityValue) {
+      console.log('[Brain Diagnostic] updateTask priority normalized:', params.priority, '->', canonicalPriorityValue, '| display:', displayTaskPriority(canonicalPriorityValue));
     }
 
-    // Normalize status values (capitalize words)
-    let normalizedStatus = params.status;
-    if (normalizedStatus) {
-      const lowerStatus = normalizedStatus.toLowerCase();
-      if (lowerStatus === 'pending') normalizedStatus = 'Pending';
-      else if (lowerStatus === 'in_progress' || lowerStatus === 'in progress') normalizedStatus = 'In Progress';
-      else if (lowerStatus === 'completed') normalizedStatus = 'Completed';
-      console.log('[Task Update] Status normalized:', params.status, '->', normalizedStatus);
+    // Normalize status values to canonical lowercase for database
+    const canonicalStatusValue = params.status ? canonicalStatus(params.status) : undefined;
+    if (params.status && !canonicalStatusValue) {
+      console.log('[Brain Diagnostic] updateTask status normalization FAILED:', params.status);
+      return { success: false, error: `Invalid status value "${params.status}". Must be one of: ${Object.values(TASK_STATUS).join(', ')}.` };
+    }
+    if (canonicalStatusValue) {
+      console.log('[Brain Diagnostic] updateTask status normalized:', params.status, '->', canonicalStatusValue, '| display:', displayTaskStatus(canonicalStatusValue));
     }
 
     // Resolve employee name to ID if provided
@@ -2565,12 +2729,12 @@ Status: ${previewStatus}`,
       }
     }
 
-    // Build update object
+    // Build update object with canonical values
     const updateObj: Record<string, unknown> = {};
     if (params.title) updateObj.title = params.title;
     if (params.description) updateObj.description = params.description;
-    if (normalizedPriority) updateObj.priority = normalizedPriority;
-    if (normalizedStatus) updateObj.status = normalizedStatus;
+    if (canonicalPriorityValue) updateObj.priority = canonicalPriorityValue;  // Canonical lowercase
+    if (canonicalStatusValue) updateObj.status = canonicalStatusValue;        // Canonical lowercase
     if (params.due_date) updateObj.due_date = params.due_date;
     if (assignedEmployeeId !== undefined) updateObj.assigned_employee_id = assignedEmployeeId;
 
@@ -2578,8 +2742,64 @@ Status: ${previewStatus}`,
       return { success: false, error: 'No fields to update provided.' };
     }
 
-    console.log('[Task Update] Update payload:', updateObj);
-    console.log('[Task Update] Table: tasks, Company ID:', this.userCompanyId, 'Task ID:', taskId);
+    // [Phase 0D] Force-stringify so Turbopack doesn't swallow object values
+    console.log('[Task Update] Update payload JSON:', JSON.stringify(updateObj));
+    console.log('[Task Update] WHERE id =', taskId, 'AND company_id =', this.userCompanyId);
+
+    // Perform the update
+    // [Phase 0D] Pre-flight: SELECT the task to verify ID and company_id match BEFORE updating
+    const { data: preflightTask, error: preflightError } = await this.supabase
+      .from('tasks')
+      .select('id, title, company_id, status, priority')
+      .eq('id', taskId)
+      .single();
+
+    console.log('[Brain Diagnostic] updateTask preflight SELECT result:',
+      JSON.stringify({
+        taskId,
+        updateCompanyId: this.userCompanyId,
+        taskFoundById: !!preflightTask,
+        taskTitle: preflightTask?.title,
+        taskCompanyId: preflightTask?.company_id,
+        taskPriority: preflightTask?.priority,
+        taskStatus: preflightTask?.status,
+        companyIdsMatch: preflightTask?.company_id === this.userCompanyId,
+        preflightError: preflightError?.message,
+        preflightErrorCode: preflightError?.code,
+      })
+    );
+
+    if (preflightError) {
+      console.error('[Brain Diagnostic] updateTask preflight FAILED — task not visible via SELECT', {
+        taskId,
+        companyId: this.userCompanyId,
+        error: preflightError.message,
+        code: preflightError.code,
+      });
+      return {
+        success: false,
+        error: `Could not read task before updating: ${preflightError.message}`,
+      };
+    }
+
+    if (!preflightTask) {
+      console.error('[Brain Diagnostic] updateTask preflight — task SELECT returned null (RLS blocked or not found)');
+      return {
+        success: false,
+        error: `Task ID ${taskId} could not be found (may be blocked by RLS).`,
+      };
+    }
+
+    if (preflightTask.company_id !== this.userCompanyId) {
+      console.error('[Brain Diagnostic] updateTask preflight — COMPANY ID MISMATCH', {
+        taskCompanyId: preflightTask.company_id,
+        userCompanyId: this.userCompanyId,
+      });
+      return {
+        success: false,
+        error: `Company ID mismatch: task belongs to ${preflightTask.company_id}, user is in ${this.userCompanyId}`,
+      };
+    }
 
     // Perform the update
     const { data: updated, error: updateError } = await this.supabase
@@ -2591,18 +2811,36 @@ Status: ${previewStatus}`,
       .single();
 
     if (updateError) {
-      console.error('[Task Update] Supabase error:', {
-        message: updateError.message,
-        code: (updateError as any).code,
-        details: (updateError as any).details,
-        hint: (updateError as any).hint,
+      // Robust error capture — Supabase errors may have non-enumerable properties
+      const errMsg     = String((updateError as any).message   ?? updateError ?? '(no message)');
+      const errCode    = String((updateError as any).code      ?? '(no code)');
+      const errDetails = String((updateError as any).details   ?? '(no details)');
+      const errHint    = String((updateError as any).hint      ?? '(no hint)');
+
+      console.error('[Task Update] Supabase UPDATE FAILED');
+      console.error('[Task Update] error.message :', errMsg);
+      console.error('[Task Update] error.code    :', errCode);
+      console.error('[Task Update] error.details :', errDetails);
+      console.error('[Task Update] error.hint    :', errHint);
+      console.error('[Task Update] typeof error  :', typeof updateError);
+      console.error('[Task Update] raw error     :', updateError);
+
+      // [Phase 0D] Full diagnostic payload
+      console.log('[Brain Diagnostic] Supabase update result | FAILED', {
+        taskId,
+        companyId: this.userCompanyId,
+        updatePayload: updateObj,
+        error_message: errMsg,
+        error_code: errCode,
+        error_details: errDetails,
+        error_hint: errHint,
       });
 
       return {
         success: false,
-        error: updateError.message || 'Failed to update task in database.',
-        code: (updateError as any).code,
-        details: (updateError as any).details,
+        error: errMsg || 'Failed to update task in database.',
+        code: errCode,
+        details: errDetails,
       };
     }
 
@@ -2637,13 +2875,23 @@ Status: ${previewStatus}`,
       assignedTo: assignedEmployeeName,
     });
 
+    // [Phase 0B] Log successful update with returned values
+    console.log('[Brain Diagnostic] Supabase update result | SUCCESS', {
+      taskId: updated.id,
+      title: updated.title,
+      priority: updated.priority,  // Actual value returned from database
+      status: updated.status,      // Actual value returned from database
+      due_date: updated.due_date,
+      assigned_to: assignedEmployeeName,
+    });
+
     return {
       success: true,
       task: {
         id: updated.id,
         title: updated.title,
-        status: updated.status,
-        priority: updated.priority,
+        status: displayTaskStatus(updated.status),  // Display the status
+        priority: displayTaskPriority(updated.priority),  // Display the priority
         assigned_to: assignedEmployeeName,
         due_date: updated.due_date,
       },
@@ -2665,7 +2913,7 @@ Status: ${previewStatus}`,
 
     const { data: updated, error: updateError } = await this.supabase
       .from('tasks')
-      .update({ status: 'Completed' })
+      .update({ status: TASK_STATUS.COMPLETED })  // Use canonical lowercase constant
       .eq('id', params.task_id)
       .eq('company_id', this.userCompanyId)
       .select('id, title, status')
@@ -2680,7 +2928,7 @@ Status: ${previewStatus}`,
       success: true,
       id: updated.id,
       title: updated.title,
-      status: updated.status,
+      status: displayTaskStatus(updated.status),  // Display the status
     };
   }
 
@@ -2905,7 +3153,6 @@ Status: ${previewStatus}`,
 
     // Show confirmation preview if not yet confirmed
     if (!params.confirmed) {
-      const pendingActionId = `inv_mvt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const actionWord: Record<string, string> = {
         purchase: 'Add (purchase)',
         usage: 'Remove (usage)',
@@ -2926,11 +3173,6 @@ Status: ${previewStatus}`,
       else if (willGoBelowMinimum) lines.push(`Warning: Stock will fall below minimum (${item.minimum_quantity} ${item.unit}).`);
       return {
         preview: true,
-        pendingAction: {
-          id: pendingActionId,
-          tool: 'record_inventory_movement',
-          arguments: params,
-        },
         message: lines.join('\n'),
       };
     }
@@ -4053,234 +4295,201 @@ Status: ${previewStatus}`,
   }
 }
 
+function mayExecuteProposal(action: ProposalAction, role: string): boolean {
+  return action !== 'create_employee' || ['super_admin', 'owner', 'manager'].includes(role);
+}
+
+function safeExecutionMessage(action: ProposalAction): string {
+  const labels: Partial<Record<ProposalAction, string>> = {
+    create_employee: 'Employee created successfully.', create_task: 'Task created successfully.',
+    record_inventory_movement: 'Inventory movement recorded successfully.', create_shift: 'Shift created successfully.',
+    update_shift: 'Shift updated successfully.', delete_shift: 'Shift deleted successfully.',
+    create_maintenance_ticket: 'Maintenance ticket created successfully.', update_maintenance_ticket: 'Maintenance ticket updated successfully.',
+    delete_maintenance_ticket: 'Maintenance ticket deleted successfully.', complete_maintenance_ticket: 'Maintenance ticket completed successfully.',
+    create_announcement: 'Announcement created successfully.', update_announcement: 'Announcement updated successfully.',
+    delete_announcement: 'Announcement deleted successfully.', create_incident: 'Incident report created successfully.',
+    update_incident: 'Incident report updated successfully.', delete_incident: 'Incident report deleted successfully.',
+  };
+  return labels[action] ?? 'Action completed successfully.';
+}
+
+function logActionApprovalFailure(operation: string, error: unknown): void {
+  const failure = error && typeof error === 'object' ? error as Record<string, unknown> : null;
+  const cause = failure?.cause && typeof failure.cause === 'object'
+    ? failure.cause as Record<string, unknown>
+    : null;
+  console.error('[Brain Chat] Action approval failure', {
+    operation: failure?.operation ?? operation,
+    error,
+    message: failure?.message ?? String(error),
+    code: failure?.code ?? cause?.code ?? null,
+    details: failure?.details ?? cause?.details ?? null,
+    hint: failure?.hint ?? cause?.hint ?? null,
+    stack: failure?.stack ?? null,
+  });
+}
+
 // Main handler
 export async function POST(request: NextRequest) {
+  let failureStage = 'request.initialize';
   try {
-    // 1. Authenticate user
+    // 1. Authenticate and resolve the canonical trusted actor before request
+    // parsing, OpenAI, proposal lookup, tools, or tenant-domain access.
+    failureStage = 'supabase.client.initialize';
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      );
+    let actorContext: ActorContext;
+    try {
+      failureStage = 'actor_context.resolve';
+      actorContext = await resolveActorContext(supabase);
+    } catch (error) {
+      if (error instanceof ActorContextError) return actorContextErrorResponse(error);
+      return actorContextErrorResponse(new ActorContextError('ACTOR_CONTEXT_UNAVAILABLE'));
     }
-
-    console.log('[Brain Chat] Authenticated user ID:', user.id);
-
-    // 2. Load user profile (may fail due to RLS if company_id is NULL)
-    let { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('id, full_name, role, status, company_id')
-      .eq('id', user.id)
-      .single();
-
-    console.log('[Brain Chat] Profile lookup attempt 1:', { 
-      profileFound: !!profile, 
-      profileError: profileError?.message || null,
-      profileErrorCode: profileError?.code,
-    });
-
-    // 2a. If RLS blocks us (permission denied), we need to assign company_id first
-    // This is a bootstrap scenario: user exists but has no company assigned yet
-    if ((profileError?.code === '403' || profileError?.message?.includes('permission denied')) && !profile) {
-      console.log('[Brain Chat] RLS policy blocking profile access (likely NULL company_id). Attempting bootstrap...');
-      
-      // Get a company to assign (bypass RLS for this read since we're bootstrapping)
-      const { data: companies, error: companiesError } = await supabase
-        .from('companies')
-        .select('id, name')
-        .limit(1);
-
-      if (companiesError || !companies || companies.length === 0) {
-        console.error('[Brain Chat] Bootstrap failed: No companies found');
-        return NextResponse.json(
-          { error: 'No companies available. Contact administrator.' },
-          { status: 500 }
-        );
-      }
-
-      const companyId = companies[0].id;
-      console.log('[Brain Chat] Bootstrap: Assigning company', companyId, 'to user profile');
-
-      // Try to insert the profile if it doesn't exist, or update if it does
-      // First, try to get the raw profile data by checking if row exists
-      const { data: existingProfile, error: checkError } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('id', user.id)
-        .maybeSingle();  // Don't throw error if no row
-
-      if (checkError) {
-        console.log('[Brain Chat] Profile existence check error:', checkError.message);
-      }
-
-      if (existingProfile) {
-        // Profile exists, update it
-        console.log('[Brain Chat] Profile row exists (RLS blocked earlier). Updating company_id...');
-        const { data: updated, error: updateError } = await supabase
-          .from('profiles')
-          .update({ company_id: companyId })
-          .eq('id', user.id)
-          .select('id, full_name, role, status, company_id')
-          .single();
-
-        if (updateError) {
-          console.error('[Brain Chat] Profile update failed:', updateError.message);
-          return NextResponse.json(
-            { error: 'Failed to assign company to user profile' },
-            { status: 500 }
-          );
-        }
-        profile = updated;
-        console.log('[Brain Chat] Profile updated with company_id:', profile);
-      } else {
-        // Profile doesn't exist, create it
-        console.log('[Brain Chat] Profile does not exist. Creating...');
-        const { data: created, error: createError } = await supabase
-          .from('profiles')
-          .insert({
-            id: user.id,
-            full_name: user.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
-            role: 'manager',  // Default to manager for owner
-            status: 'active',
-            company_id: companyId,
-          })
-          .select('id, full_name, role, status, company_id')
-          .single();
-
-        if (createError) {
-          console.error('[Brain Chat] Profile creation failed:', createError.message);
-          return NextResponse.json(
-            { error: 'Failed to create user profile' },
-            { status: 500 }
-          );
-        }
-        profile = created;
-        console.log('[Brain Chat] Profile created with company_id:', profile);
-      }
-    }
-
-    // 2b. Regular case: Profile lookup succeeded but company_id is NULL
-    if (profile && !profile.company_id) {
-      console.log('[Brain Chat] Profile exists but company_id is null. Auto-assigning company...');
-      
-      const { data: companies, error: companiesError } = await supabase
-        .from('companies')
-        .select('id, name')
-        .limit(1);
-
-      if (companiesError || !companies || companies.length === 0) {
-        console.error('[Brain Chat] No companies found to assign');
-        return NextResponse.json(
-          { error: 'No companies available. Contact administrator.' },
-          { status: 500 }
-        );
-      }
-
-      const companyId = companies[0].id;
-      console.log('[Brain Chat] Updating profile with company_id:', companyId, 'from company:', companies[0].name);
-
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from('profiles')
-        .update({ company_id: companyId })
-        .eq('id', user.id)
-        .select('id, full_name, role, status, company_id')
-        .single();
-
-      if (updateError) {
-        console.error('[Brain Chat] Profile update failed:', updateError.message);
-        return NextResponse.json(
-          { error: 'Failed to update user profile' },
-          { status: 500 }
-        );
-      }
-
-      profile = updatedProfile;
-      console.log('[Brain Chat] Profile updated successfully:', profile);
-    }
-
-    // 2c. Handle case where profile lookup failed for other reasons
-    if (profileError && profileError?.code !== '403' && !profile) {
-      console.log('[Brain Chat] Profile not found. Creating new profile...');
-      
-      const { data: companies, error: companiesError } = await supabase
-        .from('companies')
-        .select('id, name')
-        .limit(1);
-
-      if (companiesError || !companies || companies.length === 0) {
-        console.error('[Brain Chat] No companies found to assign to new profile');
-        return NextResponse.json(
-          { error: 'No companies available. Contact administrator.' },
-          { status: 500 }
-        );
-      }
-
-      const companyId = companies[0].id;
-      console.log('[Brain Chat] Creating new profile with company_id:', companyId);
-
-      const { data: newProfile, error: createError } = await supabase
-        .from('profiles')
-        .insert({
-          id: user.id,
-          full_name: user.user_metadata?.name || user.email?.split('@')[0] || 'Unknown',
-          role: 'employee',
-          status: 'active',
-          company_id: companyId,
-        })
-        .select('id, full_name, role, status, company_id')
-        .single();
-
-      if (createError) {
-        console.error('[Brain Chat] Profile creation failed:', createError.message);
-        return NextResponse.json(
-          { error: 'Failed to create user profile' },
-          { status: 500 }
-        );
-      }
-
-      profile = newProfile;
-      console.log('[Brain Chat] New profile created:', profile);
-    }
-
-    // Validate we have a profile with company_id
-    if (!profile) {
-      console.error('[Brain Chat] FATAL: Profile is still null after all recovery attempts');
-      return NextResponse.json(
-        { error: 'Failed to load or create user profile' },
-        { status: 500 }
-      );
-    }
-
-    // 3. Check user is active
-    if (profile.status !== 'active') {
-      return NextResponse.json(
-        { error: 'User account is not active' },
-        { status: 403 }
-      );
+    let requestContext: BrainRequestContext;
+    try {
+      failureStage = 'tenant_scope.resolve';
+      requestContext = { actor: actorContext, tenant: tenantScopeFromActor(actorContext) };
+    } catch (error) {
+      if (error instanceof ActorContextError) return actorContextErrorResponse(error);
+      return actorContextErrorResponse(new ActorContextError('TENANT_SCOPE_UNAVAILABLE'));
     }
 
     // 4. Parse request body
+    failureStage = 'request.parse';
     const requestBody = await request.json() as {
-      messages: any[];
-      pendingAction?: { id: string; tool: string; arguments: Record<string, unknown> };
-      confirmed?: boolean;
-      context?: ConversationContext;
+      messages?: any[];
+      proposalId?: string;
+      decision?: 'approve' | 'reject';
+      context?: unknown;
     };
-    const { messages, pendingAction, confirmed } = requestBody;
+    const { messages, proposalId, decision } = requestBody;
+
+    // Proposal decisions are handled before OpenAI or tenant-domain access. The
+    // Stage 0B provisioning boundary above remains the first database boundary.
+    if (typeof proposalId === 'string' && (decision === 'approve' || decision === 'reject')) {
+      let proposalStore;
+      try {
+        proposalStore = createServerActionProposalStore();
+      } catch (error) {
+        logActionApprovalFailure('proposal.store.initialize_for_decision', error);
+        console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.store.initialize_for_decision', error });
+        process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.store.initialize_for_decision\n');
+        return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+      }
+
+      if (decision === 'reject') {
+        try {
+          const outcome = await rejectProposal(proposalStore, proposalId, requestContext);
+          if (outcome !== 'rejected') return NextResponse.json({ error: 'This action cannot be cancelled.', code: 'PROPOSAL_REJECTION_DENIED' }, { status: 409 });
+          return NextResponse.json({ message: 'Action cancelled.', role: 'assistant' });
+        } catch (error) {
+          logActionApprovalFailure('proposal.rejection', error);
+          console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.rejection', error });
+          process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.rejection\n');
+          return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+        }
+      }
+
+      try {
+        const claim = await claimProposalForExecution(proposalStore, proposalId, requestContext);
+        if (claim.outcome === 'executed') return NextResponse.json({ message: claim.safeResult || 'Action already completed.', role: 'assistant' });
+        if (claim.outcome !== 'claimed') {
+          const code = claim.outcome === 'expired' ? 'PROPOSAL_EXPIRED' : 'PROPOSAL_NOT_EXECUTABLE';
+          return NextResponse.json({ error: 'This action can no longer be executed.', code }, { status: 409 });
+        }
+
+        const stored = claim.proposal;
+        if (!mayExecuteProposal(stored.canonicalAction, actorContext.role)) {
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'AUTHORIZATION_DENIED');
+          return NextResponse.json({ error: 'You are not permitted to perform this action.', code: 'AUTHORIZATION_DENIED' }, { status: 403 });
+        }
+
+        const executionContext: ConversationContext = {
+          recentEmployees: [], lastMentionedEmployeeId: null, lastMentionedDepartmentId: null,
+          recentTasks: [], lastMentionedTaskId: null, lastMentionedTaskTitle: null,
+        };
+        const executionHandlers = new ToolHandlers(supabase, requestContext.tenant.companyId, actorContext.role, executionContext);
+        const createTaskApplicationService = stored.canonicalAction === 'create_task'
+          ? createSupabaseCreateTaskApplicationService(supabase)
+          : null;
+        const approvedActionRegistry = createApprovedActionRegistry({
+          createTaskApplicationService,
+          legacyExecutors: {
+            create_employee: payload => executionHandlers.createEmployee(payload as unknown as CreateEmployeeInput),
+            record_inventory_movement: payload => executionHandlers.recordInventoryMovement(payload as unknown as RecordInventoryMovementInput),
+            create_shift: payload => executionHandlers.createShift(payload as unknown as CreateShiftInput),
+            update_shift: payload => executionHandlers.updateShift(payload as unknown as UpdateShiftInput),
+            delete_shift: payload => executionHandlers.deleteShift(payload as unknown as DeleteShiftInput),
+            create_maintenance_ticket: payload => executionHandlers.createMaintenanceTicket(payload as unknown as CreateMaintenanceInput),
+            update_maintenance_ticket: payload => executionHandlers.updateMaintenanceTicket(payload as unknown as UpdateMaintenanceInput),
+            delete_maintenance_ticket: payload => executionHandlers.deleteMaintenanceTicket(payload as unknown as DeleteMaintenanceInput),
+            complete_maintenance_ticket: payload => executionHandlers.completeMaintenanceTicket(payload as unknown as { ticket_id: string; completion_notes?: string; confirmed?: boolean }),
+            create_announcement: payload => executionHandlers.createAnnouncement(payload as unknown as CreateAnnouncementInput),
+            update_announcement: payload => executionHandlers.updateAnnouncement(payload as unknown as UpdateAnnouncementInput),
+            delete_announcement: payload => executionHandlers.deleteAnnouncement(payload as unknown as DeleteAnnouncementInput),
+            create_incident: payload => executionHandlers.createIncident(payload as unknown as CreateIncidentInput),
+            update_incident: payload => executionHandlers.updateIncident(payload as unknown as UpdateIncidentInput),
+            delete_incident: payload => executionHandlers.deleteIncident(payload as unknown as DeleteIncidentInput),
+          },
+        });
+        let result: any;
+        try {
+          result = await approvedActionRegistry.execute({
+            context: requestContext,
+            action: stored.canonicalAction,
+            payload: stored.canonicalPayload,
+            proposalId: stored.id,
+          });
+        } catch (error) {
+          logApprovedExecutionFailure({
+            proposalId: stored.id,
+            correlationId: stored.correlationId,
+            action: stored.canonicalAction,
+            stage: 'approved_action_registry.execute',
+          }, error);
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_FAILED');
+          return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_FAILED' }, { status: 500 });
+        }
+
+        if (!result?.success) {
+          await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_REJECTED');
+          return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_REJECTED' }, { status: 409 });
+        }
+        const safeMessage = safeExecutionMessage(stored.canonicalAction);
+        try {
+          await markProposalExecuted(proposalStore, stored.id, stored.payloadHash, safeMessage);
+        } catch {
+          // The domain mutation may already have committed. Never replay it.
+          // Operations can alert on this safe code and query stale executing rows
+          // through trusted server tooling during the future reconciliation stage.
+          console.error('[Brain Chat] Proposal requires reconciliation', {
+            code: 'PROPOSAL_EXECUTION_STATE_UNCERTAIN', proposalId: stored.id,
+            correlationId: stored.correlationId, action: stored.canonicalAction,
+          });
+          return NextResponse.json({ error: 'Action result requires reconciliation.', code: 'PROPOSAL_EXECUTION_STATE_UNCERTAIN' }, { status: 503 });
+        }
+        return NextResponse.json({ message: safeMessage, role: 'assistant' });
+      } catch (error) {
+        logActionApprovalFailure('proposal.approval_pipeline', error);
+        console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.approval_pipeline', error });
+        process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.approval_pipeline\n');
+        return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+      }
+    }
+
+    // [Phase 0B] Log incoming request diagnostic
+    console.log('[Brain Diagnostic] ════════════════════════════════════════════');
+    console.log('[Brain Diagnostic] Incoming request');
+    console.log('[Brain Diagnostic] ════════════════════════════════════════════', {
+      messageCount: Array.isArray(messages) ? messages.length : 0,
+      provisioningValidation: 'passed',
+    });
 
     // Initialize conversation context (tracks recently created employees, last mentioned, etc.)
-    let conversationContext: ConversationContext = requestBody.context || {
-      recentEmployees: [],
-      lastMentionedEmployeeId: null,
-      lastMentionedDepartmentId: null,
-      recentTasks: [],
-      lastMentionedTaskId: null,
-      lastMentionedTaskTitle: null,
-    };
+    failureStage = 'conversation_context.normalize';
+    const conversationContext = normalizeConversationContext(requestBody.context);
 
+    failureStage = 'request.validate_messages';
     if (!Array.isArray(messages) || messages.length === 0) {
       return NextResponse.json(
         { error: 'Invalid messages format' },
@@ -4289,265 +4498,30 @@ export async function POST(request: NextRequest) {
     }
 
     // 5. Initialize OpenAI client
+    failureStage = 'openai.client.initialize';
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
     });
 
-    // 6. Validate company_id is a real UUID (never empty string)
-    // Log all profile details before validation
-    console.log('[Brain Chat] Profile before company_id validation:', {
-      userId: user.id,
-      profileId: profile.id,
-      profileFullName: profile.full_name,
-      profileRole: profile.role,
-      profileStatus: profile.status,
-      profileCompanyId: profile.company_id,
-      companyIdType: typeof profile.company_id,
-      companyIdIsNull: profile.company_id === null,
-      companyIdIsUndefined: profile.company_id === undefined,
-      companyIdIsEmptyString: profile.company_id === '',
-    });
-
-    const companyId = profile.company_id;
-    if (!companyId || typeof companyId !== 'string' || !companyId.trim()) {
-      console.error('[Brain Chat] VALIDATION FAILED - company_id is invalid:', {
-        userId: user.id,
-        profileId: profile.id,
-        companyId: companyId,
-        companyIdType: typeof companyId,
-      });
-      return NextResponse.json(
-        { 
-          error: 'User profile missing valid company_id. Contact administrator.',
-          debug: {
-            userId: user.id,
-            profileId: profile.id,
-            companyId: companyId,
-          }
-        },
-        { status: 400 }
-      );
-    }
-
-    console.log('[Brain Chat] Company ID validation PASSED:', {
-      userId: user.id,
-      profileId: profile.id,
-      companyId: companyId,
-    });
+    // 6. Use only the tenant assignment validated from persisted profile data.
+    const companyId = requestContext.tenant.companyId;
 
     // 7. Create tool handlers with validated company_id
+    failureStage = 'tool_handlers.initialize';
     const handlers = new ToolHandlers(
       supabase,
       companyId,  // guaranteed non-empty string
-      profile.role,
+      actorContext.role,
       conversationContext
     );
 
-    // ── DIRECT CONFIRMATION PATH ─────────────────────────────────────────────
-    // When the browser sends back a stored pendingAction with confirmed=true,
-    // we execute the mutation directly — the AI is NOT called.
-    if (pendingAction && confirmed === true && typeof pendingAction.id === 'string') {
-      const actionId = pendingAction.id;
-      const actionTool = pendingAction.tool;
-      console.log('[Brain Chat] Confirmation received | action:', actionId, '| tool:', actionTool);
-
-      // Idempotency: reject if this action already succeeded
-      if (processedActionIds.has(actionId)) {
-        return NextResponse.json({ message: 'This action has already been executed.', role: 'assistant' });
-      }
-
-      // Pessimistic lock — add BEFORE execution so concurrent confirms are rejected
-      processedActionIds.add(actionId);
-      if (processedActionIds.size > MAX_PROCESSED_IDS) {
-        const first = processedActionIds.values().next().value;
-        if (first !== undefined) processedActionIds.delete(first);
-      }
-
-      let result: any;
-
-      try {
-        switch (actionTool) {
-          case 'create_employee':
-            result = await handlers.createEmployee({
-              ...(pendingAction.arguments as unknown as CreateEmployeeInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'create_task':
-            result = await handlers.createTask({
-              ...(pendingAction.arguments as unknown as CreateTaskInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'record_inventory_movement':
-            result = await handlers.recordInventoryMovement({
-              ...(pendingAction.arguments as unknown as RecordInventoryMovementInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: SHIFT MANAGEMENT ────────────────────────────────
-          case 'create_shift':
-            result = await handlers.createShift({
-              ...(pendingAction.arguments as unknown as CreateShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_shift':
-            result = await handlers.updateShift({
-              ...(pendingAction.arguments as unknown as UpdateShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_shift':
-            result = await handlers.deleteShift({
-              ...(pendingAction.arguments as unknown as DeleteShiftInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: MAINTENANCE ─────────────────────────────────────
-          case 'create_maintenance_ticket':
-            result = await handlers.createMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as CreateMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_maintenance_ticket':
-            result = await handlers.updateMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as UpdateMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_maintenance_ticket':
-            result = await handlers.deleteMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as DeleteMaintenanceInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'complete_maintenance_ticket':
-            result = await handlers.completeMaintenanceTicket({
-              ...(pendingAction.arguments as unknown as { ticket_id: string; completion_notes?: string }),
-              confirmed: true,
-            });
-            break;
-
-          case 'list_maintenance_tickets':
-            result = await handlers.listMaintenanceTickets(
-              pendingAction.arguments as unknown as { status?: string; priority?: string; search?: string; limit?: number }
-            );
-            break;
-
-          // ─── PHASE 1: ANNOUNCEMENTS ───────────────────────────────────
-          case 'create_announcement':
-            result = await handlers.createAnnouncement({
-              ...(pendingAction.arguments as unknown as CreateAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_announcement':
-            result = await handlers.updateAnnouncement({
-              ...(pendingAction.arguments as unknown as UpdateAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_announcement':
-            result = await handlers.deleteAnnouncement({
-              ...(pendingAction.arguments as unknown as DeleteAnnouncementInput),
-              confirmed: true,
-            });
-            break;
-
-          // ─── PHASE 1: INCIDENTS ───────────────────────────────────────
-          case 'create_incident':
-            result = await handlers.createIncident({
-              ...(pendingAction.arguments as unknown as CreateIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'update_incident':
-            result = await handlers.updateIncident({
-              ...(pendingAction.arguments as unknown as UpdateIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          case 'delete_incident':
-            result = await handlers.deleteIncident({
-              ...(pendingAction.arguments as unknown as DeleteIncidentInput),
-              confirmed: true,
-            });
-            break;
-
-          default:
-            processedActionIds.delete(actionId); // Release lock — not a real action
-            return NextResponse.json({ error: 'Unknown pending action tool.' }, { status: 400 });
-        }
-      } catch (execErr) {
-        processedActionIds.delete(actionId); // Release lock on unexpected error
-        console.error('[Brain Chat] Confirmation execution error:', execErr);
-        return NextResponse.json({ message: 'Execution failed. Please try again.', role: 'assistant', pendingAction });
-      }
-
-      const r = result as any;
-
-      if (r?.success) {
-        console.log('[Brain Chat] Confirmation success | action:', actionId);
-
-        // Build natural-language success message per tool
-        let successMessage = r.message || 'Action completed successfully.';
-
-        if (actionTool === 'create_employee') {
-          const fullName = `${r.first_name} ${r.last_name}`.trim();
-          const lines = [`${fullName} was created successfully as ${r.role}.`];
-          if (r.department) lines.push(`• Department: ${r.department}`);
-          if (r.status) lines.push(`• Status: ${r.status}`);
-          lines.push(`• ID: ${r.id}`);
-          successMessage = lines.join('\n');
-
-          conversationContext.recentEmployees.unshift({
-            id: r.id,
-            firstName: r.first_name,
-            lastName: r.last_name,
-            fullName,
-            role: r.role,
-            department: r.department,
-            departmentId: (pendingAction.arguments as any).department_id || null,
-            locationId: (pendingAction.arguments as any).location_id || null,
-            email: (pendingAction.arguments as any).email,
-            phone: (pendingAction.arguments as any).phone,
-          });
-          conversationContext.lastMentionedEmployeeId = r.id;
-          if (conversationContext.recentEmployees.length > 10) {
-            conversationContext.recentEmployees = conversationContext.recentEmployees.slice(0, 10);
-          }
-        }
-
-        return NextResponse.json({ message: successMessage, role: 'assistant', context: conversationContext });
-      }
-
-      // Mutation failed — release lock so user can retry
-      processedActionIds.delete(actionId);
-      console.log('[Brain Chat] Confirmation failed | action:', actionId, '| reason:', r?.error);
-      return NextResponse.json({
-        message: r?.error || 'Action failed. Please try again.',
-        role: 'assistant',
-        pendingAction,
-        context: conversationContext,
-      });
-    }
+    // Do not log tenant, role, profile, or caller-supplied context details.
+    console.log('[Brain Diagnostic] ツールハンドラー initialized', {
+      provisioningValidation: 'passed',
+    });
 
     // 7. Build instructions and initial input for Responses API
+    failureStage = 'prompt.build';
     const recentEmployeesList = conversationContext.recentEmployees
       .map((e) => `- ${e.fullName} (${e.role}, ${e.department || 'No dept'})`)
       .join('\n');
@@ -4560,7 +4534,7 @@ Respect the authenticated user's role and permissions.
 If information is unavailable, say so.
 Do not claim an action was completed unless a tool completed it.
 Every operational decision should either be made by Brain or improved by Brain.
-Current user: ${profile.full_name || 'Unknown'} (${profile.role})
+Current user: ${actorContext.displayName || 'Unknown'} (${actorContext.role})
 
 CONVERSATION MEMORY — RECENT ENTITIES:
 You have access to recently mentioned employees in this conversation:
@@ -4673,8 +4647,9 @@ NOT:
 - "Success: 1 row inserted"
 
 VIEW TASKS:
-When a user asks to see tasks (e.g., "Show today's pending tasks", "What tasks are overdue?"):
-- Use get_tasks with appropriate filters (status, priority, due_date, assigned_employee_name)
+When a user asks to see tasks (e.g., "Show today's pending tasks", "What tasks are overdue?", "Find the Restock the bar task"):
+- Use get_tasks with appropriate filters (title, status, priority, due_date, assigned_employee_name)
+- Title filter supports partial match (e.g., "restock" will find "Restock the bar")
 - Special due_date values: "today", "tomorrow", "overdue" (automatically handled)
 - Format response naturally:
   * "You have 7 pending tasks."
@@ -4846,6 +4821,12 @@ OVERDUE TASKS:
 Returns tasks with due_date before today AND status is Pending or In Progress.
 Format: title, assignee, due_date, how many days overdue, priority.
 
+FIND SPECIFIC TASK:
+"Find the Restock the bar task" → get_tasks(title="Restock the bar")
+"Show me the cleaning task assigned to Khaled" → get_tasks(title="cleaning", assigned_employee_name="Khaled")
+"Find the task due July 18" → get_tasks(due_date="2026-07-18")
+Title search is case-insensitive partial match ("restock" will find "Restock the bar").
+
 VIP CUSTOMERS INACTIVE:
 "Which VIP customers haven't visited in 30 days?" → get_customers(inactive_days=30)
 Filter client-side to show only VIP (silver/gold/platinum) customers.
@@ -4857,11 +4838,23 @@ If user says "Make it high priority instead" or "Assign it to Khaled" while a pe
 update the planned action. Extract the change, then re-call the tool with updated arguments
 and confirmed=false to generate a new preview. Never execute the old version.`;
 
+    // [Phase 0B] Log available task tools
+    const taskTools = TOOLS.filter((t: any) => t.name && t.name.includes('task'));
+    console.log('[Brain Diagnostic] Available task tools:', taskTools.map((t: any) => t.name).join(', '));
 
     // Input array for Responses API — previous turns go in first, then the latest user message
     const inputItems: any[] = [...messages];
 
+    // [Phase 0B] Log before OpenAI call
+    console.log('[Brain Diagnostic] Calling OpenAI Responses API', {
+      model: 'gpt-5-mini',
+      messagesCount: inputItems.length,
+      toolsCount: TOOLS.length,
+      taskToolsCount: taskTools.length,
+    });
+
     // 8. Initial call to Responses API
+    failureStage = 'openai.responses.create.initial';
     let response = await (openai as any).responses.create({
       model: 'gpt-5-mini',
       instructions: systemInstructions,
@@ -4882,6 +4875,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
       // Execute each tool call and append its output
       for (const toolCall of pendingToolCalls) {
+        failureStage = 'tool_call.parse';
         const toolName: string = toolCall.name;
         const toolInput: Record<string, unknown> = JSON.parse(toolCall.arguments || '{}');
 
@@ -4893,6 +4887,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
         let toolResult: unknown;
         try {
+          failureStage = 'tool_call.execute';
           switch (toolName) {
             case 'get_current_user_profile':
               toolResult = await handlers.getCurrentUserProfile();
@@ -5066,22 +5061,32 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
             confirmMessage = lines.join('\n');
           }
 
-          const pendingActionId = toolName === 'create_employee'
-            ? randomUUID()
-            : (tr.pendingAction?.id || randomUUID());
+          const rows = Array.isArray(tr.fields)
+            ? tr.fields.map((field: any) => ({ key: String(field.label || 'Field'), value: String(field.value ?? '') }))
+            : Object.entries(tr.details || {}).map(([key, value]) => ({ key, value: String(value ?? '') }));
+          const label = String(tr.action || toolName.replaceAll('_', ' '));
 
-          console.log('[Brain Chat] Preview generated | tool:', toolName, '| action:', pendingActionId);
-
-          return NextResponse.json({
-            message: confirmMessage,
-            role: 'assistant',
-            pendingAction: tr.pendingAction ?? {
-              id: pendingActionId,
-              tool: toolName,
-              arguments: toolInput,
-            },
-            context: conversationContext,
-          });
+          try {
+            const proposalStore = createServerActionProposalStore();
+            const created = await createProposal(proposalStore, {
+              context: requestContext,
+              action: toolName,
+              rawArguments: toolInput,
+              preview: { label, rows },
+            });
+            console.log('[Brain Chat] Proposal created', { proposalId: created.id, correlationId: created.correlationId, action: created.canonicalAction, status: created.status });
+            return NextResponse.json({
+              message: confirmMessage,
+              role: 'assistant',
+              proposal: { id: created.id, label, rows, expiresAt: created.expiresAt },
+              context: conversationContext,
+            });
+          } catch (error) {
+            logActionApprovalFailure('proposal.creation_or_persistence', error);
+            console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.creation_or_persistence', error });
+            process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.creation_or_persistence\n');
+            return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
+          }
         }
         // ─────────────────────────────────────────────────────────────────────
 
@@ -5098,6 +5103,13 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
               console.log('[Brain Chat] Context updated - lastMentionedTask:', {
                 id: firstTask.id,
                 title: firstTask.title,
+              });
+
+              // [Phase 0B] Detailed diagnostic of context update
+              console.log('[Brain Diagnostic] context update | after getTasks', {
+                lastMentionedTaskId: conversationContext.lastMentionedTaskId,
+                lastMentionedTaskTitle: conversationContext.lastMentionedTaskTitle,
+                recentTaskCount: result.tasks.length,
               });
 
               // Also store all tasks in recentTasks for potential fuzzy matching
@@ -5138,6 +5150,14 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
                 priority: result.task.priority,
                 status: result.task.status,
               });
+
+              // [Phase 0B] Detailed diagnostic of context update after task update
+              console.log('[Brain Diagnostic] context update | after updateTask', {
+                lastMentionedTaskId: conversationContext.lastMentionedTaskId,
+                lastMentionedTaskTitle: conversationContext.lastMentionedTaskTitle,
+                updatedPriority: result.task.priority,
+                updatedStatus: result.task.status,
+              });
             }
           }
         }
@@ -5151,6 +5171,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
       }
 
       // Get next response with updated input
+      failureStage = 'openai.responses.create.follow_up';
       response = await (openai as any).responses.create({
         model: 'gpt-5-mini',
         instructions: systemInstructions,
@@ -5166,13 +5187,18 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
     // 10. Extract final text via output_text convenience property
     const finalText: string = (response as any).output_text || 'No response generated';
 
+    // [Phase 0B] Log final response state
+    console.log('[Brain Diagnostic] final response', {
+      messageLength: finalText.length,
+    });
+
     return NextResponse.json({
       message: finalText,
       role: 'assistant',
       context: conversationContext,
     });
   } catch (error) {
-    console.error('[API Brain Chat] Error:', error);
+    console.error('[API Brain Chat] Request failed', requestFailureDiagnostic(error, failureStage));
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

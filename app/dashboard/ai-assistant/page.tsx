@@ -15,8 +15,9 @@ interface Message {
 
 interface PendingAction {
   id: string;
-  tool: string;
-  arguments: Record<string, unknown>;
+  label: string;
+  rows: Array<{ key: string; value: string }>;
+  expiresAt: string;
 }
 
 // Phrases that count as explicit confirmation when a pendingAction is active.
@@ -48,71 +49,7 @@ const SUGGESTED_QUESTIONS = [
 
 /** Parse a pendingAction into a human-readable summary for the confirmation card */
 function describePendingAction(pa: PendingAction): { label: string; rows: Array<{ key: string; value: string }> } {
-  // First, try to detect ExecutionPlan format (if the API returned structure data)
-  if (pa.arguments && typeof pa.arguments === 'object' && 'fields' in pa.arguments) {
-    const plan = pa.arguments as any;
-    const rows: Array<{ key: string; value: string }> = (plan.fields || []).map((f: any) => ({
-      key: f.label || 'Field',
-      value: String(f.value || ''),
-    }));
-    return { label: plan.action || pa.tool, rows };
-  }
-
-  // Fallback: map tool names to human-readable labels
-  const toolLabels: Record<string, string> = {
-    create_task: 'Create Task',
-    update_task: 'Update Task',
-    create_employee: 'Create Employee',
-    create_shift: 'Create Shift',
-    update_shift: 'Update Shift',
-    delete_shift: 'Delete Shift',
-    create_maintenance_ticket: 'Create Maintenance Ticket',
-    update_maintenance_ticket: 'Update Maintenance Ticket',
-    delete_maintenance_ticket: 'Delete Maintenance Ticket',
-    create_announcement: 'Create Announcement',
-    update_announcement: 'Update Announcement',
-    delete_announcement: 'Delete Announcement',
-    create_incident: 'Create Incident',
-    update_incident: 'Update Incident',
-    delete_incident: 'Delete Incident',
-    record_inventory_movement: 'Inventory Movement',
-  };
-
-  const args = pa.arguments as Record<string, any>;
-  const rows: Array<{ key: string; value: string }> = [];
-
-  // Generic extraction: show key fields based on tool type
-  if (pa.tool.startsWith('create_') || pa.tool.startsWith('update_')) {
-    // For any create/update, extract common fields
-    if (args.title) rows.push({ key: 'Title', value: String(args.title) });
-    if (args.full_name) rows.push({ key: 'Name', value: String(args.full_name) });
-    // Note: employee_id should be resolved by API to full name via ExecutionPlan.fields
-    // Only show if API didn't provide ExecutionPlan (legacy fallback)
-    if (args.employee_id && !pa.arguments?.fields) {
-      rows.push({ key: 'Employee', value: String(args.employee_id) });
-    }
-    if (args.shift_date) rows.push({ key: 'Date', value: String(args.shift_date) });
-    if (args.start_time) rows.push({ key: 'Start Time', value: String(args.start_time) });
-    if (args.end_time) rows.push({ key: 'End Time', value: String(args.end_time) });
-    if (args.priority) rows.push({ key: 'Priority', value: String(args.priority) });
-    if (args.status) rows.push({ key: 'Status', value: String(args.status) });
-    // Note: assigned_to_id should be resolved by API to full name
-    // Only show if API didn't provide ExecutionPlan (legacy fallback)
-    if (args.assigned_to_id && !pa.arguments?.fields) {
-      rows.push({ key: 'Assigned To', value: String(args.assigned_to_id) });
-    }
-    if (args.assigned_employee_name) rows.push({ key: 'Assigned To', value: String(args.assigned_employee_name) });
-    if (args.due_date) rows.push({ key: 'Due Date', value: String(args.due_date) });
-    if (args.severity) rows.push({ key: 'Severity', value: String(args.severity) });
-  } else if (pa.tool === 'record_inventory_movement') {
-    rows.push({ key: 'Item ID', value: String(args.inventory_item_id || '') });
-    rows.push({ key: 'Movement', value: String(args.movement_type || '') });
-    rows.push({ key: 'Quantity', value: String(args.quantity || '') });
-    if (args.reason) rows.push({ key: 'Reason', value: String(args.reason) });
-  }
-
-  const label = toolLabels[pa.tool] || pa.tool;
-  return { label, rows: rows.length > 0 ? rows : [{ key: 'Action', value: pa.tool }] };
+  return { label: pa.label, rows: pa.rows };
 }
 
 export default function BrainChat() {
@@ -183,8 +120,9 @@ export default function BrainChat() {
       // Build request body: include pendingAction + confirmed when the user is confirming.
       const requestBody: Record<string, unknown> = { messages: apiMessages };
       if (confirming && pendingAction) {
-        requestBody.pendingAction = pendingAction;
-        requestBody.confirmed = true;
+        delete requestBody.messages;
+        requestBody.proposalId = pendingAction.id;
+        requestBody.decision = 'approve';
         // Mark as submitted before the request so rapid taps can’t duplicate it
         submittedActionIds.current.add(pendingAction.id);
       }
@@ -203,7 +141,7 @@ export default function BrainChat() {
       const data = (await response.json()) as {
         message: string;
         role: string;
-        pendingAction?: PendingAction;
+        proposal?: PendingAction;
       };
 
       // Add assistant message
@@ -217,8 +155,8 @@ export default function BrainChat() {
       setMessages((prev) => [...prev, assistantMessage]);
       setRateLimitRemaining((prev) => Math.max(prev - 1, 0));
 
-      if (data.pendingAction) {
-        setPendingAction(data.pendingAction);
+      if (data.proposal) {
+        setPendingAction(data.proposal);
         setCommandState('confirming');
       } else {
         setPendingAction(null);
@@ -238,18 +176,23 @@ export default function BrainChat() {
     }
   };
 
-  const cancelPendingAction = () => {
-    setPendingAction(null);
-    setCommandState('idle');
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: Date.now().toString(),
-        role: 'assistant',
-        content: 'Action cancelled.',
-        timestamp: new Date(),
-      },
-    ]);
+  const cancelPendingAction = async () => {
+    if (!pendingAction || isLoading) return;
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/brain/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ proposalId: pendingAction.id, decision: 'reject' }),
+      });
+      if (!response.ok) throw new Error('Unable to cancel this action.');
+      setPendingAction(null);
+      setCommandState('idle');
+      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Action cancelled.', timestamp: new Date() }]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to cancel this action.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const editPendingAction = () => {
