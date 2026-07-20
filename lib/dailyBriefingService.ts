@@ -134,7 +134,7 @@ export class DailyBriefingService {
       .from('tasks')
       .select('id, title, priority, due_date')
       .eq('company_id', this.userCompanyId)
-      .neq('status', 'Completed')
+      .neq('status', 'completed')
       .lt('due_date', today)
       .order('due_date', { ascending: true });
 
@@ -146,8 +146,8 @@ export class DailyBriefingService {
       .from('tasks')
       .select('id, title, priority, due_date, status')
       .eq('company_id', this.userCompanyId)
-      .eq('priority', 'Critical')
-      .eq('status', 'Pending')
+      .eq('priority', 'critical')
+      .eq('status', 'pending')
       .limit(10);
 
     return data || [];

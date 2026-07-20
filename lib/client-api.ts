@@ -42,6 +42,7 @@ export async function fetchJsonCollection(
   let response: Response;
   try {
     response = await fetch(input, {
+      cache: 'no-store',
       credentials: 'same-origin',
       headers: { Accept: 'application/json' },
       signal,
