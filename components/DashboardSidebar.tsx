@@ -81,8 +81,17 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
 
   useEffect(() => {
     if (!showMenu) return;
+    const scrollY = window.scrollY;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     const previousOverflow = document.body.style.overflow;
+    const previousPosition = document.body.style.position;
+    const previousTop = document.body.style.top;
+    const previousWidth = document.body.style.width;
+    document.documentElement.style.overflow = 'hidden';
     document.body.style.overflow = 'hidden';
+    document.body.style.position = 'fixed';
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = '100%';
     closeButtonRef.current?.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -111,8 +120,13 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => {
+      document.documentElement.style.overflow = previousHtmlOverflow;
       document.body.style.overflow = previousOverflow;
+      document.body.style.position = previousPosition;
+      document.body.style.top = previousTop;
+      document.body.style.width = previousWidth;
       document.removeEventListener('keydown', handleKeyDown);
+      window.scrollTo(0, scrollY);
     };
   }, [showMenu]);
 
@@ -149,79 +163,112 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
     employee: 'Employee',
   };
 
-  const navigation = (
-    <>
-      <div className="mb-8 flex items-center gap-4">
-        <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
-          <span className="text-2xl font-black tracking-[0.25em]">B</span>
-        </div>
-        <div>
-          <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Brain</p>
-          <p className="text-xs text-slate-400">Hospitality OS</p>
-        </div>
+  const brand = (
+    <div className="flex items-center gap-4">
+      <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
+        <span className="text-2xl font-black tracking-[0.25em]">B</span>
       </div>
+      <div>
+        <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Brain</p>
+        <p className="text-xs text-slate-400">Hospitality OS</p>
+      </div>
+    </div>
+  );
 
-      <nav className="flex-1 space-y-4 overflow-y-auto">
-        {navSections.map((section) => (
-          <div key={section.title}>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2 px-2">
-              {section.title}
-            </p>
-            <div className="space-y-1">
-              {section.items.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={() => setShowMenu(false)}
-                  className={`flex min-h-11 items-center rounded-lg px-4 py-2.5 text-sm font-medium transition-all ${
-                    isActive(item.href)
-                      ? 'bg-cyan-500/10 text-cyan-300 border border-cyan-500/20'
-                      : 'text-slate-400 hover:text-white hover:bg-white/5'
-                  }`}
-                >
-                  <span>{item.label}</span>
-                </Link>
-              ))}
-            </div>
+  const navigationLinks = (
+    <>
+      {navSections.map((section) => (
+        <div key={section.title}>
+          <p className="mb-1 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-gray-500 lg:mb-2 lg:text-xs">
+            {section.title}
+          </p>
+          <div className="space-y-0.5 lg:space-y-1">
+            {section.items.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                onClick={() => setShowMenu(false)}
+                className={`flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium transition-all lg:px-4 lg:py-2.5 ${
+                  isActive(item.href)
+                    ? 'border border-cyan-500/20 bg-cyan-500/10 text-cyan-300'
+                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <span>{item.label}</span>
+              </Link>
+            ))}
           </div>
-        ))}
-      </nav>
+        </div>
+      ))}
+    </>
+  );
 
-      <div className="mt-auto space-y-4">
-        {/* User Info Section */}
-        {profile && (
-          <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-4">
-            <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">Your Account</p>
-            <div className="mt-3 space-y-2">
-              <div className="text-sm font-medium text-white truncate">
-                {userName || profile.full_name || 'User'}
-              </div>
-              <div className="flex items-center gap-2">
-                <span
-                  className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-                    roleColors[profile.role] || roleColors.employee
-                  }`}
-                >
-                  {roleLabel[profile.role] || 'Employee'}
-                </span>
-              </div>
-              {profile.status !== 'active' && (
-                <div className="text-xs text-yellow-400">
-                  Status: <span className="capitalize">{profile.status}</span>
-                </div>
-              )}
-            </div>
+  const mobileAccount = profile ? (
+    <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3">
+      <div className="flex min-w-0 items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-white">
+            {profile.full_name || 'User'}
+          </div>
+          {userName && <div className="truncate text-xs text-slate-400">{userName}</div>}
+        </div>
+        <span
+          className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[0.65rem] font-semibold ring-1 ${
+            roleColors[profile.role] || roleColors.employee
+          }`}
+        >
+          {roleLabel[profile.role] || 'Employee'}
+        </span>
+      </div>
+      <button
+        onClick={handleLogout}
+        disabled={isPending}
+        className="mt-2 min-h-11 w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isPending ? 'Signing out...' : 'Sign out'}
+      </button>
+    </div>
+  ) : null;
 
-            <button
-              onClick={handleLogout}
-              disabled={isPending}
-              className="mt-3 min-h-11 w-full rounded-2xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {isPending ? 'Signing out...' : 'Sign out'}
-            </button>
+  const desktopAccount = profile ? (
+    <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-4">
+      <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">Your Account</p>
+      <div className="mt-3 space-y-2">
+        <div className="truncate text-sm font-medium text-white">
+          {userName || profile.full_name || 'User'}
+        </div>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+              roleColors[profile.role] || roleColors.employee
+            }`}
+          >
+            {roleLabel[profile.role] || 'Employee'}
+          </span>
+        </div>
+        {profile.status !== 'active' && (
+          <div className="text-xs text-yellow-400">
+            Status: <span className="capitalize">{profile.status}</span>
           </div>
         )}
       </div>
+      <button
+        onClick={handleLogout}
+        disabled={isPending}
+        className="mt-3 min-h-11 w-full rounded-2xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        {isPending ? 'Signing out...' : 'Sign out'}
+      </button>
+    </div>
+  ) : null;
+
+  const desktopNavigation = (
+    <>
+      <div className="mb-8">{brand}</div>
+      <nav className="flex-1 space-y-4 overflow-y-auto">
+        {navigationLinks}
+      </nav>
+      <div className="mt-4">{desktopAccount}</div>
     </>
   );
 
@@ -251,7 +298,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
       </header>
 
       {showMenu && (
-        <div className="fixed inset-0 z-50 lg:hidden" role="presentation">
+        <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden lg:hidden" role="presentation">
           <button
             type="button"
             className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
@@ -264,9 +311,21 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             role="dialog"
             aria-modal="true"
             aria-label="Dashboard navigation"
-            className="safe-area-bottom safe-area-top mobile-scroll-region absolute inset-y-0 left-0 flex w-[min(88vw,22rem)] flex-col overflow-y-auto border-r border-white/10 bg-[#080b12] p-5 shadow-2xl"
+            className="absolute inset-y-0 left-0 flex h-[100dvh] max-h-[100dvh] w-[min(88vw,380px)] flex-col overflow-hidden border-r border-white/10 bg-[#080b12] shadow-2xl"
           >
-            <div className="mb-3 flex justify-end">
+            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
+              <Link
+                href="/dashboard"
+                onClick={() => setShowMenu(false)}
+                className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl"
+                aria-label="Brain dashboard"
+              >
+                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 font-black tracking-[0.2em] text-cyan-300 ring-1 ring-cyan-400/20">B</span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Brain</span>
+                  <span className="block truncate text-xs text-slate-400">Hospitality OS</span>
+                </span>
+              </Link>
               <button
                 ref={closeButtonRef}
                 type="button"
@@ -274,19 +333,29 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
                   setShowMenu(false);
                   menuButtonRef.current?.focus();
                 }}
-                className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 text-slate-200"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-slate-200"
                 aria-label="Close navigation"
               >
                 <X aria-hidden="true" className="h-5 w-5" />
               </button>
-            </div>
-            {navigation}
+            </header>
+            <nav
+              className="mobile-scroll-region min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
+              aria-label="Mobile dashboard navigation"
+            >
+              {navigationLinks}
+            </nav>
+            {mobileAccount && (
+              <footer className="shrink-0 border-t border-white/10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
+                {mobileAccount}
+              </footer>
+            )}
           </aside>
         </div>
       )}
 
       <aside className="hidden w-full max-w-[300px] shrink-0 flex-col rounded-[36px] border border-white/10 bg-white/5 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:flex">
-        {navigation}
+        {desktopNavigation}
       </aside>
     </>
   );
