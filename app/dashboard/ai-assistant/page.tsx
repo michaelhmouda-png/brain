@@ -20,6 +20,21 @@ interface PendingAction {
   expiresAt: string;
 }
 
+interface ChatQuota {
+  limit: number;
+  remaining: number;
+  resetAt: string | null;
+}
+
+function parseQuota(value: unknown): ChatQuota | null {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  if (record.limit !== 100 || typeof record.remaining !== 'number' ||
+      !Number.isInteger(record.remaining) || record.remaining < 0 || record.remaining > 100 ||
+      !(record.resetAt === null || typeof record.resetAt === 'string')) return null;
+  return { limit: 100, remaining: record.remaining, resetAt: record.resetAt };
+}
+
 // Phrases that count as explicit confirmation when a pendingAction is active.
 const CONFIRMATION_PHRASES = [
   'confirm',
@@ -60,7 +75,7 @@ export default function BrainChat() {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
-  const [rateLimitRemaining, setRateLimitRemaining] = useState(10);
+  const [quota, setQuota] = useState<ChatQuota | null>(null);
   const [pendingAction, setPendingAction] = useState<PendingAction | null>(null);
   // Track IDs that have been submitted to prevent double-execution on fast taps
   const submittedActionIds = useRef<Set<string>>(new Set());
@@ -88,13 +103,37 @@ export default function BrainChat() {
     }
   }, []);
 
-  const sendMessage = async (text: string) => {
-    if (!text.trim() || isLoading || rateLimitRemaining <= 0) {
-      return;
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadQuota() {
+      try {
+        const response = await fetch('/api/brain/quota', {
+          cache: 'no-store',
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' },
+          signal: controller.signal,
+        });
+        const payload: unknown = await response.json();
+        const candidate = typeof payload === 'object' && payload !== null && !Array.isArray(payload)
+          ? parseQuota((payload as Record<string, unknown>).quota)
+          : null;
+        if (!response.ok || !candidate) throw new Error('Quota status unavailable');
+        setQuota(candidate);
+      } catch (quotaError) {
+        if (controller.signal.aborted) return;
+        setError(quotaError instanceof Error ? quotaError.message : 'Quota status unavailable');
+      }
     }
+    void loadQuota();
+    return () => controller.abort();
+  }, []);
+
+  const sendMessage = async (text: string) => {
+    if (!text.trim() || isLoading) return;
 
     // If a pending action is active, detect whether this message is a confirmation.
     const confirming = pendingAction !== null && isConfirmationText(text);
+    if (!confirming && (!quota || quota.remaining <= 0)) return;
 
     // Prevent double-execution: if this pending action was already submitted, skip.
     if (confirming && pendingAction && submittedActionIds.current.has(pendingAction.id)) {
@@ -139,12 +178,15 @@ export default function BrainChat() {
         body: JSON.stringify(requestBody),
       });
 
-      if (!response.ok) {
-        const data = await response.json();
-        throw new Error(data.error || 'Failed to get response');
-      }
+      const responsePayload: unknown = await response.json();
+      const responseRecord = typeof responsePayload === 'object' && responsePayload !== null && !Array.isArray(responsePayload)
+        ? responsePayload as Record<string, unknown>
+        : {};
+      const authoritativeQuota = parseQuota(responseRecord.quota);
+      if (authoritativeQuota) setQuota(authoritativeQuota);
+      if (!response.ok) throw new Error(typeof responseRecord.error === 'string' ? responseRecord.error : 'Failed to get response');
 
-      const data = (await response.json()) as {
+      const data = responseRecord as unknown as {
         message: string;
         role: string;
         proposal?: PendingAction;
@@ -159,8 +201,6 @@ export default function BrainChat() {
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
-      setRateLimitRemaining((prev) => Math.max(prev - 1, 0));
-
       if (data.proposal) {
         setPendingAction(data.proposal);
         setCommandState('confirming');
@@ -352,9 +392,10 @@ export default function BrainChat() {
       </div>
 
       {/* Rate limit indicator */}
-      {messages.length > 0 && (
+      {quota && (
         <div className="shrink-0 border-t border-slate-700/50 bg-black/40 px-3 py-2 text-xs text-slate-400 backdrop-blur-sm sm:px-6">
-          Requests remaining: {rateLimitRemaining}
+          Requests remaining: {quota.remaining} / {quota.limit}
+          {quota.remaining === 0 && quota.resetAt && ` · Resets ${new Date(quota.resetAt).toLocaleTimeString()}`}
         </div>
       )}
 
@@ -416,13 +457,13 @@ export default function BrainChat() {
               }
             }}
             placeholder="Ask Brain anything about your company..."
-            disabled={isLoading || rateLimitRemaining <= 0}
+            disabled={isLoading || !quota || quota.remaining <= 0}
             aria-label="Message Brain"
             className="min-w-0 flex-1 rounded-lg border border-cyan-500/20 bg-slate-900/50 px-3 py-3 text-base text-white placeholder-slate-500 transition focus:border-cyan-500/50 focus:bg-slate-900 focus:outline-none disabled:opacity-50 sm:px-4"
           />
           <button
             onClick={() => sendMessage(inputValue)}
-            disabled={isLoading || !inputValue.trim() || rateLimitRemaining <= 0}
+            disabled={isLoading || !inputValue.trim() || !quota || quota.remaining <= 0}
             className="flex min-h-11 shrink-0 items-center justify-center rounded-lg bg-gradient-to-r from-cyan-600 to-cyan-500 px-4 py-3 font-medium text-white transition hover:from-cyan-500 hover:to-cyan-400 disabled:cursor-not-allowed disabled:opacity-50 sm:px-6"
           >
             {isLoading ? (

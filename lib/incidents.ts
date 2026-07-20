@@ -44,7 +44,7 @@ export class IncidentsService {
 
     let query = this.supabase
       .from('incident_reports')
-      .select('*, reported_by:profiles(id, email), location:locations(id, name)', {
+      .select('*, reported_by:profiles(id, full_name), location:locations(id, name)', {
         count: 'exact',
       })
       .eq('company_id', this.companyId);
@@ -72,7 +72,7 @@ export class IncidentsService {
     query = query.range(offset, offset + pageSize - 1);
 
     const { data, error, count } = await query;
-    if (error) console.error('[Incidents Service] List incidents error:', error.message);
+    if (error) throw new Error('INCIDENT_LIST_FAILED', { cause: error });
 
     return {
       data: data || [],
@@ -86,7 +86,7 @@ export class IncidentsService {
   async getIncidents(status?: string, severity?: string) {
     let query = this.supabase
       .from('incident_reports')
-      .select('*, reported_by:profiles(id, email)')
+      .select('*, reported_by:profiles(id, full_name)')
       .eq('company_id', this.companyId);
 
     if (status) {
@@ -132,7 +132,7 @@ export class IncidentsService {
   async createIncident(
     title: string,
     description: string,
-    incidentType: string,
+    incidentType: string | null,
     severity: 'low' | 'medium' | 'high' | 'critical',
     locationId: string | null,
     affectedArea: string | null,
@@ -151,11 +151,12 @@ export class IncidentsService {
         affected_area: affectedArea,
         incident_time: incidentTime,
         reported_by_id: reportedByUserId,
+        status: 'open',
       })
       .select()
       .single();
 
-    if (error) console.error('[Incidents Service] Create incident error:', error.message);
+    if (error || !data) throw new Error('INCIDENT_CREATE_FAILED', { cause: error ?? undefined });
     return data;
   }
 
@@ -172,7 +173,7 @@ export class IncidentsService {
     return data;
   }
 
-  async updateIncident(incidentId: string, updates: Record<string, any>) {
+  async updateIncident(incidentId: string, updates: Record<string, unknown>) {
     const { data, error } = await this.supabase
       .from('incident_reports')
       .update(updates)
