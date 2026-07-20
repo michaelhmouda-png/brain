@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
-import { resolveTaskVisibilityScope } from '../lib/task-visibility.ts';
+import { resolveTaskVisibilityScope, taskRequestUsesSelfScope } from '../lib/task-visibility.ts';
 import { loadCompanyTasks } from '../lib/task-list.ts';
 
 const COMPANY = '11111111-1111-4111-8111-111111111111';
@@ -16,6 +16,36 @@ test('managing roles retain company visibility while linked employees receive as
   }
   assert.deepEqual(resolveTaskVisibilityScope({ role: 'employee', employeeId: EMPLOYEE }), { kind: 'assigned', employeeId: EMPLOYEE });
   assert.deepEqual(resolveTaskVisibilityScope({ role: 'employee', employeeId: null }), { kind: 'missing_employee_link' });
+});
+
+test('self-referential task wording scopes every canonical role to its trusted employee UUID', () => {
+  for (const wording of [
+    'show me my tasks',
+    'tasks assigned to me',
+    'Which tasks am I assigned?',
+    "Show me what I'm assigned",
+    'What do I need to do?',
+    'Show my workload',
+    'List the tasks for me',
+  ]) {
+    assert.equal(taskRequestUsesSelfScope(wording), true);
+  }
+  assert.equal(taskRequestUsesSelfScope('show all pending tasks'), false);
+
+  for (const role of ['super_admin', 'owner', 'manager', 'employee']) {
+    assert.deepEqual(
+      resolveTaskVisibilityScope({ role, employeeId: EMPLOYEE }, true),
+      { kind: 'assigned', employeeId: EMPLOYEE },
+    );
+  }
+  assert.deepEqual(
+    resolveTaskVisibilityScope({ role: 'manager', employeeId: null }, true),
+    { kind: 'missing_employee_link' },
+  );
+  assert.deepEqual(
+    resolveTaskVisibilityScope({ role: 'manager', employeeId: EMPLOYEE }, false),
+    { kind: 'company' },
+  );
 });
 
 test('assigned task list scope is passed as an immutable employee UUID', async () => {
@@ -48,11 +78,13 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(api, /resolveTaskVisibilityScope\(authorization\)/);
   assert.match(api, /query = query\.eq\('assigned_employee_id', assignedEmployeeId\)/);
   assert.match(brain, /resolveTaskVisibilityScope\(\{[\s\S]*employeeId: this\.employeeId/);
+  assert.match(brain, /taskRequestUsesSelfScope\(latestUserMessage\.content\)/);
   const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
   const ownScope = getTasks.indexOf("query = query.eq('assigned_employee_id', visibility.employeeId)");
   const modelNameFilter = getTasks.indexOf('params.assigned_employee_name');
   assert.ok(ownScope > 0 && modelNameFilter > ownScope);
   assert.doesNotMatch(getTasks, /params\.assigned_employee_id/);
+  assert.match(getTasks, /!this\.trustedTaskSelfReference && params\.assigned_employee_name/);
 });
 
 test('missing link, RLS drift, and zero assignments have distinct safe diagnostics', () => {

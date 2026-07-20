@@ -34,7 +34,7 @@ import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-actio
 import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quota.server';
 import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
-import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
+import { resolveTaskVisibilityScope, taskRequestUsesSelfScope } from '@/lib/task-visibility';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -1438,6 +1438,7 @@ class ToolHandlers {
     private userRole: string,
     private conversationContext?: ConversationContext,
     private employeeId: string | null = null,
+    private trustedTaskSelfReference = false,
   ) {}
 
   async getCurrentUserProfile() {
@@ -2492,7 +2493,7 @@ Status: ${previewStatus}`,
     const visibility = resolveTaskVisibilityScope({
       role: this.userRole as ActorContext['role'],
       employeeId: this.employeeId,
-    });
+    }, this.trustedTaskSelfReference);
     if (visibility.kind === 'missing_employee_link') {
       console.warn('[Brain Chat] get_tasks denied', {
         stage: 'task_visibility.resolve', outcome: 'missing_employee_link', persistedRole: this.userRole,
@@ -2599,9 +2600,8 @@ Status: ${previewStatus}`,
         });
         return { error: 'Assigned tasks are temporarily unavailable.', code: 'TASK_VISIBILITY_DIAGNOSTIC_FAILED' };
       }
-      const hasTaskFilters = Boolean(
-        params.title || params.priority || params.status || params.due_date || params.assigned_employee_name,
-      );
+      const hasTaskFilters = Boolean(params.title || params.priority || params.status || params.due_date ||
+        (!this.trustedTaskSelfReference && params.assigned_employee_name));
       if (assignedCount > 0 && hasTaskFilters) {
         return { tasks: [], count: 0, code: 'NO_MATCHING_ASSIGNED_TASKS' };
       }
@@ -2645,7 +2645,7 @@ Status: ${previewStatus}`,
 
     // ── Step 3: Filter by employee name (client-side, using fetched map) ──
     let filtered = taskRows;
-    if (params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
+    if (!this.trustedTaskSelfReference && params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
       const searchName = params.assigned_employee_name.trim().toLowerCase();
       filtered = taskRows.filter((task: any) => {
         const fullName = (employeeMap[task.assigned_employee_id] || '').toLowerCase();
@@ -4566,6 +4566,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const latestUserMessage = [...messages].reverse().find((message) => message.role === 'user');
+    const trustedTaskSelfReference = latestUserMessage
+      ? taskRequestUsesSelfScope(latestUserMessage.content)
+      : false;
+
     // Consume allowance only after trusted authentication/provisioning and a
     // valid AI message request, but before any OpenAI initialization or call.
     // Once admitted, upstream failures intentionally retain the consumption.
@@ -4608,6 +4613,7 @@ export async function POST(request: NextRequest) {
       actorContext.role,
       conversationContext,
       actorContext.employeeId,
+      trustedTaskSelfReference,
     );
 
     // Do not log tenant, role, profile, or caller-supplied context details.
