@@ -8,22 +8,9 @@ export default function TasksPage() {
           Keep the venue running smoothly with task orchestration and AI-driven priority.
         </p>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {[
-          { title: "Restock bar", due: "Today", priority: "High" },
-          { title: "Floor review", due: "2h", priority: "Medium" },
-          { title: "Guest feedback", due: "Tonight", priority: "Low" },
-        ].map((task) => (
-          <article key={task.title} className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 text-slate-300 transition hover:-translate-y-1 hover:bg-slate-900/90">
-            <div className="flex items-center justify-between gap-4">
-              <p className="text-lg font-semibold text-white">{task.title}</p>
-              <span className="rounded-3xl bg-slate-800/70 px-3 py-1 text-xs uppercase tracking-[0.28em] text-slate-300">
-                {task.due}
-              </span>
-            </div>
-            <p className="mt-4 text-sm text-slate-400">Priority: {task.priority}</p>
-          </article>
-        ))}
+      <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-8 text-center">
+        <p className="text-lg font-semibold text-white">No data yet</p>
+        <p className="mt-2 text-sm text-slate-400">Task records will appear here when the production task-list API is available.</p>
       </div>
     </div>
   );

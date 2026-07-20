@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  fetchJsonCollection,
+  isRecord,
+  logRouteDiagnostic,
+  stringField,
+  userFacingRouteError,
+} from '@/lib/client-api';
 
 interface Schedule {
   id: string;
@@ -10,26 +17,62 @@ interface Schedule {
   employee?: { first_name: string; last_name: string };
 }
 
+function normalizeSchedule(value: unknown): Schedule | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, 'id');
+  if (!id) return null;
+  const relation = Array.isArray(value.employee) ? value.employee[0] : value.employee;
+  const employee = isRecord(relation)
+    ? { first_name: stringField(relation, 'first_name'), last_name: stringField(relation, 'last_name') }
+    : undefined;
+  return {
+    id,
+    employee_id: stringField(value, 'employee_id'),
+    week_start_date: stringField(value, 'week_start_date'),
+    monday_shift_id: stringField(value, 'monday_shift_id') || undefined,
+    employee,
+  };
+}
+
 export default function ShiftsPage() {
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [weekStart, setWeekStart] = useState<string>(new Date().toISOString().split('T')[0]);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     async function loadSchedules() {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch(`/api/shifts?type=schedules&weekStart=${weekStart}`);
-        const data = await res.json();
-        setSchedules(data);
+        const data = await fetchJsonCollection(
+          'Shifts',
+          `/api/shifts?type=schedules&weekStart=${encodeURIComponent(weekStart)}`,
+          controller.signal
+        );
+        if (active) setSchedules(data.map(normalizeSchedule).filter((item): item is Schedule => item !== null));
       } catch (error) {
-        console.error('Error loading schedules:', error);
+        if (!active) return;
+        logRouteDiagnostic('Shifts', error);
+        setSchedules([]);
+        setError(userFacingRouteError(error));
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
     loadSchedules();
-  }, [weekStart]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [retryKey, weekStart]);
 
   const handleWeekChange = (days: number) => {
     const newDate = new Date(weekStart);
@@ -39,6 +82,17 @@ export default function ShiftsPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading schedules...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-center text-red-100" role="alert">
+        <p>{error}</p>
+        <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (
@@ -57,7 +111,7 @@ export default function ShiftsPage() {
           ← Previous Week
         </button>
         <div className="order-first col-span-2 text-center text-base font-semibold sm:order-none sm:col-span-1 sm:text-lg">
-          Week of {new Date(weekStart).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          Week of {new Date(`${weekStart}T00:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </div>
         <button
           onClick={() => handleWeekChange(7)}
