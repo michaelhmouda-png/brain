@@ -8,25 +8,20 @@ import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { ShiftManagementService } from '@/lib/shift-management';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
 import { NextRequest, NextResponse } from 'next/server';
+import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    // Get user's company
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return NextResponse.json({ error: 'No company found' }, { status: 403 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        { error: authorization.status === 401 ? 'Unauthorized' : 'No company found' },
+        { status: authorization.status }
+      );
     }
 
-    const shiftService = new ShiftManagementService(supabase, profile.company_id);
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
 
     // Query params
     const url = new URL(req.url);
@@ -55,7 +50,7 @@ export async function GET(req: NextRequest) {
         const { data: employees } = await supabase
           .from('employees')
           .select('id')
-          .eq('company_id', profile.company_id)
+          .eq('company_id', authorization.companyId)
           .eq('status', 'active');
         
         schedules = [];
@@ -95,7 +90,7 @@ export async function GET(req: NextRequest) {
       status,
       shiftType,
       employeeId,
-      sortBy: sortBy as any,
+      sortBy: sortBy as 'shift_date' | 'created_at' | 'status',
       sortOrder,
       dateFrom,
       dateTo,

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { fetchJsonCollection, logRouteDiagnostic } from '@/lib/client-api';
 
 interface DashboardWidget {
   label: string;
@@ -13,41 +14,58 @@ interface DashboardWidget {
 export default function OperationsDashboard() {
   const [widgets, setWidgets] = useState<DashboardWidget[]>([]);
   const [loading, setLoading] = useState(true);
+  const [warning, setWarning] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     async function loadDashboardData() {
+      setLoading(true);
+      setWarning(null);
       try {
-        // Load counts for each widget
-        const [tasksRes, shiftsRes, maintenanceRes, announcementsRes, incidentsRes] = await Promise.all([
-          fetch('/api/tasks?status=open'),
-          fetch('/api/shifts?type=schedules'),
-          fetch('/api/maintenance?status=open'),
-          fetch('/api/announcements'),
-          fetch('/api/incidents?status=open'),
-        ]);
-
-        const tasks = (await tasksRes.json()).length || 0;
-        const shifts = (await shiftsRes.json()).length || 0;
-        const maintenance = (await maintenanceRes.json()).length || 0;
-        const announcements = (await announcementsRes.json()).length || 0;
-        const incidents = (await incidentsRes.json()).length || 0;
-
-        setWidgets([
-          { label: 'Open Tasks', count: tasks, href: '/dashboard/tasks', color: 'from-blue-500 to-blue-600' },
-          { label: "Today's Shifts", count: shifts, href: '/dashboard/shifts', color: 'from-green-500 to-green-600' },
-          { label: 'Maintenance Issues', count: maintenance, href: '/dashboard/maintenance', color: 'from-orange-500 to-orange-600' },
-          { label: 'Announcements', count: announcements, href: '/dashboard/announcements', color: 'from-purple-500 to-purple-600' },
-          { label: 'Open Incidents', count: incidents, href: '/dashboard/incidents', color: 'from-red-500 to-red-600' },
-        ]);
+        const sources = [
+          { label: 'Scheduled Shifts', href: '/dashboard/shifts', color: 'from-green-500 to-green-600', api: '/api/shifts?type=list' },
+          { label: 'Maintenance Issues', href: '/dashboard/maintenance', color: 'from-orange-500 to-orange-600', api: '/api/maintenance?status=open' },
+          { label: 'Announcements', href: '/dashboard/announcements', color: 'from-purple-500 to-purple-600', api: '/api/announcements' },
+          { label: 'Open Incidents', href: '/dashboard/incidents', color: 'from-red-500 to-red-600', api: '/api/incidents?status=open' },
+        ] as const;
+        const results = await Promise.allSettled(
+          sources.map((source) => fetchJsonCollection('Operations', source.api, controller.signal))
+        );
+        if (!active) return;
+        const nextWidgets: DashboardWidget[] = [];
+        let failed = 0;
+        results.forEach((result, index) => {
+          const source = sources[index];
+          if (result.status === 'fulfilled') {
+            nextWidgets.push({ ...source, count: result.value.length });
+          } else {
+            failed += 1;
+            logRouteDiagnostic(`Operations:${source.label}`, result.reason);
+          }
+        });
+        setWidgets(nextWidgets);
+        if (failed > 0) setWarning('Some operational totals are temporarily unavailable.');
       } catch (error) {
-        console.error('Error loading dashboard:', error);
+        if (!active) return;
+        logRouteDiagnostic('Operations', error);
+        setWidgets([]);
+        setWarning('Operational totals are temporarily unavailable.');
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
     loadDashboardData();
-  }, []);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [retryKey]);
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading...</div>;
@@ -57,9 +75,16 @@ export default function OperationsDashboard() {
     <div className="space-y-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-900">Operations Dashboard</h1>
-        <p className="text-gray-600 mt-2">Welcome to HospiBrain Operations Platform</p>
+        <h1 className="text-3xl font-bold text-white">Operations Dashboard</h1>
+        <p className="mt-2 text-slate-300">Welcome to HospiBrain Operations Platform</p>
       </div>
+
+      {warning && (
+        <div className="flex flex-col gap-3 rounded-xl border border-amber-400/20 bg-amber-500/10 p-4 text-amber-100 sm:flex-row sm:items-center sm:justify-between" role="status">
+          <span>{warning}</span>
+          <button onClick={() => setRetryKey((value) => value + 1)} className="min-h-11 rounded-lg border border-amber-200/30 px-4 py-2 font-semibold">Retry</button>
+        </div>
+      )}
 
       {/* Widgets Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
@@ -74,30 +99,30 @@ export default function OperationsDashboard() {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <h2 className="text-xl font-bold mb-4">Quick Actions</h2>
+      <div className="rounded-lg bg-white p-6 text-slate-900 shadow">
+        <h2 className="mb-4 text-xl font-bold text-slate-950">Quick Actions</h2>
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          <Link href="/dashboard/tasks/new" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/tasks" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">✓</div>
             <div className="text-sm font-medium">Create Task</div>
           </Link>
-          <Link href="/dashboard/shifts" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/shifts" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">📅</div>
             <div className="text-sm font-medium">Schedule Shift</div>
           </Link>
-          <Link href="/dashboard/maintenance/new" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/maintenance" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">🔧</div>
             <div className="text-sm font-medium">Report Maintenance</div>
           </Link>
-          <Link href="/dashboard/announcements/new" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/announcements" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">📢</div>
             <div className="text-sm font-medium">New Announcement</div>
           </Link>
-          <Link href="/dashboard/incidents/new" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/incidents" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">⚠️</div>
             <div className="text-sm font-medium">Report Incident</div>
           </Link>
-          <Link href="/dashboard/settings" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center">
+          <Link href="/dashboard/settings" className="p-4 border border-gray-300 rounded-lg hover:bg-gray-50 text-center text-slate-900">
             <div className="text-2xl mb-2">⚙️</div>
             <div className="text-sm font-medium">Settings</div>
           </Link>

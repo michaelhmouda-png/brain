@@ -9,24 +9,20 @@ import { IncidentsService } from '@/lib/incidents';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
 import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
+import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
 export async function GET(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return NextResponse.json({ error: 'No company found' }, { status: 403 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) {
+      return NextResponse.json(
+        { error: authorization.status === 401 ? 'Unauthorized' : 'No company found' },
+        { status: authorization.status }
+      );
     }
 
-    const incidentsService = new IncidentsService(supabase, profile.company_id);
+    const incidentsService = new IncidentsService(supabase, authorization.companyId);
 
     const url = new URL(req.url);
     
@@ -57,7 +53,7 @@ export async function GET(req: NextRequest) {
       status,
       severity,
       incidentType,
-      sortBy: sortBy as any,
+      sortBy: sortBy as 'incident_time' | 'severity' | 'status' | 'created_at',
       sortOrder,
       dateFrom,
       dateTo,

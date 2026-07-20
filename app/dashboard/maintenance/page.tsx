@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  fetchJsonCollection,
+  isRecord,
+  logRouteDiagnostic,
+  stringField,
+  userFacingRouteError,
+} from '@/lib/client-api';
 
 interface MaintenanceTicket {
   id: string;
@@ -13,26 +20,65 @@ interface MaintenanceTicket {
   assigned_to?: { first_name: string; last_name: string };
 }
 
+function normalizeTicket(value: unknown): MaintenanceTicket | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, 'id');
+  if (!id) return null;
+  const relation = Array.isArray(value.assigned_to) ? value.assigned_to[0] : value.assigned_to;
+  const assignedTo = isRecord(relation)
+    ? { first_name: stringField(relation, 'first_name'), last_name: stringField(relation, 'last_name') }
+    : undefined;
+  return {
+    id,
+    title: stringField(value, 'title') || 'Untitled ticket',
+    priority: stringField(value, 'priority') || 'low',
+    status: stringField(value, 'status') || 'open',
+    area: stringField(value, 'area') || stringField(value, 'affected_area'),
+    equipment: stringField(value, 'equipment') || stringField(value, 'equipment_name'),
+    due_date: stringField(value, 'due_date'),
+    assigned_to: assignedTo,
+  };
+}
+
 export default function MaintenancePage() {
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [filter, setFilter] = useState<string>('open');
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     async function loadTickets() {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch(`/api/maintenance?status=${filter}`);
-        const data = await res.json();
-        setTickets(data);
+        const data = await fetchJsonCollection(
+          'Maintenance',
+          `/api/maintenance?status=${encodeURIComponent(filter)}`,
+          controller.signal
+        );
+        if (active) setTickets(data.map(normalizeTicket).filter((item): item is MaintenanceTicket => item !== null));
       } catch (error) {
-        console.error('Error loading tickets:', error);
+        if (!active) return;
+        logRouteDiagnostic('Maintenance', error);
+        setTickets([]);
+        setError(userFacingRouteError(error));
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
     loadTickets();
-  }, [filter]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [filter, retryKey]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -62,6 +108,17 @@ export default function MaintenancePage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading maintenance tickets...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-center text-red-100" role="alert">
+        <p>{error}</p>
+        <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (

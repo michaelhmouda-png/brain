@@ -8,17 +8,9 @@ export default function InventoryPage() {
           Maintain perfect stock balance and reduce spoilage with predictive replenishment.
         </p>
       </div>
-      <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {[
-          { item: "Premium spirits", level: "78%" },
-          { item: "Perishables", level: "62%" },
-          { item: "Cleaning supplies", level: "91%" },
-        ].map((entry) => (
-          <article key={entry.item} className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 text-slate-300 transition hover:-translate-y-1 hover:bg-slate-900/90">
-            <p className="text-lg font-semibold text-white">{entry.item}</p>
-            <p className="mt-4 text-3xl font-semibold text-cyan-300">{entry.level}</p>
-          </article>
-        ))}
+      <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-8 text-center">
+        <p className="text-lg font-semibold text-white">No data yet</p>
+        <p className="mt-2 text-sm text-slate-400">Inventory records will appear here when a company-scoped inventory source is connected.</p>
       </div>
     </div>
   );

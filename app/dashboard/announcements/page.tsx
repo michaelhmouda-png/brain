@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  fetchJsonCollection,
+  isRecord,
+  logRouteDiagnostic,
+  stringField,
+  userFacingRouteError,
+} from '@/lib/client-api';
 
 interface Announcement {
   id: string;
@@ -12,25 +19,58 @@ interface Announcement {
   created_by?: { email: string };
 }
 
+function normalizeAnnouncement(value: unknown): Announcement | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, 'id');
+  if (!id) return null;
+  const creatorRelation = Array.isArray(value.created_by) ? value.created_by[0] : value.created_by;
+  return {
+    id,
+    title: stringField(value, 'title') || 'Untitled announcement',
+    content: stringField(value, 'content'),
+    priority: stringField(value, 'priority') || 'normal',
+    published_at: stringField(value, 'published_at') || stringField(value, 'created_at'),
+    expires_at: stringField(value, 'expires_at') || undefined,
+    created_by: isRecord(creatorRelation)
+      ? { email: stringField(creatorRelation, 'email') }
+      : undefined,
+  };
+}
+
 export default function AnnouncementsPage() {
   const [announcements, setAnnouncements] = useState<Announcement[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     async function loadAnnouncements() {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch('/api/announcements');
-        const data = await res.json();
-        setAnnouncements(data);
+        const data = await fetchJsonCollection('Announcements', '/api/announcements', controller.signal);
+        if (active) setAnnouncements(data.map(normalizeAnnouncement).filter((item): item is Announcement => item !== null));
       } catch (error) {
-        console.error('Error loading announcements:', error);
+        if (!active) return;
+        logRouteDiagnostic('Announcements', error);
+        setAnnouncements([]);
+        setError(userFacingRouteError(error));
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
     loadAnnouncements();
-  }, []);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [retryKey]);
 
   const getPriorityColor = (priority: string) => {
     switch (priority) {
@@ -60,6 +100,17 @@ export default function AnnouncementsPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading announcements...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-center text-red-100" role="alert">
+        <p>{error}</p>
+        <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (

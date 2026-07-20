@@ -1,6 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import {
+  fetchJsonCollection,
+  isRecord,
+  logRouteDiagnostic,
+  stringField,
+  userFacingRouteError,
+} from '@/lib/client-api';
 
 interface Incident {
   id: string;
@@ -14,26 +21,68 @@ interface Incident {
   reported_by?: { email: string };
 }
 
+function normalizeIncident(value: unknown): Incident | null {
+  if (!isRecord(value)) return null;
+  const id = stringField(value, 'id');
+  if (!id) return null;
+  const locationRelation = Array.isArray(value.location) ? value.location[0] : value.location;
+  const reporterRelation = Array.isArray(value.reported_by) ? value.reported_by[0] : value.reported_by;
+  return {
+    id,
+    title: stringField(value, 'title') || 'Untitled incident',
+    description: stringField(value, 'description'),
+    severity: stringField(value, 'severity') || 'low',
+    status: stringField(value, 'status') || 'open',
+    location: isRecord(locationRelation)
+      ? stringField(locationRelation, 'name')
+      : stringField(value, 'location') || stringField(value, 'affected_area'),
+    incident_time: stringField(value, 'incident_time'),
+    incident_type: stringField(value, 'incident_type'),
+    reported_by: isRecord(reporterRelation)
+      ? { email: stringField(reporterRelation, 'email') }
+      : undefined,
+  };
+}
+
 export default function IncidentsPage() {
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [filter, setFilter] = useState<string>('open');
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 12_000);
     async function loadIncidents() {
+      setLoading(true);
+      setError(null);
       try {
-        const res = await fetch(`/api/incidents?status=${filter}`);
-        const data = await res.json();
-        setIncidents(data);
+        const data = await fetchJsonCollection(
+          'Incidents',
+          `/api/incidents?status=${encodeURIComponent(filter)}`,
+          controller.signal
+        );
+        if (active) setIncidents(data.map(normalizeIncident).filter((item): item is Incident => item !== null));
       } catch (error) {
-        console.error('Error loading incidents:', error);
+        if (!active) return;
+        logRouteDiagnostic('Incidents', error);
+        setIncidents([]);
+        setError(userFacingRouteError(error));
       } finally {
-        setLoading(false);
+        window.clearTimeout(timeout);
+        if (active) setLoading(false);
       }
     }
 
     loadIncidents();
-  }, [filter]);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      controller.abort();
+    };
+  }, [filter, retryKey]);
 
   const getSeverityColor = (severity: string) => {
     switch (severity) {
@@ -63,6 +112,17 @@ export default function IncidentsPage() {
 
   if (loading) {
     return <div className="flex items-center justify-center h-64">Loading incidents...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="rounded-2xl border border-red-400/20 bg-red-500/10 p-6 text-center text-red-100" role="alert">
+        <p>{error}</p>
+        <button onClick={() => setRetryKey((value) => value + 1)} className="mt-4 min-h-11 rounded-lg bg-white px-4 py-2 font-semibold text-slate-900">
+          Try again
+        </button>
+      </div>
+    );
   }
 
   return (
