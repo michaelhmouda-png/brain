@@ -3,6 +3,7 @@ import { COMMAND_SCHEMA_VERSION } from '../../kernel/commands/command-envelope.t
 import type { DomainEventRecorder } from '../../kernel/events/domain-event-recorder.ts';
 import type { CreateTaskCommand, CreateTaskCommandPayload } from './create-task-command.ts';
 import { createTaskCreatedEvent } from '../events/task-created-event.ts';
+import { logApprovedExecutionFailure } from '../../execution-diagnostics.server.ts';
 
 export type CreateTaskCommandErrorCode =
   | 'UNSUPPORTED_COMMAND_TYPE'
@@ -14,8 +15,8 @@ export type CreateTaskCommandErrorCode =
 export class CreateTaskCommandError extends Error {
   readonly code: CreateTaskCommandErrorCode;
 
-  constructor(code: CreateTaskCommandErrorCode) {
-    super(code);
+  constructor(code: CreateTaskCommandErrorCode, options?: ErrorOptions) {
+    super(code, options);
     this.name = 'CreateTaskCommandError';
     this.code = code;
   }
@@ -24,6 +25,8 @@ export class CreateTaskCommandError extends Error {
 export interface CreateTaskRecordInput {
   readonly tenantId: string;
   readonly actorId: string;
+  readonly proposalId: string;
+  readonly correlationId: string;
   readonly payload: Readonly<CreateTaskCommandPayload>;
 }
 
@@ -75,11 +78,24 @@ export function createTaskCommandHandler(
     async execute(command) {
       validateCommand(command);
       try {
-        const result = await dependencies.createTaskRecord({
-          tenantId: command.tenant.tenantId,
-          actorId: command.actor.actorId,
-          payload: command.payload,
-        });
+        let result: CreateTaskRecordResult;
+        try {
+          result = await dependencies.createTaskRecord({
+            tenantId: command.tenant.tenantId,
+            actorId: command.actor.actorId,
+            proposalId: command.causationId ?? 'missing',
+            correlationId: command.correlationId,
+            payload: command.payload,
+          });
+        } catch (error) {
+          logApprovedExecutionFailure({
+            proposalId: command.causationId ?? 'missing',
+            correlationId: command.correlationId,
+            action: 'create_task',
+            stage: 'task_repository.create',
+          }, error);
+          throw error;
+        }
         const safeResult = Object.freeze({
           taskId: result.taskId,
           title: result.title,
@@ -92,13 +108,19 @@ export function createTaskCommandHandler(
         const event = createTaskCreatedEvent({ command, result: safeResult });
         try {
           await eventRecorder.record(event);
-        } catch {
-          throw new CreateTaskCommandError('EVENT_RECORDING_FAILED');
+        } catch (error) {
+          logApprovedExecutionFailure({
+            proposalId: command.causationId ?? 'missing',
+            correlationId: command.correlationId,
+            action: 'create_task',
+            stage: 'domain_event_recorder.record',
+          }, error);
+          throw new CreateTaskCommandError('EVENT_RECORDING_FAILED', { cause: error });
         }
         return safeResult;
       } catch (error) {
         if (error instanceof CreateTaskCommandError) throw error;
-        throw new CreateTaskCommandError('TASK_CREATION_FAILED');
+        throw new CreateTaskCommandError('TASK_CREATION_FAILED', { cause: error });
       }
     },
   };

@@ -41,6 +41,32 @@ test('canonicalizes and prunes model arguments before persistence', async () => 
   assert.deepEqual(result.payload,{title:'Clean bar',priority:'high'});
 });
 
+test('normalizes title-cased create_task priorities before canonicalization', async () => {
+  for (const [input, expected] of [['Critical','critical'],['CRITICAL','critical'],['High','high'],['Medium','medium'],['Low','low']]) {
+    const store=new DurableMemoryStore();
+    const created=await proposal(store,{rawArguments:{title:'Clean bar',priority:input}});
+    assert.equal(created.canonicalPayload.priority,expected);
+    assert.equal(store.rows.get(created.id).canonicalPayload.priority,expected);
+  }
+});
+
+test('leaves canonical lowercase create_task priorities unchanged', async () => {
+  for (const priority of ['critical','high','medium','low']) {
+    const store=new DurableMemoryStore();
+    const created=await proposal(store,{rawArguments:{title:'Clean bar',priority}});
+    assert.equal(created.canonicalPayload.priority,priority);
+  }
+});
+
+test('invalid create_task priority still fails closed before persistence', async () => {
+  const store=new DurableMemoryStore();
+  await assert.rejects(
+    proposal(store,{rawArguments:{title:'Clean bar',priority:'Extreme'}}),
+    /INVALID_PROPOSAL_ARGUMENTS/,
+  );
+  assert.equal(store.rows.size,0);
+});
+
 test('hash binds action, canonical arguments, actor, tenant, and schema version', () => {
   const payload={title:'Clean bar'};
   const base=hashProposal('create_task',payload,requestContext);

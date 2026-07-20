@@ -9,8 +9,8 @@ export type DomainEventErrorCode =
 export class DomainEventError extends Error {
   readonly code: DomainEventErrorCode;
 
-  constructor(code: DomainEventErrorCode) {
-    super(code);
+  constructor(code: DomainEventErrorCode, options?: ErrorOptions) {
+    super(code, options);
     this.name = 'DomainEventError';
     this.code = code;
   }

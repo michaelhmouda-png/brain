@@ -115,6 +115,13 @@ function add(target: Record<string, unknown>, key: string, value: unknown) {
   if (value !== undefined) target[key] = value;
 }
 
+function normalizeTrustedPreviewArguments(action: string, raw: unknown): unknown {
+  if (action !== 'create_task') return raw;
+  const input = object(raw);
+  if (typeof input.priority !== 'string') return input;
+  return { ...input, priority: input.priority.trim().toLowerCase() };
+}
+
 export function canonicalizeProposalArguments(action: string, raw: unknown): { action: ProposalAction; payload: Record<string, unknown> } {
   if (!PROPOSAL_ACTIONS.includes(action as ProposalAction)) throw new Error('UNSUPPORTED_PROPOSAL_ACTION');
   const a = action as ProposalAction;
@@ -179,7 +186,8 @@ export function hashProposal(action: ProposalAction, payload: Record<string, unk
 }
 
 export async function createProposal(store: ProposalStore, input: { context: BrainRequestContext; action: string; rawArguments: unknown; preview: ProposalRecord['preview']; now?: Date }): Promise<ProposalRecord> {
-  const { action, payload } = canonicalizeProposalArguments(input.action, input.rawArguments);
+  const normalizedArguments = normalizeTrustedPreviewArguments(input.action, input.rawArguments);
+  const { action, payload } = canonicalizeProposalArguments(input.action, normalizedArguments);
   const now = input.now ?? new Date();
   const id = randomUUID();
   const identity = proposalIdentity(input.context);

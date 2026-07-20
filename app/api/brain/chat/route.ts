@@ -31,6 +31,7 @@ import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
 import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
+import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4252,6 +4253,22 @@ function safeExecutionMessage(action: ProposalAction): string {
   return labels[action] ?? 'Action completed successfully.';
 }
 
+function logActionApprovalFailure(operation: string, error: unknown): void {
+  const failure = error && typeof error === 'object' ? error as Record<string, unknown> : null;
+  const cause = failure?.cause && typeof failure.cause === 'object'
+    ? failure.cause as Record<string, unknown>
+    : null;
+  console.error('[Brain Chat] Action approval failure', {
+    operation: failure?.operation ?? operation,
+    error,
+    message: failure?.message ?? String(error),
+    code: failure?.code ?? cause?.code ?? null,
+    details: failure?.details ?? cause?.details ?? null,
+    hint: failure?.hint ?? cause?.hint ?? null,
+    stack: failure?.stack ?? null,
+  });
+}
+
 // Main handler
 export async function POST(request: NextRequest) {
   try {
@@ -4288,7 +4305,10 @@ export async function POST(request: NextRequest) {
       let proposalStore;
       try {
         proposalStore = createServerActionProposalStore();
-      } catch {
+      } catch (error) {
+        logActionApprovalFailure('proposal.store.initialize_for_decision', error);
+        console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.store.initialize_for_decision', error });
+        process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.store.initialize_for_decision\n');
         return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
       }
 
@@ -4297,7 +4317,10 @@ export async function POST(request: NextRequest) {
           const outcome = await rejectProposal(proposalStore, proposalId, requestContext);
           if (outcome !== 'rejected') return NextResponse.json({ error: 'This action cannot be cancelled.', code: 'PROPOSAL_REJECTION_DENIED' }, { status: 409 });
           return NextResponse.json({ message: 'Action cancelled.', role: 'assistant' });
-        } catch {
+        } catch (error) {
+          logActionApprovalFailure('proposal.rejection', error);
+          console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.rejection', error });
+          process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.rejection\n');
           return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
         }
       }
@@ -4352,7 +4375,13 @@ export async function POST(request: NextRequest) {
             payload: stored.canonicalPayload,
             proposalId: stored.id,
           });
-        } catch {
+        } catch (error) {
+          logApprovedExecutionFailure({
+            proposalId: stored.id,
+            correlationId: stored.correlationId,
+            action: stored.canonicalAction,
+            stage: 'approved_action_registry.execute',
+          }, error);
           await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_FAILED');
           return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_FAILED' }, { status: 500 });
         }
@@ -4375,7 +4404,10 @@ export async function POST(request: NextRequest) {
           return NextResponse.json({ error: 'Action result requires reconciliation.', code: 'PROPOSAL_EXECUTION_STATE_UNCERTAIN' }, { status: 503 });
         }
         return NextResponse.json({ message: safeMessage, role: 'assistant' });
-      } catch {
+      } catch (error) {
+        logActionApprovalFailure('proposal.approval_pipeline', error);
+        console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.approval_pipeline', error });
+        process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.approval_pipeline\n');
         return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
       }
     }
@@ -4983,7 +5015,10 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
               proposal: { id: created.id, label, rows, expiresAt: created.expiresAt },
               context: conversationContext,
             });
-          } catch {
+          } catch (error) {
+            logActionApprovalFailure('proposal.creation_or_persistence', error);
+            console.error('[Brain Chat][APPROVAL-503]', { operation: 'proposal.creation_or_persistence', error });
+            process.stderr.write('[Brain Chat][APPROVAL-503] operation=proposal.creation_or_persistence\n');
             return NextResponse.json({ error: 'Action approval is temporarily unavailable.', code: 'PROPOSAL_STORE_UNAVAILABLE' }, { status: 503 });
           }
         }

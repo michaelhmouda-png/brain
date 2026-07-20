@@ -6,6 +6,7 @@ import type {
   CreateTaskRecordInput,
   CreateTaskRecordResult,
 } from '../commands/create-task-command-handler.ts';
+import { logApprovedExecutionFailure } from '../../execution-diagnostics.server.ts';
 
 async function resolveAssignee(
   supabase: SupabaseClient,
@@ -73,7 +74,22 @@ async function createTaskRecord(
     .insert(record)
     .select('id, title, priority, status, assigned_employee_id, due_date')
     .single();
-  if (error || !data) throw new Error('TASK_INSERT_FAILED');
+  if (error || !data) {
+    const failure = new Error('TASK_INSERT_FAILED', { cause: error ?? undefined });
+    if (error) Object.assign(failure, {
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+      operation: 'task.persistence.insert',
+    });
+    logApprovedExecutionFailure({
+      proposalId: input.proposalId,
+      correlationId: input.correlationId,
+      action: 'create_task',
+      stage: 'task.persistence.insert',
+    }, failure);
+    throw failure;
+  }
 
   return {
     taskId: data.id,

@@ -12,7 +12,14 @@ export function createServerDomainEventRecorder(): DomainEventRecorder {
       const { error } = await supabase.from('brain_domain_events').insert(record);
       if (!error) return 'inserted';
       if (error.code === '23505') return 'duplicate';
-      throw new Error('DOMAIN_EVENT_INSERT_FAILED');
+      const failure = new Error('DOMAIN_EVENT_INSERT_FAILED', { cause: error });
+      Object.assign(failure, {
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        operation: 'domain_event.persistence.insert',
+      });
+      throw failure;
     },
     async findByCommand(commandId, eventType) {
       const { data, error } = await supabase
@@ -21,7 +28,16 @@ export function createServerDomainEventRecorder(): DomainEventRecorder {
         .eq('command_id', commandId)
         .eq('event_type', eventType)
         .maybeSingle();
-      if (error) throw new Error('DOMAIN_EVENT_LOOKUP_FAILED');
+      if (error) {
+        const failure = new Error('DOMAIN_EVENT_LOOKUP_FAILED', { cause: error });
+        Object.assign(failure, {
+          code: error.code,
+          details: error.details,
+          hint: error.hint,
+          operation: 'domain_event.persistence.lookup',
+        });
+        throw failure;
+      }
       return data as StoredDomainEvent | null;
     },
   });

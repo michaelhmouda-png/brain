@@ -67,7 +67,7 @@ export function createDomainEventRecorder(store: DomainEventStore): DomainEventR
         throw new DomainEventError('EVENT_RECORDING_FAILED');
       } catch (error) {
         if (error instanceof DomainEventError) throw error;
-        throw new DomainEventError('EVENT_RECORDING_FAILED');
+        throw new DomainEventError('EVENT_RECORDING_FAILED', { cause: error });
       }
     },
   };

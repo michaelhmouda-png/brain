@@ -1,6 +1,7 @@
 import type { ProposalAction } from '../action-proposals.ts';
 import type { BrainRequestContext } from '../kernel/request-context.ts';
 import type { CreateTaskApplicationService } from '../tasks/application/create-task-application-service.ts';
+import { logApprovedExecutionFailure } from '../execution-diagnostics.server.ts';
 
 export type LegacyApprovedAction = Exclude<ProposalAction, 'create_task'>;
 
@@ -64,11 +65,21 @@ export function createApprovedActionRegistry(
           if (!dependencies.createTaskApplicationService) {
             throw new ApprovedActionRegistryError('APPROVED_ACTION_EXECUTION_FAILED');
           }
-          await dependencies.createTaskApplicationService.execute({
-            context: input.context,
-            payload: input.payload,
-            proposalId: input.proposalId,
-          });
+          try {
+            await dependencies.createTaskApplicationService.execute({
+              context: input.context,
+              payload: input.payload,
+              proposalId: input.proposalId,
+            });
+          } catch (error) {
+            logApprovedExecutionFailure({
+              proposalId: input.proposalId,
+              correlationId: input.context.actor.correlationId,
+              action: input.action,
+              stage: 'approved_action_registry.execute',
+            }, error);
+            throw error;
+          }
           return Object.freeze({ success: true });
         case 'create_employee': return executeLegacy(input.action, input.payload);
         case 'record_inventory_movement': return executeLegacy(input.action, input.payload);

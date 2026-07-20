@@ -2,6 +2,7 @@ import type { BrainRequestContext } from '../../kernel/request-context.ts';
 import type { CommandHandler } from '../../kernel/commands/command-handler.ts';
 import { createTaskCommand, type CreateTaskCommand } from '../commands/create-task-command.ts';
 import type { CreateTaskCommandResult } from '../commands/create-task-command-handler.ts';
+import { logApprovedExecutionFailure } from '../../execution-diagnostics.server.ts';
 
 export interface CreateTaskApplicationInput {
   readonly context: BrainRequestContext;
@@ -37,7 +38,18 @@ export function createCreateTaskApplicationService(
         payload: input.payload,
         proposalId: input.proposalId,
       });
-      const result = await dependencies.handler.execute(command);
+      let result: CreateTaskCommandResult;
+      try {
+        result = await dependencies.handler.execute(command);
+      } catch (error) {
+        logApprovedExecutionFailure({
+          proposalId: input.proposalId,
+          correlationId: command.correlationId,
+          action: 'create_task',
+          stage: 'create_task_application_service.execute',
+        }, error);
+        throw error;
+      }
       return Object.freeze({
         taskId: result.taskId,
         title: result.title,
