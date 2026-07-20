@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { CheckCircle2, XCircle, Edit2, RefreshCw, AlertCircle } from 'lucide-react';
+import { TaskEvidenceAttachment } from '@/components/brain/TaskEvidenceAttachment';
 
 type CommandState = 'idle' | 'thinking' | 'confirming' | 'executing' | 'done' | 'failed';
 
@@ -98,7 +99,7 @@ export default function BrainChat() {
   useEffect(() => {
     const preloadedMessage = sessionStorage.getItem('aiPreloadMessage');
     if (preloadedMessage) {
-      setInputValue(preloadedMessage);
+      void Promise.resolve().then(() => setInputValue(preloadedMessage));
       sessionStorage.removeItem('aiPreloadMessage'); // Clean up
     }
   }, []);
@@ -142,7 +143,7 @@ export default function BrainChat() {
 
     // Add user message
     const userMessage: Message = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       role: 'user',
       content: text,
       timestamp: new Date(),
@@ -194,7 +195,7 @@ export default function BrainChat() {
 
       // Add assistant message
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: crypto.randomUUID(),
         role: 'assistant',
         content: data.message,
         timestamp: new Date(),
@@ -233,7 +234,7 @@ export default function BrainChat() {
       if (!response.ok) throw new Error('Unable to cancel this action.');
       setPendingAction(null);
       setCommandState('idle');
-      setMessages((prev) => [...prev, { id: Date.now().toString(), role: 'assistant', content: 'Action cancelled.', timestamp: new Date() }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Action cancelled.', timestamp: new Date() }]);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unable to cancel this action.');
     } finally {
@@ -446,6 +447,14 @@ export default function BrainChat() {
       {/* Input Area */}
       <div className="safe-area-bottom shrink-0 border-t border-cyan-500/10 bg-black/70 p-3 backdrop-blur-sm sm:p-6">
         <div className="flex gap-2 sm:gap-3">
+          <TaskEvidenceAttachment
+            disabled={isLoading}
+            onUploaded={(taskTitle) => setMessages((previous) => [...previous, {
+              id: crypto.randomUUID(), role: 'assistant',
+              content: `Evidence attached to ${taskTitle}. It is pending human review; the task was not completed automatically.`,
+              timestamp: new Date(),
+            }])}
+          />
           <input
             type="text"
             value={inputValue}
