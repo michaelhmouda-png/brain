@@ -97,3 +97,21 @@ test('successful C3 enqueue reports queued AI verification without claiming huma
   assert.match(assistant, /Evidence attached to \$\{taskTitle\}\. It is queued for AI verification\. The task was not completed automatically\./);
   assert.doesNotMatch(assistant, /Evidence attached to \$\{taskTitle\}\. It is pending human review/);
 });
+
+test('C3 pilot scheduler uses pg_cron, pg_net, runtime Vault access, and exact idempotent replacement', () => {
+  const schedule = read('supabase/migrations/202607210008_camera_evidence_worker_schedule.sql');
+  assert.match(schedule, /CREATE EXTENSION IF NOT EXISTS pg_cron/);
+  assert.match(schedule, /CREATE EXTENSION IF NOT EXISTS pg_net/);
+  assert.match(schedule, /'camera-evidence-worker-every-minute',\s*'\* \* \* \* \*'/);
+  assert.match(schedule, /https:\/\/www\.hospibrain\.com\/api\/internal\/task-evidence-worker/);
+  assert.doesNotMatch(schedule, /https:\/\/hospibrain\.com\/api\/internal\/task-evidence-worker/);
+  assert.match(schedule, /FROM vault\.decrypted_secrets AS runtime_secret[\s\S]*runtime_secret\.name = 'task_evidence_worker_secret'/);
+  assert.match(schedule, /FROM vault\.secrets AS secret_row[\s\S]*v_secret_count <> 1/);
+  assert.match(schedule, /WHERE scheduled_job\.jobname = 'camera-evidence-worker-every-minute'[\s\S]*cron\.unschedule\(v_job_id\)/);
+  assert.match(schedule, /'Content-Type', 'application\/json'/);
+  assert.match(schedule, /'Authorization', 'Bearer ' \|\|/);
+  assert.match(schedule, /body := '\{\}'::jsonb/);
+  assert.doesNotMatch(schedule, /VERCEL_AUTOMATION_BYPASS_SECRET|x-vercel-protection-bypass/i);
+  assert.doesNotMatch(schedule, /eyJ[A-Za-z0-9_-]{20,}|Bearer [A-Za-z0-9_-]{20,}/);
+  assert.doesNotMatch(schedule, /^\s*UPDATE public\.tasks/gm);
+});
