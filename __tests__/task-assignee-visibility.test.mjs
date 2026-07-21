@@ -12,6 +12,7 @@ import {
   taskRequestUsesCompanyScope,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
+  taskRequestUsesDailySelfScope,
   taskRequestUsesSelfScope,
 } from '../lib/task-visibility.ts';
 import { loadCompanyTasks } from '../lib/task-list.ts';
@@ -57,6 +58,33 @@ test('self-referential task wording scopes every canonical role to its trusted e
     resolveTaskVisibilityScope({ role: 'manager', employeeId: EMPLOYEE }, 'default'),
     { kind: 'company' },
   );
+});
+
+test('Lebanese and Modern Standard Arabic daily-work wording is bounded and self-scoped', () => {
+  for (const wording of [
+    'شو لازم أعمل اليوم؟',
+    'شو عليّي اليوم؟',
+    'شو عليي اليوم؟',
+    'شو مهامي اليوم؟',
+    'المهام المطلوبة مني',
+    'ما هي مهامي اليوم؟',
+    'ماذا يجب أن أفعل اليوم؟',
+    'شو عندي شغل؟ اليوم',
+  ]) {
+    assert.equal(taskRequestUsesDailySelfScope(wording), true, wording);
+    assert.equal(classifyTaskRequestScope(wording), 'self_daily', wording);
+    assert.deepEqual(
+      resolveTaskVisibilityScope({ role: 'employee', employeeId: EMPLOYEE }, classifyTaskRequestScope(wording)),
+      { kind: 'assigned', employeeId: EMPLOYEE },
+    );
+  }
+  for (const wording of ['فرجيني مهامي', 'اعرض مهامي', 'فرجيني كل مهامي']) {
+    assert.equal(taskRequestUsesSelfScope(wording), true, wording);
+    assert.equal(classifyTaskRequestScope(wording), 'self', wording);
+  }
+  for (const unrelated of ['شو الطقس اليوم؟', 'ماذا يجب أن نطلب اليوم؟', 'اعرض الشركة', 'شو عندي إشعارات؟']) {
+    assert.equal(taskRequestUsesDailySelfScope(unrelated), false, unrelated);
+  }
 });
 
 test('explicit company task intent overrides model assignee filters for privileged roles', () => {
@@ -212,9 +240,51 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(getTasks, /applyModelAssigneeFilter && params\.assigned_employee_name/);
   assert.match(getTasks, /taskRequestReferencesCompanyEmployee/);
   assert.match(getTasks, /resolveExplicitNamedTaskStatus/);
-  assert.match(getTasks, /if \(explicitNamedStatus\)/);
+  assert.match(getTasks, /if \(!deterministicDailySelfRequest && !activeSelfRequest && explicitNamedStatus\)/);
   assert.doesNotMatch(getTasks, /fullName\.includes\(searchName\)/);
   assert.match(brain, /report every task returned by get_tasks, including unassigned tasks/);
+});
+
+test('employee daily routing forces one trusted task read and filters today plus overdue work', () => {
+  const brain = read('app/api/brain/chat/route.ts');
+  const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
+  assert.match(brain, /deterministicEmployeeDailyTaskRequest = actorContext\.role === 'employee' && taskRequestScopeIntent === 'self_daily'/);
+  assert.match(brain, /deterministicEmployeeTaskReadRequest = actorContext\.role === 'employee'/);
+  assert.match(brain, /tool_choice: deterministicEmployeeTaskReadRequest[\s\S]*\{ type: 'function', name: 'get_tasks' \}/);
+  assert.match(brain, /requiredCalls\.length !== 1 \|\| pendingToolCalls\.length !== 1/);
+  assert.match(brain, /tool_choice: deterministicEmployeeTaskReadRequest \? 'none' : 'auto'/);
+  assert.match(getTasks, /deterministicDailySelfRequest[\s\S]*query = query\.eq\('assigned_employee_id', visibility\.employeeId\)/);
+  assert.match(getTasks, /\.in\('status', \[TASK_STATUS\.PENDING, TASK_STATUS\.IN_PROGRESS\]\)[\s\S]*\.lte\('due_date', today\)/);
+  assert.match(getTasks, /companyLocalDate\(\)/);
+  assert.match(brain, /\.from\('companies'\)[\s\S]*\.select\('timezone'\)[\s\S]*\.eq\('id', actorContext\.companyId\)/);
+  assert.doesNotMatch(getTasks, /params\.assigned_employee_id/);
+});
+
+test('employee daily result contract excludes completed, cancelled, future, other-employee and cross-company rows', () => {
+  const today = '2026-07-21';
+  const rows = [
+    { id: 'own-overdue', company_id: COMPANY, assigned_employee_id: EMPLOYEE, status: 'pending', due_date: '2026-07-20' },
+    { id: 'own-today', company_id: COMPANY, assigned_employee_id: EMPLOYEE, status: 'in_progress', due_date: today },
+    { id: 'own-completed', company_id: COMPANY, assigned_employee_id: EMPLOYEE, status: 'completed', due_date: today },
+    { id: 'own-cancelled', company_id: COMPANY, assigned_employee_id: EMPLOYEE, status: 'cancelled', due_date: today },
+    { id: 'own-future', company_id: COMPANY, assigned_employee_id: EMPLOYEE, status: 'pending', due_date: '2026-07-22' },
+    { id: 'other-employee', company_id: COMPANY, assigned_employee_id: '33333333-3333-4333-8333-333333333333', status: 'pending', due_date: today },
+    { id: 'cross-company', company_id: '44444444-4444-4444-8444-444444444444', assigned_employee_id: EMPLOYEE, status: 'pending', due_date: today },
+  ];
+  const visible = rows.filter((row) => row.company_id === COMPANY && row.assigned_employee_id === EMPLOYEE &&
+    ['pending', 'in_progress'].includes(row.status) && row.due_date <= today);
+  assert.deepEqual(visible.map((row) => row.id), ['own-overdue', 'own-today']);
+  assert.equal(shouldApplyModelTaskAssigneeFilter({ kind: 'assigned', employeeId: EMPLOYEE }, 'self_daily'), false);
+});
+
+test('employee show-all follow-up remains own active work while privileged defaults remain company-scoped', () => {
+  const brain = read('app/api/brain/chat/route.ts');
+  const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
+  assert.match(getTasks, /activeSelfRequest = this\.userRole === 'employee' && this\.taskRequestScopeIntent === 'self'/);
+  assert.match(getTasks, /activeSelfRequest[\s\S]*query\.in\('status', \[TASK_STATUS\.PENDING, TASK_STATUS\.IN_PROGRESS\]\)/);
+  for (const role of ['manager', 'owner', 'super_admin']) {
+    assert.deepEqual(resolveTaskVisibilityScope({ role, employeeId: EMPLOYEE }, 'default'), { kind: 'company' });
+  }
 });
 
 test('missing link, RLS drift, and zero assignments have distinct safe diagnostics', () => {

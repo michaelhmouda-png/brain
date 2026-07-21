@@ -9,7 +9,7 @@ export type TaskVisibilityScope =
   | { kind: 'assigned'; employeeId: string }
   | { kind: 'missing_employee_link' };
 
-export type TaskRequestScopeIntent = 'self' | 'company' | 'default';
+export type TaskRequestScopeIntent = 'self_daily' | 'self' | 'company' | 'default';
 
 export type CompanyTaskEmployee = {
   id: string;
@@ -30,14 +30,31 @@ function normalizeTaskIntentText(message: string): string {
   return message
     .normalize('NFKC')
     .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g, '')
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/[،؛؟]/g, ' ')
     .toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06ff']+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }
 
+export function taskRequestUsesDailySelfScope(message: string): boolean {
+  const normalized = normalizeTaskIntentText(message);
+  const mentionsToday = /(?:^|\s)(?:اليوم|هاليوم)(?:\s|$)/.test(normalized);
+  const dailyWorkQuestion = [
+    /(?:^|\s)شو\s+(?:لازم\s+)?(?:اعمل|عليي|مهامي|عندي\s+شغل)(?:\s|$)/,
+    /(?:^|\s)ما\s+هي\s+مهامي(?:\s|$)/,
+    /(?:^|\s)ماذا\s+يجب\s+ان\s+افعل(?:\s|$)/,
+  ].some((pattern) => pattern.test(normalized));
+  const requestedFromMe = /(?:^|\s)المهام\s+المطلوب[ةه]\s+مني(?:\s|$)/.test(normalized);
+  return requestedFromMe || (mentionsToday && dailyWorkQuestion);
+}
+
 export function taskRequestUsesSelfScope(message: string): boolean {
   const normalized = normalizeTaskIntentText(message);
-  return [
+  return taskRequestUsesDailySelfScope(message) || [
     /\bmy (?:assigned )?tasks?\b/,
     /\bmy (?:work|workload|assignments?)\b/,
     /\btasks? (?:that (?:are|were) )?assigned to me\b/,
@@ -48,6 +65,8 @@ export function taskRequestUsesSelfScope(message: string): boolean {
     /\bwhat do i (?:need|have) to do\b/,
     /\bwhat am i (?:working on|responsible for)\b/,
     /\bshow me (?:what )?i(?:'m| am) assigned\b/,
+    /(?:^|\s)شو\s+(?:عليي|مهامي|عندي\s+شغل)(?:\s|$)/,
+    /(?:^|\s)(?:فرجيني|اعرض(?:\s+لي)?)\s+(?:كل\s+)?مهامي(?:\s|$)/,
   ].some((pattern) => pattern.test(normalized));
 }
 
@@ -73,6 +92,7 @@ export function taskRequestNeedsUnfilteredCompanyTasks(message: string): boolean
 }
 
 export function classifyTaskRequestScope(message: string): TaskRequestScopeIntent {
+  if (taskRequestUsesDailySelfScope(message)) return 'self_daily';
   if (taskRequestUsesSelfScope(message)) return 'self';
   if (taskRequestUsesCompanyScope(message)) return 'company';
   return 'default';
@@ -82,7 +102,7 @@ export function resolveTaskVisibilityScope(
   viewer: TaskViewer,
   intent: TaskRequestScopeIntent = 'default',
 ): TaskVisibilityScope {
-  if (intent === 'self') {
+  if (intent === 'self' || intent === 'self_daily') {
     return viewer.employeeId
       ? { kind: 'assigned', employeeId: viewer.employeeId }
       : { kind: 'missing_employee_link' };
