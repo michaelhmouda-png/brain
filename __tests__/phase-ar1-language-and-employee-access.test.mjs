@@ -157,6 +157,47 @@ test('management prompt and tool behavior remain separate from employee presenta
   assert.match(brain, /actorContext\.role !== 'employee' && toolName === 'get_tasks'/);
 });
 
+test('employee profile projection localizes every legitimate role and status without identifiers', async () => {
+  const helper = await readFile(new URL('../lib/brain/employee-task-presentation.server.ts', import.meta.url), 'utf8');
+  const profileDisplay = helper.slice(
+    helper.indexOf('export type EmployeeProfileDisplay'),
+    helper.indexOf('export type AuthorizedEmployeeTaskRecord'),
+  );
+  for (const forbidden of ['id:', 'companyId', 'employeeId', 'profileId', 'userId', 'UUID']) {
+    assert.doesNotMatch(profileDisplay, new RegExp(forbidden, 'i'));
+  }
+  for (const mapping of [
+    "employee: 'موظف'", "manager: 'مدير'", "owner: 'مالك'", "super_admin: 'مدير عام'",
+    "active: 'نشط'", "inactive: 'غير نشط'", "suspended: 'موقوف'",
+    "employee: 'Employee'", "manager: 'Manager'", "owner: 'Owner'",
+    "active: 'Active'", "inactive: 'Inactive'", "suspended: 'Suspended'",
+  ]) assert.match(helper, new RegExp(mapping));
+  assert.match(helper, /buildEmployeeProfileDisplay/);
+  assert.match(helper, /roleLabel: PROFILE_ROLE_LABELS\[language\]\[profile\.role\]/);
+  assert.match(helper, /statusLabel: PROFILE_STATUS_LABELS\[language\]\[profile\.status\]/);
+});
+
+test('employee profile tool uses trusted ActorContext and canonical values are localized before the output guard', async () => {
+  const brain = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
+  const profileCase = brain.slice(brain.indexOf("case 'get_current_user_profile'"), brain.indexOf("case 'list_companies'"));
+  assert.match(profileCase, /actorContext\.role === 'employee'/);
+  assert.match(profileCase, /buildEmployeeProfileDisplay/);
+  assert.match(profileCase, /displayName: actorContext\.displayName/);
+  assert.match(profileCase, /role: actorContext\.role/);
+  assert.match(profileCase, /status: actorContext\.status/);
+  assert.doesNotMatch(profileCase, /companyId|employeeId|profileId|authUserId/);
+  assert.match(brain, /finalText = localizeEmployeeCanonicalValuesInText\(finalText, employeeLanguage\)/);
+  assert.match(brain, /!employeeTaskOutputIsSafe\(finalText\)/);
+  assert.match(brain, /: await handlers\.getCurrentUserProfile\(\)/);
+});
+
+test('employee profile localization does not weaken Brain Score or management authorization', async () => {
+  const brain = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
+  assert.match(brain, /const availableTools = actorContext\.role === 'employee'[\s\S]*employeeMayUseBrainTool/);
+  assert.match(brain, /actorContext\.role === 'employee' && !employeeMayUseBrainTool\(toolName\)/);
+  assert.match(brain, /const systemInstructions = actorContext\.role === 'employee'[\s\S]*employeeSystemInstructions[\s\S]*managementSystemInstructions/);
+});
+
 test('Tasks page validates HTTP and translation shape while preserving original tasks and retry', async () => {
   const page = await readFile(new URL('../app/dashboard/tasks/page.tsx', import.meta.url), 'utf8');
   assert.match(page, /response\.headers\.get\('content-type'\)/);

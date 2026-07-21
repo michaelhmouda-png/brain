@@ -3,6 +3,14 @@ import 'server-only';
 import OpenAI from 'openai';
 
 export type EmployeeTaskLanguage = 'en' | 'ar';
+export type EmployeeProfileRole = 'employee' | 'manager' | 'owner' | 'super_admin';
+export type EmployeeProfileStatus = 'active' | 'inactive' | 'suspended';
+
+export type EmployeeProfileDisplay = {
+  name: string;
+  roleLabel: string;
+  statusLabel: string;
+};
 
 export type AuthorizedEmployeeTaskRecord = {
   id: string;
@@ -28,7 +36,38 @@ type Translation = { taskId: string; title: string; description: string | null }
 
 const UUID_PATTERN = /\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i;
 const INTERNAL_FIELD_PATTERN = /\b(?:task_id|assigned_employee_id|employee_id|company_id)\b/i;
-const RAW_ENUM_PATTERN = /\b(?:in_progress)\b|(?:^|[\s:,(])(?:pending|completed|cancelled|critical|high|medium|low)(?=$|[\s:,.!)])/;
+const RAW_ENUM_PATTERN = /\b(?:in_progress|super_admin)\b|(?:^|[\s:,(])(?:pending|completed|cancelled|critical|high|medium|low|employee|manager|owner|active|inactive|suspended)(?=$|[\s:,.!)])/;
+
+const PROFILE_ROLE_LABELS = {
+  en: { employee: 'Employee', manager: 'Manager', owner: 'Owner', super_admin: 'General administrator' },
+  ar: { employee: 'موظف', manager: 'مدير', owner: 'مالك', super_admin: 'مدير عام' },
+} as const;
+const PROFILE_STATUS_LABELS = {
+  en: { active: 'Active', inactive: 'Inactive', suspended: 'Suspended' },
+  ar: { active: 'نشط', inactive: 'غير نشط', suspended: 'موقوف' },
+} as const;
+
+export function buildEmployeeProfileDisplay(
+  profile: { displayName: string | null; role: EmployeeProfileRole; status: EmployeeProfileStatus },
+  language: EmployeeTaskLanguage,
+): EmployeeProfileDisplay {
+  return {
+    name: profile.displayName?.trim() || (language === 'ar' ? 'المستخدم الحالي' : 'Current user'),
+    roleLabel: PROFILE_ROLE_LABELS[language][profile.role],
+    statusLabel: PROFILE_STATUS_LABELS[language][profile.status],
+  };
+}
+
+export function localizeEmployeeCanonicalValuesInText(value: string, language: EmployeeTaskLanguage): string {
+  const labels: Record<string, string> = {
+    ...PROFILE_ROLE_LABELS[language],
+    ...PROFILE_STATUS_LABELS[language],
+    ...STATUS_LABELS[language],
+    ...PRIORITY_LABELS[language],
+  };
+  return value.replace(/\b(?:super_admin|in_progress|employee|manager|owner|active|inactive|suspended|pending|completed|cancelled|critical|high|medium|low)\b/gi,
+    (match) => labels[match.toLowerCase()] ?? match);
+}
 
 function containsInternalReference(value: string): boolean {
   return UUID_PATTERN.test(value) || INTERNAL_FIELD_PATTERN.test(value);

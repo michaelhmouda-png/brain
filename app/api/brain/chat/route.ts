@@ -49,11 +49,13 @@ import {
 import { employeeMayUseBrainTool } from '@/lib/employee-access';
 import {
   buildEmployeeTaskPresentation,
+  buildEmployeeProfileDisplay,
   employeeTaskOutputIsSafe,
   formatCompletionClarification,
   formatEmployeeDailySummary,
   formatEmployeeTaskList,
   matchEmployeeTaskReference,
+  localizeEmployeeCanonicalValuesInText,
   safeEmployeeTaskError,
   type AuthorizedEmployeeTaskRecord,
   type EmployeeTaskDisplay,
@@ -4863,7 +4865,7 @@ export async function POST(request: NextRequest) {
         : `LANGUAGE: Respond in English.`;
     const employeeSystemInstructions = `You are Brain, a personal hospitality work assistant for an employee.
 Answer naturally, clearly, and directly in the user's preferred language.
-Current user: ${actorContext.displayName || 'Employee'} (employee)
+Current user: ${actorContext.displayName || (employeeLanguage === 'ar' ? 'المستخدم الحالي' : 'Current user')}
 ${languageInstructions}
 
 You may only help this employee:
@@ -5267,7 +5269,13 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
             toolResult = { error: 'This operation is not available for employee accounts.', code: 'EMPLOYEE_TOOL_DENIED' };
           } else switch (toolName) {
             case 'get_current_user_profile':
-              toolResult = await handlers.getCurrentUserProfile();
+              toolResult = actorContext.role === 'employee'
+                ? buildEmployeeProfileDisplay({
+                    displayName: actorContext.displayName,
+                    role: actorContext.role,
+                    status: actorContext.status,
+                  }, employeeLanguage)
+                : await handlers.getCurrentUserProfile();
               break;
             case 'list_companies':
               toolResult = await handlers.listCompanies(toolInput);
@@ -5590,8 +5598,11 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
         : modelText;
       if (!employeeTaskOutputIsSafe(finalText)) finalText = safeEmployeeTaskError(employeeLanguage);
     }
-    if (actorContext.role === 'employee' && !employeeTaskOutputIsSafe(finalText)) {
-      finalText = safeEmployeeTaskError(employeeLanguage);
+    if (actorContext.role === 'employee') {
+      finalText = localizeEmployeeCanonicalValuesInText(finalText, employeeLanguage);
+      if (!employeeTaskOutputIsSafe(finalText)) finalText = employeeLanguage === 'ar'
+        ? 'تعذّر عرض معلومات الحساب بأمان. جرّب مرة تانية.'
+        : 'Account information could not be displayed safely. Please try again.';
     }
 
     // [Phase 0B] Log final response state
