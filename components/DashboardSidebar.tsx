@@ -6,6 +6,7 @@ import { useRouter, usePathname } from 'next/navigation';
 import { Menu, X } from 'lucide-react';
 import { logoutUser } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
+import { NotificationBell } from '@/components/NotificationBell';
 
 interface NavSection {
   title: string;
@@ -266,7 +267,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
 
   const desktopNavigation = (
     <>
-      <div className="mb-8">{brand}</div>
+      <div className="mb-8 flex items-center justify-between gap-3">{brand}<NotificationBell /></div>
       <nav className="flex-1 space-y-4 overflow-y-auto">
         {navigationLinks}
       </nav>
@@ -285,6 +286,8 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
               <span className="block text-xs text-slate-400">Hospitality OS</span>
             </span>
           </Link>
+          <div className="flex items-center gap-2">
+          <NotificationBell />
           <button
             ref={menuButtonRef}
             type="button"
@@ -296,6 +299,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
           >
             <Menu aria-hidden="true" className="h-5 w-5" />
           </button>
+          </div>
         </div>
       </header>
 

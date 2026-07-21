@@ -7,7 +7,6 @@
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { MaintenanceService } from '@/lib/maintenance';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
-import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
@@ -93,7 +92,6 @@ export async function POST(req: NextRequest) {
 
     const maintenanceService = new MaintenanceService(supabase, profile.company_id);
     const timelineService = new ActivityTimelineService(supabase, profile.company_id);
-    const notificationService = new NotificationsService(supabase, profile.company_id);
 
     const body = await req.json();
     const { action, data } = body;
@@ -117,17 +115,7 @@ export async function POST(req: NextRequest) {
         data.title
       );
 
-      // Notify if assigned
-      if (data.assignedToId) {
-        await notificationService.createNotification(
-          data.assignedToId,
-          'New Maintenance Ticket',
-          `You've been assigned: ${data.title}`,
-          'maintenance',
-          'maintenance_ticket',
-          ticket.id
-        );
-      }
+      // N1 database trigger records the notification obligation atomically.
 
       return NextResponse.json(ticket);
     }

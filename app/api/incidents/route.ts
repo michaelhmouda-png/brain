@@ -7,7 +7,6 @@
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { IncidentsService } from '@/lib/incidents';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
-import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 import { canCreateIncident, parseIncidentCreationRequest } from '@/lib/incident-report';
@@ -113,7 +112,6 @@ export async function POST(req: NextRequest) {
 
     const incidentsService = new IncidentsService(supabase, authorization.companyId);
     const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
-    const notificationService = new NotificationsService(supabase, authorization.companyId);
 
     const incident = await incidentsService.createIncident(
       data.title,
@@ -134,28 +132,7 @@ export async function POST(req: NextRequest) {
       data.title
     );
 
-    // Notify managers if critical
-    if (data.severity === 'critical') {
-      const { data: managers } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('company_id', authorization.companyId)
-        .eq('role', 'manager');
-
-      if (managers) {
-        const managerIds = managers
-          .map((manager) => manager.id)
-          .filter((id): id is string => typeof id === 'string');
-        await notificationService.notifyMultiple(
-          managerIds,
-          'CRITICAL Incident Report',
-          data.title,
-          'incident',
-          'incident_report',
-          incident.id
-        );
-      }
-    }
+    // N1 database trigger records the notification obligation atomically.
 
     return NextResponse.json(incident, { status: 201, headers: NO_STORE_HEADERS });
   } catch (error) {

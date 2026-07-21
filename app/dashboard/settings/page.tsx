@@ -1,3 +1,4 @@
+import { NotificationSettings } from '@/components/NotificationSettings';
 export default function SettingsPage() {
   return (
     <div className="space-y-8 rounded-[36px] border border-white/10 bg-white/5 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl">
@@ -8,6 +9,7 @@ export default function SettingsPage() {
           Configure Brain, manage integrations, and tune your hospitality operating model.
         </p>
       </div>
+      <NotificationSettings />
       <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
         {[
           { label: "Workspace", description: "Venue preferences and branding" },

@@ -7,7 +7,6 @@
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { AnnouncementsService } from '@/lib/announcements';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
-import { NotificationsService } from '@/lib/notifications';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 import { canCreateAnnouncement, parseAnnouncementCreationRequest } from '@/lib/announcement';
@@ -90,7 +89,6 @@ export async function POST(req: NextRequest) {
 
     const announcementsService = new AnnouncementsService(supabase, authorization.companyId);
     const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
-    const notificationService = new NotificationsService(supabase, authorization.companyId);
 
     const announcement = await announcementsService.createAnnouncement(
       data.title,
@@ -108,30 +106,7 @@ export async function POST(req: NextRequest) {
         data.title
       );
 
-      // Notify all employees in company
-      const { data: employees } = await supabase
-        .from('profiles')
-        .select('id')
-        .eq('company_id', authorization.companyId)
-        .eq('status', 'active')
-        .eq('role', 'employee');
-
-      if (employees) {
-        const employeeUserIds = employees
-          .map((employee) => employee.id)
-          .filter((id): id is string => typeof id === 'string' && id !== authorization.profileId);
-
-        if (employeeUserIds.length > 0) {
-          await notificationService.notifyMultiple(
-            employeeUserIds,
-            data.title,
-            data.content.substring(0, 100),
-            'announcement',
-            'announcement',
-            announcement.id
-          );
-        }
-      }
+      // N1 database trigger records the notification obligation atomically.
 
     return NextResponse.json(announcement, { status: 201, headers: NO_STORE_HEADERS });
   } catch (error) {
