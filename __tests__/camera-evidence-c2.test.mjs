@@ -67,22 +67,47 @@ test('API uses authenticated authorization and never a service-role client', () 
   }
   assert.match(prepare, /\.eq\('company_id', authorization\.companyId\)/);
   assert.match(prepare, /authorization\.role === 'employee'/);
+  assert.match(prepare, /task\.status !== 'pending' && task\.status !== 'in_progress'/);
   assert.match(prepare, /\.exists\(prepared\.storage_path\)/);
   assert.match(prepare, /uploaded_pending_completion/);
 });
 
 test('mobile composer provides explicit camera, gallery, preview, progress, remove, and confirmation controls', () => {
   const component = read('components/brain/TaskEvidenceAttachment.tsx');
+  const i18n = read('lib/i18n.ts');
   const page = read('app/dashboard/ai-assistant/page.tsx');
   assert.match(component, /capture="environment"/);
-  assert.match(component, /Choose gallery/);
-  assert.match(component, /Selected evidence preview/);
-  assert.match(component, /Remove selected image/);
+  assert.match(component, /t\.evidence\.chooseGallery/);
+  assert.match(component, /t\.evidence\.preview/);
+  assert.match(component, /t\.evidence\.remove/);
   assert.match(component, /xhr\.upload\.onprogress/);
-  assert.match(component, /Confirm upload/);
-  assert.match(component, /up to 20 MiB/);
-  assert.match(component, /awaits review/);
+  assert.match(component, /t\.evidence\.confirm/);
+  assert.match(i18n, /up to 20 MiB/);
+  assert.match(i18n, /queued for AI verification and review/);
   assert.match(page, /<TaskEvidenceAttachment/);
+});
+
+test('evidence modal is centrally localized in English and Arabic with RTL support', () => {
+  const component = read('components/brain/TaskEvidenceAttachment.tsx');
+  const i18n = read('lib/i18n.ts');
+  assert.match(component, /useLocale\(\)/);
+  assert.match(component, /dir=\{language === 'ar' \? 'rtl' : 'ltr'\}/);
+  const evidenceDictionaries = i18n.split(/\r?\n/).filter((line) => line.includes('evidence: {'));
+  assert.equal(evidenceDictionaries.length, 2);
+  for (const key of ['attach', 'privacy', 'task', 'loadingTasks', 'selectTask', 'takePhoto', 'chooseGallery', 'cameraHelp', 'galleryHelp', 'preparing', 'uploading', 'progress', 'cancel', 'confirm', 'invalidFile', 'tasksFailed', 'queuedReview']) {
+    assert.equal(evidenceDictionaries.every((dictionary) => new RegExp(`(?:^|[, {])${key}:`).test(dictionary)), true, key);
+  }
+  assert.match(i18n, /إرفاق دليل للمهمة/);
+  assert.match(i18n, /لا توجد لديك مهام نشطة تتطلب دليلاً/);
+});
+
+test('evidence selection permits only active task options and disables upload when none exist', () => {
+  const component = read('components/brain/TaskEvidenceAttachment.tsx');
+  assert.match(component, /task\.status === 'pending' \|\| task\.status === 'in_progress'/);
+  assert.match(component, /tasksLoaded && tasks\.length === 0[\s\S]*t\.evidence\.noActiveTasks/);
+  assert.match(component, /disabled=\{tasks\.length === 0\}/);
+  assert.match(component, /disabled=\{!selected \|\| !taskId \|\| uploading \|\| tasks\.length === 0\}/);
+  assert.doesNotMatch(component, /status\.replaceAll/);
 });
 
 test('C2 contains no fixed-camera ingestion, AI verification, mock evidence, or task completion path', () => {

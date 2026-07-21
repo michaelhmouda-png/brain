@@ -76,7 +76,9 @@ export default function TasksPage() {
     try {
       const response = await fetch('/api/tasks', { method: 'PATCH', cache: 'no-store', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskId }) });
       if (!response.ok) throw new Error(t.tasks.failed);
-      setTasks((current) => current.map((task) => task.id === taskId ? { ...task, status: 'completed' } : task));
+      setTasks((current) => role === 'employee'
+        ? current.filter((task) => task.id !== taskId)
+        : current.map((task) => task.id === taskId ? { ...task, status: 'completed' } : task));
     } catch (completeError) { setError({ authorization: false, message: completeError instanceof Error ? completeError.message : t.tasks.failed }); }
     finally { setCompletingId(null); }
   };
@@ -137,7 +139,9 @@ export default function TasksPage() {
       const values = await fetchJsonCollection('Tasks', '/api/tasks', signal ?? controller!.signal);
       const parsed = values.map(taskFromPayload);
       if (parsed.some((task) => task === null)) throw new Error('INVALID_TASK_RESPONSE');
-      const visibleTasks = parsed as TaskListItem[];
+      const visibleTasks = role === 'employee'
+        ? (parsed as TaskListItem[]).filter((task) => task.status === 'pending' || task.status === 'in_progress')
+        : parsed as TaskListItem[];
       setTasks(visibleTasks);
       await loadTranslations(visibleTasks, signal ?? controller!.signal);
     } catch (loadError) {
@@ -157,7 +161,7 @@ export default function TasksPage() {
     } finally {
       if (!signal?.aborted && !controller?.signal.aborted) setLoading(false);
     }
-  }, [loadTranslations, t]);
+  }, [loadTranslations, role, t]);
 
   useEffect(() => {
     const controller = new AbortController();

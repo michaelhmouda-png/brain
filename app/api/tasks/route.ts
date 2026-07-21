@@ -48,6 +48,7 @@ export async function GET() {
           .eq('company_id', companyId)
           .order('created_at', { ascending: false });
         if (assignedEmployeeId) query = query.eq('assigned_employee_id', assignedEmployeeId);
+        if (visibility.kind === 'assigned') query = query.in('status', ['pending', 'in_progress']);
         return query;
       },
       async listEmployees(companyId, employeeIds) {
@@ -60,6 +61,19 @@ export async function GET() {
     }, authorization.companyId, visibility.kind === 'assigned' ? visibility.employeeId : null);
 
     if (visibility.kind === 'assigned' && tasks.length === 0) {
+      const { data: visibleAssignedHistory, error: visibleAssignedHistoryError } = await supabase
+        .from('tasks')
+        .select('id')
+        .eq('company_id', authorization.companyId)
+        .eq('assigned_employee_id', visibility.employeeId)
+        .limit(1);
+      if (visibleAssignedHistoryError) throw new Error('TASK_VISIBILITY_HISTORY_PROBE_FAILED');
+      if ((visibleAssignedHistory?.length ?? 0) > 0) {
+        return NextResponse.json(
+          { data: [], total: 0, scope: visibility.kind, diagnostic: 'NO_ACTIVE_ASSIGNED_TASKS' },
+          { headers: NO_STORE_HEADERS },
+        );
+      }
       const { data: diagnosticData, error: diagnosticError } = await supabase.rpc('get_my_task_visibility_diagnostic');
       const diagnostic = Array.isArray(diagnosticData) ? diagnosticData[0] : diagnosticData;
       const rawAssignedCount = diagnostic && typeof diagnostic === 'object' && 'assigned_task_count' in diagnostic

@@ -28,8 +28,9 @@ export async function POST(request: NextRequest) {
 
     const { data: profile, error: profileError } = await supabase.from('profiles').select('employee_id').eq('id', authorization.profileId).maybeSingle();
     if (profileError || !profile) return NextResponse.json({ error: 'Account is not provisioned' }, { status: 403, headers: NO_STORE_HEADERS });
-    const { data: task, error: taskError } = await supabase.from('tasks').select('id, assigned_employee_id').eq('id', input.taskId).eq('company_id', authorization.companyId).maybeSingle();
+    const { data: task, error: taskError } = await supabase.from('tasks').select('id, assigned_employee_id, status').eq('id', input.taskId).eq('company_id', authorization.companyId).maybeSingle();
     if (taskError || !task) return NextResponse.json({ error: 'Task is not available' }, { status: 404, headers: NO_STORE_HEADERS });
+    if (task.status !== 'pending' && task.status !== 'in_progress') return NextResponse.json({ error: 'Task is not active' }, { status: 409, headers: NO_STORE_HEADERS });
     if (authorization.role === 'employee' && (typeof profile.employee_id !== 'string' || task.assigned_employee_id !== profile.employee_id)) {
       return NextResponse.json({ error: 'Task is not assigned to this employee' }, { status: 403, headers: NO_STORE_HEADERS });
     }

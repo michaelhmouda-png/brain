@@ -275,6 +275,25 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(brain, /report every task returned by get_tasks, including unassigned tasks/);
 });
 
+test('employee Tasks API requests only active assigned work while management history remains available', () => {
+  const api = read('app/api/tasks/route.ts');
+  const assignedScope = api.indexOf("if (assignedEmployeeId) query = query.eq('assigned_employee_id', assignedEmployeeId)");
+  const activeScope = api.indexOf("if (visibility.kind === 'assigned') query = query.in('status', ['pending', 'in_progress'])");
+  assert.ok(assignedScope > 0 && activeScope > assignedScope);
+  assert.doesNotMatch(api, /visibility\.kind === 'company'[^\n]*\.in\('status'/);
+  assert.match(api, /visibleAssignedHistory[\s\S]*NO_ACTIVE_ASSIGNED_TASKS/);
+});
+
+test('employee UI and home metrics exclude task history before rendering or translation', () => {
+  const page = read('app/dashboard/tasks/page.tsx');
+  const home = read('components/EmployeeHome.tsx');
+  assert.match(page, /role === 'employee'[\s\S]*task\.status === 'pending' \|\| task\.status === 'in_progress'/);
+  assert.match(page, /const visibleTasks[\s\S]*setTasks\(visibleTasks\)[\s\S]*loadTranslations\(visibleTasks/);
+  assert.match(page, /role === 'employee'[\s\S]*current\.filter\(\(task\) => task\.id !== taskId\)/);
+  assert.match(home, /activeTasks = tasks\.filter\(\(task\) => task\.status === 'pending' \|\| task\.status === 'in_progress'\)/);
+  assert.match(home, /tasks: activeTasks\.length[\s\S]*today: activeTasks\.filter[\s\S]*overdue: activeTasks\.filter/);
+});
+
 test('employee daily routing forces one trusted task read and filters today plus overdue work', () => {
   const brain = read('app/api/brain/chat/route.ts');
   const getTasks = brain.slice(brain.indexOf('async getTasks('), brain.indexOf('// Update Task'));
