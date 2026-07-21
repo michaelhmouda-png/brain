@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { DashboardSidebar } from '@/components/DashboardSidebar';
+import { LocaleProvider } from '@/components/LocaleProvider';
+import { normalizeLanguage } from '@/lib/i18n';
 
 export default async function DashboardLayout({ children }: { children: ReactNode }) {
   // Note: Proxy.ts already redirects unauthenticated users away from /dashboard
@@ -30,7 +32,7 @@ export default async function DashboardLayout({ children }: { children: ReactNod
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('*')
+    .select('id, company_id, employee_id, full_name, role, status, preferred_language, created_at, updated_at')
     .eq('id', user.id)
     .single();
 
@@ -69,8 +71,10 @@ export default async function DashboardLayout({ children }: { children: ReactNod
     );
   }
 
+  const language = normalizeLanguage(profile.preferred_language);
   return (
-    <div className="min-h-[100dvh] overflow-x-hidden bg-[#020202] text-white">
+    <LocaleProvider language={language} role={profile.role}>
+    <div lang={language} dir={language === 'ar' ? 'rtl' : 'ltr'} className="min-h-[100dvh] overflow-x-hidden bg-[#020202] text-white">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(14,165,233,0.18),_transparent_20%),radial-gradient(circle_at_80%_20%,_rgba(96,165,250,0.14),_transparent_18%)]" />
       <div className="safe-area-x relative mx-auto flex min-h-[100dvh] max-w-[1700px] flex-col gap-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-[calc(4.5rem+env(safe-area-inset-top))] lg:flex-row lg:gap-6 lg:px-8 lg:py-6">
         <DashboardSidebar profile={profile} userName={user.email || null} />
@@ -78,5 +82,6 @@ export default async function DashboardLayout({ children }: { children: ReactNod
         <main className="dashboard-main flex-1">{children}</main>
       </div>
     </div>
+    </LocaleProvider>
   );
 }

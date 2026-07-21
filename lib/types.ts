@@ -5,6 +5,7 @@ export type Profile = {
   full_name: string | null;
   role: 'super_admin' | 'owner' | 'manager' | 'employee';
   status: 'active' | 'inactive' | 'suspended';
+  preferred_language: 'en' | 'ar';
   created_at: string;
   updated_at: string;
 };

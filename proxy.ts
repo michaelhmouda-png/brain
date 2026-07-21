@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
+import { employeeMayCallApiPath, employeeMayOpenDashboardPath } from './lib/employee-access';
 
 export async function proxy(request: NextRequest) {
   try {
@@ -10,7 +11,6 @@ export async function proxy(request: NextRequest) {
     // Skip static assets and next internals
     if (
       pathname.startsWith('/_next') ||
-      pathname.startsWith('/api') ||
       pathname.startsWith('/public') ||
       pathname === '/favicon.ico'
     ) {
@@ -27,7 +27,7 @@ export async function proxy(request: NextRequest) {
     }
 
     // Create server client for this request
-    let response = NextResponse.next();
+    const response = NextResponse.next();
     
     const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
       cookies: {
@@ -62,6 +62,19 @@ export async function proxy(request: NextRequest) {
       return redirectResponse;
     }
 
+    if (hasUser && user && (pathname.startsWith('/dashboard') || pathname.startsWith('/api'))) {
+      const { data: profile, error: profileError } = await supabase.from('profiles').select('role, status').eq('id', user.id).maybeSingle();
+      if (profileError || !profile) {
+        if (pathname.startsWith('/api')) return NextResponse.json({ error: 'Authorization temporarily unavailable', code: 'AUTHORIZATION_UNAVAILABLE' }, { status: 503 });
+        return new NextResponse('Authorization temporarily unavailable', { status: 503 });
+      }
+      if (profile?.status === 'active' && profile.role === 'employee') {
+        if (pathname.startsWith('/dashboard') && !employeeMayOpenDashboardPath(pathname)) return NextResponse.redirect(new URL('/dashboard', request.url));
+        const apiDenied = pathname.startsWith('/api') && (!employeeMayCallApiPath(pathname) || (pathname.startsWith('/api/shifts') && request.method !== 'GET'));
+        if (apiDenied) return NextResponse.json({ error: 'Forbidden', code: 'EMPLOYEE_ACCESS_DENIED' }, { status: 403 });
+      }
+    }
+
     // Route protection: redirect authenticated away from /login
     if (pathname === '/login' && hasUser) {
       console.log(`[Proxy] REDIRECT /login -> /dashboard (already authenticated)`);
@@ -78,6 +91,8 @@ export async function proxy(request: NextRequest) {
     return response;
   } catch (error) {
     console.error('[Proxy] Error:', error);
+    if (request.nextUrl.pathname.startsWith('/api')) return NextResponse.json({ error: 'Authorization temporarily unavailable', code: 'AUTHORIZATION_UNAVAILABLE' }, { status: 503 });
+    if (request.nextUrl.pathname.startsWith('/dashboard')) return new NextResponse('Authorization temporarily unavailable', { status: 503 });
     return NextResponse.next();
   }
 }
@@ -92,6 +107,6 @@ export const config = {
      * - favicon.ico (favicon file)
      * - public (public folder)
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
+    '/((?!_next/static|_next/image|favicon.ico|public).*)',
   ],
 };

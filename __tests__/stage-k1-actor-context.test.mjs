@@ -27,7 +27,7 @@ async function expectCode(value, code) {
 
 test('valid active human actor resolves exclusively from trusted persisted data', async () => {
   const a=access(); const actor=await resolveHumanActorContext(a.value,()=> 'server-correlation');
-  assert.deepEqual(actor,{ actorId:USER,authUserId:USER,profileId:USER,companyId:COMPANY,role:'manager',status:'active',actorType:'human',correlationId:'server-correlation',displayName:'Trusted Manager',employeeId:null });
+  assert.deepEqual(actor,{ actorId:USER,authUserId:USER,profileId:USER,companyId:COMPANY,role:'manager',status:'active',actorType:'human',correlationId:'server-correlation',displayName:'Trusted Manager',employeeId:null,preferredLanguage:'en' });
   assert.deepEqual(a.calls.profileIds,[USER]); assert.deepEqual(a.calls.companyIds,[COMPANY]);
 });
 

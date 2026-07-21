@@ -33,7 +33,8 @@ export async function GET(req: NextRequest) {
     const search = url.searchParams.get('search') || undefined;
     const status = url.searchParams.get('status') || undefined;
     const shiftType = url.searchParams.get('shiftType') || undefined;
-    const employeeId = url.searchParams.get('employeeId') || undefined;
+    if (authorization.role === 'employee' && !authorization.employeeId) return NextResponse.json({ error: 'Employee link required' }, { status: 409 });
+    const employeeId = authorization.role === 'employee' ? authorization.employeeId! : url.searchParams.get('employeeId') || undefined;
     const sortBy = url.searchParams.get('sortBy') || 'shift_date';
     const sortOrder = (url.searchParams.get('sortOrder') || 'desc') as 'asc' | 'desc';
     const dateFrom = url.searchParams.get('dateFrom') || undefined;
@@ -78,6 +79,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (type === 'templates') {
+      if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
       const templates = await shiftService.getShiftTemplates();
       return NextResponse.json(templates);
     }

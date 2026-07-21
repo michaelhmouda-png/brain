@@ -14,6 +14,7 @@ export interface BrainChatProfile {
   status: 'active';
   company_id: string;
   employee_id: string | null;
+  preferred_language: 'en' | 'ar';
 }
 
 interface ProfileRecord {
@@ -23,6 +24,7 @@ interface ProfileRecord {
   status?: unknown;
   company_id?: unknown;
   employee_id?: unknown;
+  preferred_language?: unknown;
 }
 
 export interface BrainChatProvisioningAccess {
@@ -99,6 +101,7 @@ export async function resolveBrainChatProvisioning(
       status: profile.status,
       company_id: profile.company_id,
       employee_id: employeeId,
+      preferred_language: profile.preferred_language === 'ar' ? 'ar' : 'en',
     },
   };
 }

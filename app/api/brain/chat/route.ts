@@ -45,6 +45,7 @@ import {
   taskRequestReferencesCompanyEmployee,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
+import { employeeMayUseBrainTool } from '@/lib/employee-access';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -3003,6 +3004,13 @@ Status: ${previewStatus}`,
       return { error: 'Invalid task ID format.' };
     }
 
+    if (this.userRole === 'employee') {
+      if (!this.employeeId) return { error: 'Your account is not linked to an employee record.', code: 'TASK_EMPLOYEE_LINK_MISSING' };
+      const { error } = await this.supabase.rpc('complete_my_assigned_task', { p_task_id: params.task_id });
+      if (error) return { error: 'This task is not assigned to you or cannot be completed.', code: 'TASK_NOT_COMPLETABLE' };
+      return { success: true, id: params.task_id, status: displayTaskStatus(TASK_STATUS.COMPLETED) };
+    }
+
     const { data: updated, error: updateError } = await this.supabase
       .from('tasks')
       .update({ status: TASK_STATUS.COMPLETED })  // Use canonical lowercase constant
@@ -4405,6 +4413,7 @@ Status: ${previewStatus}`,
 }
 
 function mayExecuteProposal(action: ProposalAction, role: string): boolean {
+  if (role === 'employee') return false;
   return action !== 'create_employee' || ['super_admin', 'owner', 'manager'].includes(role);
 }
 
@@ -4684,6 +4693,12 @@ export async function POST(request: NextRequest) {
       .map((e) => `- ${e.fullName} (${e.role}, ${e.department || 'No dept'})`)
       .join('\n');
 
+    const languageInstructions = actorContext.preferredLanguage === 'ar'
+      ? `LANGUAGE: Respond in clear Arabic. Understand Modern Standard Arabic and Lebanese Arabic. Prefer simple hospitality wording a Lebanese Arabic speaker can follow. Keep tool names, IDs, database enum values, and internal operations canonical and unchanged.`
+      : `LANGUAGE: Respond in English.`;
+    const employeeInstructions = actorContext.role === 'employee'
+      ? `EMPLOYEE ACCESS: This user may access only their own assigned tasks and personal operational information. Never reveal Brain Score, company analytics, revenue, profitability, waste, inventory value, staff performance, employee directory data, other employees' tasks, or management information. Never call or suggest management tools.`
+      : '';
     const systemInstructions = `You are Brain, the operational intelligence for hospitality businesses.
 Answer clearly and directly.
 Use tools whenever the answer depends on live company data.
@@ -4693,6 +4708,8 @@ If information is unavailable, say so.
 Do not claim an action was completed unless a tool completed it.
 Every operational decision should either be made by Brain or improved by Brain.
 Current user: ${actorContext.displayName || 'Unknown'} (${actorContext.role})
+${languageInstructions}
+${employeeInstructions}
 
 CONVERSATION MEMORY — RECENT ENTITIES:
 You have access to recently mentioned employees in this conversation:
@@ -4998,7 +5015,10 @@ update the planned action. Extract the change, then re-call the tool with update
 and confirmed=false to generate a new preview. Never execute the old version.`;
 
     // [Phase 0B] Log available task tools
-    const taskTools = TOOLS.filter((t: any) => t.name && t.name.includes('task'));
+    const availableTools = actorContext.role === 'employee'
+      ? TOOLS.filter((tool) => employeeMayUseBrainTool(tool.name))
+      : TOOLS;
+    const taskTools = availableTools.filter((t: any) => t.name && t.name.includes('task'));
     console.log('[Brain Diagnostic] Available task tools:', taskTools.map((t: any) => t.name).join(', '));
 
     // Input array for Responses API — previous turns go in first, then the latest user message
@@ -5008,7 +5028,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
     console.log('[Brain Diagnostic] Calling OpenAI Responses API', {
       model: 'gpt-5-mini',
       messagesCount: inputItems.length,
-      toolsCount: TOOLS.length,
+      toolsCount: availableTools.length,
       taskToolsCount: taskTools.length,
     });
 
@@ -5018,7 +5038,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
       model: 'gpt-5-mini',
       instructions: systemInstructions,
       input: inputItems,
-      tools: TOOLS,
+      tools: availableTools,
     });
 
     // 9. Tool-call loop — keep running while the model returns function_call items
@@ -5047,7 +5067,9 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
         let toolResult: unknown;
         try {
           failureStage = 'tool_call.execute';
-          switch (toolName) {
+          if (actorContext.role === 'employee' && !employeeMayUseBrainTool(toolName)) {
+            toolResult = { error: 'This operation is not available for employee accounts.', code: 'EMPLOYEE_TOOL_DENIED' };
+          } else switch (toolName) {
             case 'get_current_user_profile':
               toolResult = await handlers.getCurrentUserProfile();
               break;
@@ -5335,7 +5357,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
         model: 'gpt-5-mini',
         instructions: systemInstructions,
         input: inputItems,
-        tools: TOOLS,
+        tools: availableTools,
       });
 
       pendingToolCalls = (response.output as any[]).filter(

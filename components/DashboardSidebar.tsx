@@ -7,6 +7,7 @@ import { Menu, X } from 'lucide-react';
 import { logoutUser } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
 import { NotificationBell } from '@/components/NotificationBell';
+import { useLocale } from '@/components/LocaleProvider';
 
 interface NavSection {
   title: string;
@@ -74,6 +75,7 @@ type DashboardSidebarProps = {
 };
 
 export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
+  const { messages: t } = useLocale();
   const router = useRouter();
   const pathname = usePathname();
   const [isPending, startTransition] = useTransition();
@@ -159,12 +161,18 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
     employee: 'bg-slate-500/20 text-slate-300 ring-slate-400/20',
   };
 
-  const roleLabel: Record<string, string> = {
-    super_admin: 'Super Admin',
-    owner: 'Owner',
-    manager: 'Manager',
-    employee: 'Employee',
-  };
+  const roleLabel: Record<string, string> = t.role;
+
+  const localizedSections: NavSection[] = profile?.role === 'employee' ? [
+    { title: '', items: [
+      { href: '/dashboard', label: t.nav.dashboard },
+      { href: '/dashboard/tasks', label: t.nav.tasks },
+      { href: '/dashboard/notifications', label: t.nav.notifications },
+      { href: '/dashboard/shifts', label: t.nav.shifts },
+      { href: '/dashboard/ai-assistant', label: t.nav.brain },
+      { href: '/dashboard/settings', label: t.nav.settings },
+    ] },
+  ] : navSections;
 
   const brand = (
     <div className="flex items-center gap-4">
@@ -180,11 +188,11 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
 
   const navigationLinks = (
     <>
-      {navSections.map((section) => (
+      {localizedSections.map((section) => (
         <div key={section.title}>
-          <p className="mb-1 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-gray-500 lg:mb-2 lg:text-xs">
+          {section.title && <p className="mb-1 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-gray-500 lg:mb-2 lg:text-xs">
             {section.title}
-          </p>
+          </p>}
           <div className="space-y-0.5 lg:space-y-1">
             {section.items.filter((item) => !item.reviewOnly || (profile && ['manager', 'owner', 'super_admin'].includes(profile.role))).map((item) => (
               <Link
@@ -220,7 +228,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             roleColors[profile.role] || roleColors.employee
           }`}
         >
-          {roleLabel[profile.role] || 'Employee'}
+          {roleLabel[profile.role] || t.role.employee}
         </span>
       </div>
       <button
@@ -228,14 +236,14 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
         disabled={isPending}
         className="mt-2 min-h-11 w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isPending ? 'Signing out...' : 'Sign out'}
+        {isPending ? t.nav.signingOut : t.nav.signOut}
       </button>
     </div>
   ) : null;
 
   const desktopAccount = profile ? (
     <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-4">
-      <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">Your Account</p>
+      <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">{t.nav.account}</p>
       <div className="mt-3 space-y-2">
         <div className="truncate text-sm font-medium text-white">
           {userName || profile.full_name || 'User'}
@@ -246,7 +254,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
               roleColors[profile.role] || roleColors.employee
             }`}
           >
-            {roleLabel[profile.role] || 'Employee'}
+            {roleLabel[profile.role] || t.role.employee}
           </span>
         </div>
         {profile.status !== 'active' && (
@@ -260,7 +268,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
         disabled={isPending}
         className="mt-3 min-h-11 w-full rounded-2xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
       >
-        {isPending ? 'Signing out...' : 'Sign out'}
+        {isPending ? t.nav.signingOut : t.nav.signOut}
       </button>
     </div>
   ) : null;
@@ -293,7 +301,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             type="button"
             onClick={() => setShowMenu(true)}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white"
-            aria-label="Open navigation"
+            aria-label={t.nav.open}
             aria-expanded={showMenu}
             aria-controls="mobile-dashboard-navigation"
           >
@@ -309,14 +317,14 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             type="button"
             className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
             onClick={() => setShowMenu(false)}
-            aria-label="Close navigation"
+            aria-label={t.nav.close}
           />
           <aside
             ref={drawerRef}
             id="mobile-dashboard-navigation"
             role="dialog"
             aria-modal="true"
-            aria-label="Dashboard navigation"
+            aria-label={t.nav.open}
             className="absolute inset-y-0 left-0 flex h-[100dvh] max-h-[100dvh] w-[min(88vw,380px)] flex-col overflow-hidden border-r border-white/10 bg-[#080b12] shadow-2xl"
           >
             <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
@@ -340,7 +348,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
                   menuButtonRef.current?.focus();
                 }}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-slate-200"
-                aria-label="Close navigation"
+                aria-label={t.nav.close}
               >
                 <X aria-hidden="true" className="h-5 w-5" />
               </button>

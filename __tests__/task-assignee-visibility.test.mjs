@@ -236,6 +236,6 @@ test('canonical profile loading carries employee_id without accepting client sco
   const companyAuth = read('lib/company-api-authorization.server.ts');
   const actorAuth = read('lib/brain/kernel/actor-context.server.ts');
   assert.match(companyAuth, /select\('id, company_id, role, status, employee_id'\)/);
-  assert.match(actorAuth, /select\('id, full_name, role, status, company_id, employee_id'\)/);
+  assert.match(actorAuth, /select\('id, full_name, role, status, company_id, employee_id, preferred_language'\)/);
   assert.doesNotMatch(read('app/api/tasks/route.ts'), /searchParams.*employee|request.*employeeId/i);
 });

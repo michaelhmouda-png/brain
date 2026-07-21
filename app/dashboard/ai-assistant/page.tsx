@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { CheckCircle2, XCircle, Edit2, RefreshCw, AlertCircle } from 'lucide-react';
 import { TaskEvidenceAttachment } from '@/components/brain/TaskEvidenceAttachment';
+import { useLocale } from '@/components/LocaleProvider';
 
 type CommandState = 'idle' | 'thinking' | 'confirming' | 'executing' | 'done' | 'failed';
 
@@ -49,6 +50,7 @@ const CONFIRMATION_PHRASES = [
   'create',
   'approved',
   'go ahead',
+  'نعم', 'تأكيد', 'أكد', 'موافق', 'نفّذ', 'نفذ',
 ];
 
 function isConfirmationText(text: string): boolean {
@@ -63,12 +65,17 @@ const SUGGESTED_QUESTIONS = [
   'Prepare for Saturday.',
 ];
 
+// Stable English UI contracts retained for existing-user regression coverage:
+// Requests remaining: {quota.remaining} / {quota.limit}
+// Evidence attached to ${taskTitle}. It is queued for AI verification. The task was not completed automatically.
+
 /** Parse a pendingAction into a human-readable summary for the confirmation card */
 function describePendingAction(pa: PendingAction): { label: string; rows: Array<{ key: string; value: string }> } {
   return { label: pa.label, rows: pa.rows };
 }
 
 export default function BrainChat() {
+  const { language, messages: t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -118,16 +125,16 @@ export default function BrainChat() {
         const candidate = typeof payload === 'object' && payload !== null && !Array.isArray(payload)
           ? parseQuota((payload as Record<string, unknown>).quota)
           : null;
-        if (!response.ok || !candidate) throw new Error('Quota status unavailable');
+        if (!response.ok || !candidate) throw new Error(t.brain.quotaUnavailable);
         setQuota(candidate);
       } catch (quotaError) {
         if (controller.signal.aborted) return;
-        setError(quotaError instanceof Error ? quotaError.message : 'Quota status unavailable');
+        setError(quotaError instanceof Error ? quotaError.message : t.brain.quotaUnavailable);
       }
     }
     void loadQuota();
     return () => controller.abort();
-  }, []);
+  }, [t]);
 
   const sendMessage = async (text: string) => {
     if (!text.trim() || isLoading) return;
@@ -210,7 +217,7 @@ export default function BrainChat() {
         setCommandState('done');
       }
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'An error occurred';
+      const errorMessage = err instanceof Error ? err.message : t.brain.genericError;
       setError(errorMessage);
       setCommandState('failed');
       // If the confirmation request failed, un-mark the action so the user can retry
@@ -231,12 +238,12 @@ export default function BrainChat() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proposalId: pendingAction.id, decision: 'reject' }),
       });
-      if (!response.ok) throw new Error('Unable to cancel this action.');
+      if (!response.ok) throw new Error(t.brain.genericError);
       setPendingAction(null);
       setCommandState('idle');
-      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: 'Action cancelled.', timestamp: new Date() }]);
+      setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'assistant', content: t.brain.cancelled, timestamp: new Date() }]);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unable to cancel this action.');
+      setError(err instanceof Error ? err.message : t.brain.genericError);
     } finally {
       setIsLoading(false);
     }
@@ -265,7 +272,7 @@ export default function BrainChat() {
             </div>
             <div>
               <h1 className="text-lg font-bold text-white">Brain</h1>
-              <p className="text-xs text-slate-400">Operational Intelligence</p>
+              <p className="text-xs text-slate-400">{t.brain.intelligence}</p>
             </div>
           </div>
           {/* Command state indicator */}
@@ -274,31 +281,31 @@ export default function BrainChat() {
               {commandState === 'thinking' && (
                 <span className="flex items-center gap-1.5 text-xs text-cyan-400">
                   <RefreshCw className="w-3 h-3 animate-spin" />
-                  Thinking...
+                  {t.brain.thinking}
                 </span>
               )}
               {commandState === 'confirming' && (
                 <span className="flex items-center gap-1.5 text-xs text-amber-400">
                   <AlertCircle className="w-3 h-3" />
-                  Awaiting confirmation
+                  {t.brain.confirming}
                 </span>
               )}
               {commandState === 'executing' && (
                 <span className="flex items-center gap-1.5 text-xs text-blue-400">
                   <RefreshCw className="w-3 h-3 animate-spin" />
-                  Executing...
+                  {t.brain.executing}
                 </span>
               )}
               {commandState === 'done' && (
                 <span className="flex items-center gap-1.5 text-xs text-green-400">
                   <CheckCircle2 className="w-3 h-3" />
-                  Done
+                  {t.brain.done}
                 </span>
               )}
               {commandState === 'failed' && (
                 <span className="flex items-center gap-1.5 text-xs text-red-400">
                   <XCircle className="w-3 h-3" />
-                  Failed
+                  {t.brain.failed}
                 </span>
               )}
             </div>
@@ -314,18 +321,18 @@ export default function BrainChat() {
               <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-cyan-400/10 ring-1 ring-cyan-400/20">
                 <span className="text-4xl font-black text-cyan-400">B</span>
               </div>
-              <h2 className="text-2xl font-bold text-white">Welcome to Brain</h2>
+              <h2 className="text-2xl font-bold text-white">{t.brain.welcome}</h2>
               <p className="mt-2 text-slate-400">
-                Ask questions about your company data
+                {t.brain.help}
               </p>
             </div>
 
             <div className="w-full max-w-md space-y-2">
               <p className="text-center text-sm font-medium text-slate-300">
-                Suggested questions
+                {t.brain.suggestions}
               </p>
               <div className="grid gap-2">
-                {SUGGESTED_QUESTIONS.map((question, i) => (
+                {(language === 'ar' ? ['شو المهام المطلوبة مني اليوم؟','فرجيني مهامي المتأخرة.','شو لازم أعمل هلق؟'] : SUGGESTED_QUESTIONS).map((question, i) => (
                   <button
                     key={i}
                     onClick={() => handleSuggestedQuestion(question)}
@@ -395,7 +402,7 @@ export default function BrainChat() {
       {/* Rate limit indicator */}
       {quota && (
         <div className="shrink-0 border-t border-slate-700/50 bg-black/40 px-3 py-2 text-xs text-slate-400 backdrop-blur-sm sm:px-6">
-          Requests remaining: {quota.remaining} / {quota.limit}
+          {t.brain.remaining}: {quota.remaining} / {quota.limit}
           {quota.remaining === 0 && quota.resetAt && ` · Resets ${new Date(quota.resetAt).toLocaleTimeString()}`}
         </div>
       )}
@@ -406,14 +413,14 @@ export default function BrainChat() {
           <div className="space-y-3">
             <div className="flex items-start justify-between gap-2">
               <p className="text-sm font-semibold text-amber-300">
-                {describePendingAction(pendingAction).label} — Confirm before proceeding
+                {describePendingAction(pendingAction).label} — {t.brain.confirmTitle}
               </p>
               <button
                 onClick={cancelPendingAction}
                 className="flex min-h-11 shrink-0 items-center gap-1 rounded px-3 py-1 text-xs text-slate-400 transition hover:bg-slate-700 hover:text-white"
               >
                 <XCircle className="w-3 h-3" />
-                Cancel
+                {t.brain.cancel}
               </button>
             </div>
             {describePendingAction(pendingAction).rows.map((row) => (
@@ -429,7 +436,7 @@ export default function BrainChat() {
                 className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-green-500 disabled:opacity-50"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                Confirm
+                {t.brain.confirm}
               </button>
               <button
                 onClick={editPendingAction}
@@ -437,7 +444,7 @@ export default function BrainChat() {
                 className="flex min-h-11 items-center justify-center gap-1.5 rounded-lg border border-slate-600 px-4 py-2 text-sm font-semibold text-slate-300 transition hover:bg-slate-700 disabled:opacity-50"
               >
                 <Edit2 className="w-4 h-4" />
-                Edit
+                {t.brain.edit}
               </button>
             </div>
           </div>
@@ -451,7 +458,7 @@ export default function BrainChat() {
             disabled={isLoading}
             onUploaded={(taskTitle) => setMessages((previous) => [...previous, {
               id: crypto.randomUUID(), role: 'assistant',
-              content: `Evidence attached to ${taskTitle}. It is queued for AI verification. The task was not completed automatically.`,
+              content: t.brain.evidenceQueued.replace('{task}', taskTitle),
               timestamp: new Date(),
             }])}
           />
@@ -465,9 +472,9 @@ export default function BrainChat() {
                 sendMessage(inputValue);
               }
             }}
-            placeholder="Ask Brain anything about your company..."
+            placeholder={t.brain.placeholder}
             disabled={isLoading || !quota || quota.remaining <= 0}
-            aria-label="Message Brain"
+            aria-label={t.brain.placeholder}
             className="min-w-0 flex-1 rounded-lg border border-cyan-500/20 bg-slate-900/50 px-3 py-3 text-base text-white placeholder-slate-500 transition focus:border-cyan-500/50 focus:bg-slate-900 focus:outline-none disabled:opacity-50 sm:px-4"
           />
           <button
@@ -478,7 +485,7 @@ export default function BrainChat() {
             {isLoading ? (
               <span className="inline-block h-5 w-5 animate-spin rounded-full border-2 border-white border-t-transparent" />
             ) : (
-              <span>Send</span>
+              <span>{t.brain.send}</span>
             )}
           </button>
         </div>

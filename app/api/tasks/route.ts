@@ -116,3 +116,16 @@ export async function GET() {
     );
   }
 }
+
+export async function PATCH(request: Request) {
+  const supabase = await createSupabaseServerAuth();
+  const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+  if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status, headers: NO_STORE_HEADERS });
+  const body: unknown = await request.json().catch(() => null);
+  const taskId = body && typeof body === 'object' && !Array.isArray(body) && 'taskId' in body ? (body as Record<string, unknown>).taskId : null;
+  if (typeof taskId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId)) return NextResponse.json({ error: 'Invalid task' }, { status: 400, headers: NO_STORE_HEADERS });
+  if (authorization.role !== 'employee') return NextResponse.json({ error: 'Use the management task workflow' }, { status: 403, headers: NO_STORE_HEADERS });
+  const { error } = await supabase.rpc('complete_my_assigned_task', { p_task_id: taskId });
+  if (error) return NextResponse.json({ error: 'Task cannot be completed', code: 'TASK_NOT_COMPLETABLE' }, { status: 403, headers: NO_STORE_HEADERS });
+  return NextResponse.json({ taskId, status: 'completed' }, { headers: NO_STORE_HEADERS });
+}

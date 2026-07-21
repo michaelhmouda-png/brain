@@ -1,0 +1,37 @@
+export const SUPPORTED_LANGUAGES = ['en', 'ar'] as const;
+export type Language = (typeof SUPPORTED_LANGUAGES)[number];
+
+export function isLanguage(value: unknown): value is Language {
+  return typeof value === 'string' && SUPPORTED_LANGUAGES.includes(value as Language);
+}
+
+export function normalizeLanguage(value: unknown): Language {
+  return isLanguage(value) ? value : 'en';
+}
+
+export const messages = {
+  en: {
+    nav: { dashboard: 'Dashboard', brain: 'AI Assistant', tasks: 'My Tasks', notifications: 'My Notifications', shifts: 'My Schedule', settings: 'Settings', signOut: 'Sign out', signingOut: 'Signing out...', account: 'Your Account', open: 'Open navigation', close: 'Close navigation' },
+    tasks: { eyebrow: 'Tasks', title: 'Operational workflow', description: 'Live tasks in your authorized scope.', refresh: 'Refresh', loading: 'Loading tasks', access: 'Access unavailable', unable: 'Unable to load tasks', retry: 'Try again', emptyTitle: 'No tasks yet', empty: 'No tasks are assigned within your authorized task scope.', session: 'Your session has expired. Please sign in again.', unauthorized: 'Your account is not authorized for a company workspace.', unlinked: 'Your account is not linked to an employee record. Ask an owner or manager to complete the link.', failed: 'Tasks could not be loaded. Check your connection and try again.', unassigned: 'Unassigned', noDue: 'No due date', original: 'Original task', arabicTranslation: 'Arabic translation', translationPending: 'Arabic translation is not available yet.', complete: 'Mark complete', completing: 'Completing...' },
+    status: { pending: 'Pending', in_progress: 'In progress', completed: 'Completed', cancelled: 'Cancelled' },
+    priority: { critical: 'Critical', high: 'High', medium: 'Medium', low: 'Low' },
+    notifications: { eyebrow: 'Updates', title: 'Notifications', markAll: 'Mark all read', settings: 'Settings', loading: 'Loading notifications…', unauthorized: 'You are not authorized to view notifications.', failed: 'Notifications could not be loaded.', offline: 'You are offline. Reconnect and retry.', retry: 'Retry', empty: 'No notifications yet.', open: 'Open', read: 'Mark read', archive: 'Archive', updateFailed: 'Notification update failed.' },
+    settings: { eyebrow: 'Settings', title: 'Personal settings', description: 'Manage your personal Brain preferences.', language: 'Language', languageHelp: 'This preference follows your account on every device.', english: 'English', arabic: 'العربية', save: 'Save language', saving: 'Saving…', saved: 'Language updated.', failed: 'Language could not be updated.' },
+    brain: { intelligence: 'Operational Intelligence', thinking: 'Thinking...', confirming: 'Awaiting confirmation', executing: 'Executing...', done: 'Done', failed: 'Failed', welcome: 'Welcome to Brain', help: 'Ask about your tasks and personal operational information.', suggestions: 'Suggested questions', remaining: 'Requests remaining', confirm: 'Confirm', cancel: 'Cancel', edit: 'Edit', confirmTitle: 'Confirm before proceeding', placeholder: 'Ask Brain about your work...', send: 'Send', cancelled: 'Action cancelled.', quotaUnavailable: 'Quota status unavailable', genericError: 'An error occurred', evidenceQueued: 'Evidence attached to {task}. It is queued for AI verification. The task was not completed automatically.' },
+    home: { eyebrow: 'My shift', title: 'Welcome back', description: 'Your personal operational workspace.', tasks: 'Assigned tasks', today: 'Due today', overdue: 'Overdue', notifications: 'Recent notifications', schedule: 'Upcoming shifts', viewTasks: 'View my tasks', askBrain: 'Ask Brain', noShifts: 'No upcoming shifts.', unavailable: 'Personal overview is temporarily unavailable.' },
+    role: { super_admin: 'Super Admin', owner: 'Owner', manager: 'Manager', employee: 'Employee' },
+  },
+  ar: {
+    nav: { dashboard: 'الرئيسية', brain: 'مساعد برين', tasks: 'مهامي', notifications: 'إشعاراتي', shifts: 'جدولي', settings: 'الإعدادات', signOut: 'تسجيل الخروج', signingOut: 'جارٍ تسجيل الخروج...', account: 'حسابي', open: 'فتح القائمة', close: 'إغلاق القائمة' },
+    tasks: { eyebrow: 'المهام', title: 'سير العمل التشغيلي', description: 'المهام المباشرة ضمن صلاحياتك.', refresh: 'تحديث', loading: 'جارٍ تحميل المهام', access: 'الوصول غير متاح', unable: 'تعذّر تحميل المهام', retry: 'حاول مجددًا', emptyTitle: 'لا توجد مهام', empty: 'لا توجد مهام مسندة إليك حاليًا.', session: 'انتهت جلستك. يرجى تسجيل الدخول مجددًا.', unauthorized: 'حسابك غير مخوّل لمساحة عمل الشركة.', unlinked: 'حسابك غير مربوط بسجل موظف. اطلب من المالك أو المدير إكمال الربط.', failed: 'تعذّر تحميل المهام. تحقق من الاتصال وحاول مجددًا.', unassigned: 'غير مسندة', noDue: 'من دون موعد', original: 'المهمة الأصلية', arabicTranslation: 'الترجمة العربية', translationPending: 'الترجمة العربية غير متاحة بعد.', complete: 'تحديد كمكتملة', completing: 'جارٍ الإكمال...' },
+    status: { pending: 'قيد الانتظار', in_progress: 'قيد التنفيذ', completed: 'مكتملة', cancelled: 'ملغاة' },
+    priority: { critical: 'حرجة', high: 'عالية', medium: 'متوسطة', low: 'منخفضة' },
+    notifications: { eyebrow: 'التحديثات', title: 'الإشعارات', markAll: 'تحديد الكل كمقروء', settings: 'الإعدادات', loading: 'جارٍ تحميل الإشعارات…', unauthorized: 'غير مخوّل لعرض الإشعارات.', failed: 'تعذّر تحميل الإشعارات.', offline: 'لا يوجد اتصال. أعد الاتصال وحاول مجددًا.', retry: 'إعادة المحاولة', empty: 'لا توجد إشعارات بعد.', open: 'فتح', read: 'تحديد كمقروء', archive: 'أرشفة', updateFailed: 'تعذّر تحديث الإشعار.' },
+    settings: { eyebrow: 'الإعدادات', title: 'الإعدادات الشخصية', description: 'إدارة تفضيلات حساب برين.', language: 'اللغة', languageHelp: 'يتبع هذا التفضيل حسابك على كل الأجهزة.', english: 'English', arabic: 'العربية', save: 'حفظ اللغة', saving: 'جارٍ الحفظ...', saved: 'تم تحديث اللغة.', failed: 'تعذّر تحديث اللغة.' },
+    brain: { intelligence: 'الذكاء التشغيلي', thinking: 'عم فكّر...', confirming: 'بانتظار التأكيد', executing: 'جارٍ التنفيذ...', done: 'تم', failed: 'فشل', welcome: 'أهلًا بك في برين', help: 'اسأل عن مهامك ومعلوماتك التشغيلية الشخصية.', suggestions: 'أسئلة مقترحة', remaining: 'الطلبات المتبقية', confirm: 'تأكيد', cancel: 'إلغاء', edit: 'تعديل', confirmTitle: 'أكد قبل المتابعة', placeholder: 'اسأل برين عن شغلك...', send: 'إرسال', cancelled: 'تم إلغاء الإجراء.', quotaUnavailable: 'حالة الحصة غير متاحة', genericError: 'حدث خطأ', evidenceQueued: 'تم إرفاق الدليل بالمهمة {task}. وهو بانتظار التحقق بالذكاء الاصطناعي. لم تُستكمل المهمة تلقائيًا.' },
+    home: { eyebrow: 'ورديتي', title: 'أهلًا بعودتك', description: 'مساحة عملك التشغيلية الشخصية.', tasks: 'المهام المسندة', today: 'مستحقة اليوم', overdue: 'متأخرة', notifications: 'أحدث الإشعارات', schedule: 'الورديات القادمة', viewTasks: 'عرض مهامي', askBrain: 'اسأل برين', noShifts: 'لا توجد ورديات قادمة.', unavailable: 'الملخص الشخصي غير متاح مؤقتًا.' },
+    role: { super_admin: 'مشرف عام', owner: 'مالك', manager: 'مدير', employee: 'موظف' },
+  },
+} as const;
+
+export type TranslationMessages = (typeof messages)['en'];

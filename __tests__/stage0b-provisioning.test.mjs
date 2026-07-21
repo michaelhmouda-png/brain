@@ -18,6 +18,7 @@ function validProfile(overrides = {}) {
         status: 'active',
         company_id: COMPANY_ID,
         employee_id: null,
+        preferred_language: 'en',
     ...overrides,
   };
 }

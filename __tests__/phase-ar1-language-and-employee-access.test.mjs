@@ -1,0 +1,57 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import { employeeMayCallApiPath, employeeMayOpenDashboardPath, employeeMayUseBrainTool } from '../lib/employee-access.ts';
+import { messages, normalizeLanguage } from '../lib/i18n.ts';
+
+test('English remains default and Arabic dictionary is centralized', () => {
+  assert.equal(normalizeLanguage(undefined), 'en');
+  assert.equal(normalizeLanguage('ar'), 'ar');
+  assert.equal(messages.en.nav.tasks, 'My Tasks');
+  assert.equal(messages.ar.nav.tasks, 'مهامي');
+});
+
+test('employee dashboard and API allowlists expose only personal operations', () => {
+  for (const path of ['/dashboard','/dashboard/tasks','/dashboard/notifications','/dashboard/shifts','/dashboard/ai-assistant','/dashboard/settings']) assert.equal(employeeMayOpenDashboardPath(path), true);
+  for (const path of ['/dashboard/analytics','/dashboard/operations','/dashboard/employees','/dashboard/inventory','/dashboard/companies']) assert.equal(employeeMayOpenDashboardPath(path), false);
+  for (const path of ['/api/tasks','/api/notifications','/api/shifts','/api/brain/chat','/api/profile/language']) assert.equal(employeeMayCallApiPath(path), true);
+  for (const path of ['/api/brain/daily-briefing','/api/employees','/api/companies','/api/activity','/api/maintenance']) assert.equal(employeeMayCallApiPath(path), false);
+});
+
+test('employee Brain tool allowlist excludes score, analytics and management operations', () => {
+  assert.equal(employeeMayUseBrainTool('get_tasks'), true);
+  assert.equal(employeeMayUseBrainTool('complete_task'), true);
+  for (const tool of ['get_brain_score','prepare_for_event','get_inventory','list_employees','create_employee','create_task','delete_task']) assert.equal(employeeMayUseBrainTool(tool), false);
+});
+
+test('migration preserves RLS and binds Khaled through same-tenant profile employee link', async () => {
+  const sql = await readFile(new URL('../supabase/migrations/202607210020_phase_ar1_profile_language.sql', import.meta.url), 'utf8');
+  assert.match(sql, /ADD COLUMN preferred_language text NOT NULL DEFAULT 'en'/);
+  assert.match(sql, /CHECK \(preferred_language IN \('en', 'ar'\)\)/);
+  assert.match(sql, /e\.id = p\.employee_id[\s\S]*e\.company_id = p\.company_id/);
+  assert.match(sql, /v_matches <> 1/);
+  assert.match(sql, /WHERE p\.id = auth\.uid\(\) AND p\.status = 'active'/);
+  assert.match(sql, /complete_my_assigned_task/);
+  assert.match(sql, /t\.assigned_employee_id=v_profile\.employee_id/);
+  assert.doesNotMatch(sql, /DROP POLICY|CREATE POLICY|DISABLE ROW LEVEL SECURITY/);
+});
+
+test('Brain language and authorization are derived from ActorContext and enforced twice', async () => {
+  const source = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
+  assert.match(source, /actorContext\.preferredLanguage === 'ar'/);
+  assert.match(source, /actorContext\.role === 'employee'[\s\S]*TOOLS\.filter/);
+  assert.match(source, /actorContext\.role === 'employee' && !employeeMayUseBrainTool\(toolName\)/);
+  assert.match(source, /Never reveal Brain Score/);
+  assert.match(source, /complete_my_assigned_task/);
+});
+
+test('Arabic tasks retain original text and use IDs for translation and completion', async () => {
+  const page = await readFile(new URL('../app/dashboard/tasks/page.tsx', import.meta.url), 'utf8');
+  const route = await readFile(new URL('../app/api/tasks/translations/route.ts', import.meta.url), 'utf8');
+  assert.match(page, /t\.tasks\.original/);
+  assert.match(page, /task\.title/);
+  assert.match(page, /JSON\.stringify\(\{ taskId \}\)/);
+  assert.match(route, /\.in\('id', taskIds/);
+  assert.match(route, /Preserve names, IDs, numbers, quantities, dates/);
+  assert.doesNotMatch(route, /companyId.*body|employeeId.*body/);
+});
