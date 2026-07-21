@@ -51,7 +51,57 @@ test('Arabic tasks retain original text and use IDs for translation and completi
   assert.match(page, /t\.tasks\.original/);
   assert.match(page, /task\.title/);
   assert.match(page, /JSON\.stringify\(\{ taskId \}\)/);
-  assert.match(route, /\.in\('id', taskIds/);
-  assert.match(route, /Preserve names, IDs, numbers, quantities, dates/);
+  assert.match(route, /\.in\('id', requestedTaskIds/);
+  assert.match(route, /Preserve task IDs, employee names, numbers, quantities, dates/);
   assert.doesNotMatch(route, /companyId.*body|employeeId.*body/);
+});
+
+test('task translations use strict Structured Outputs and preserve the existing client contract', async () => {
+  const route = await readFile(new URL('../app/api/tasks/translations/route.ts', import.meta.url), 'utf8');
+  assert.match(route, /type: 'json_schema'/);
+  assert.match(route, /name: 'task_translations', strict: true, schema: TRANSLATION_SCHEMA/);
+  assert.match(route, /required: \['translations'\]/);
+  assert.match(route, /required: \['taskId', 'title', 'description'\]/);
+  assert.match(route, /additionalProperties: false/);
+  assert.match(route, /Object\.fromEntries\(validated\.map/);
+  assert.match(route, /\[taskId, \{ title, description \}\]/);
+});
+
+test('task translation validation fails closed for altered, duplicate, extra, unauthorized and partial IDs', async () => {
+  const route = await readFile(new URL('../app/api/tasks/translations/route.ts', import.meta.url), 'utf8');
+  assert.match(route, /new Set\(taskIds\)\.size !== taskIds\.length/);
+  assert.match(route, /authorizedTaskIds\.size !== requestedTaskIds\.length/);
+  assert.match(route, /requestedTaskIds\.some\(\(id\) => !authorizedTaskIds\.has\(id\)\)/);
+  assert.match(route, /translations\.length !== authorizedTaskIds\.size/);
+  assert.match(route, /!authorizedTaskIds\.has\(taskId\) \|\| seen\.has\(taskId\)/);
+  assert.match(route, /title\.trim\(\)\.length === 0/);
+  assert.match(route, /description !== null && typeof description !== 'string'/);
+  assert.match(route, /TASK_TRANSLATION_SCOPE_DENIED/);
+  assert.match(route, /TASK_TRANSLATION_MALFORMED_RESPONSE/);
+});
+
+test('OpenAI failures and malformed output return safe diagnostics without sensitive values', async () => {
+  const route = await readFile(new URL('../app/api/tasks/translations/route.ts', import.meta.url), 'utf8');
+  for (const stage of ['openai.initialize', 'openai.request', 'openai.extract', 'openai.validate', 'openai.convert']) assert.match(route, new RegExp(stage.replace('.', '\\.')));
+  assert.match(route, /requestedTaskCount/);
+  assert.match(route, /returnedTranslationCount/);
+  assert.match(route, /languageIsArabic/);
+  assert.doesNotMatch(route, /console\.(?:error|warn|log)\([^\n]*(?:taskId|tasks|outputText|response|apiKey)/);
+  assert.doesNotMatch(route, /console\.(?:error|warn|log)\([^\n]*(?:cookie|token|employee|title|description)/i);
+  assert.match(route, /catch \{[\s\S]*TASK_TRANSLATION_SERVICE_UNAVAILABLE/);
+  assert.match(route, /JSON\.parse\(outputText\)/);
+});
+
+test('Tasks page validates HTTP and translation shape while preserving original tasks and retry', async () => {
+  const page = await readFile(new URL('../app/dashboard/tasks/page.tsx', import.meta.url), 'utf8');
+  assert.match(page, /response\.headers\.get\('content-type'\)/);
+  assert.match(page, /response\.status === 401 \|\| response\.status === 403/);
+  assert.match(page, /response\.status === 400 \|\| response\.status === 409/);
+  assert.match(page, /response\.status === 500 \|\| response\.status === 503/);
+  assert.match(page, /translationsFromPayload\(payload, new Set\(taskIds\)\)/);
+  assert.match(page, /entries\.length !== expectedIds\.size/);
+  assert.match(page, /onClick=\{\(\) => void loadTranslations\(tasks\)\}/);
+  assert.match(page, /setTasks\(visibleTasks\);[\s\S]*await loadTranslations/);
+  assert.match(page, /task\.title/);
+  assert.doesNotMatch(page, /t\.tasks\.translationPending/);
 });

@@ -37,12 +37,39 @@ const priorityStyle: Record<TaskListItem['priority'], string> = {
   low: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
 };
 
+type TaskTranslation = { title: string; description: string | null };
+type TranslationFailure = 'unauthorized' | 'invalid' | 'service' | 'malformed';
+
+const translationMessages: Record<TranslationFailure, string> = {
+  unauthorized: 'تعذّر الوصول إلى ترجمة هذه المهام. حدّث الصفحة أو سجّل الدخول مجددًا.',
+  invalid: 'تعذّر إرسال المهام للترجمة. حدّث قائمة المهام وحاول مجددًا.',
+  service: 'خدمة الترجمة غير متاحة مؤقتًا. يمكنك متابعة المهمة الأصلية والمحاولة مجددًا.',
+  malformed: 'تعذّر التحقق من الترجمة العربية. يمكنك متابعة المهمة الأصلية والمحاولة مجددًا.',
+};
+
+function translationsFromPayload(value: unknown, expectedIds: Set<string>): Record<string, TaskTranslation> | null {
+  if (!isRecord(value) || !isRecord(value.translations)) return null;
+  const entries = Object.entries(value.translations);
+  if (entries.length !== expectedIds.size) return null;
+  const result: Record<string, TaskTranslation> = {};
+  for (const [taskId, translation] of entries) {
+    if (!expectedIds.has(taskId) || !isRecord(translation)) return null;
+    const title = translation.title;
+    const description = translation.description;
+    if (typeof title !== 'string' || title.trim().length === 0 || (description !== null && typeof description !== 'string')) return null;
+    result[taskId] = { title: title.trim(), description };
+  }
+  return Object.keys(result).length === expectedIds.size ? result : null;
+}
+
 export default function TasksPage() {
   const { language, role, messages: t } = useLocale();
   const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ message: string; authorization: boolean } | null>(null);
-  const [translations, setTranslations] = useState<Record<string, { title: string; description: string | null }>>({});
+  const [translations, setTranslations] = useState<Record<string, TaskTranslation>>({});
+  const [translationFailure, setTranslationFailure] = useState<TranslationFailure | null>(null);
+  const [translationsLoading, setTranslationsLoading] = useState(false);
   const [completingId, setCompletingId] = useState<string | null>(null);
   const completeTask = async (taskId: string) => {
     setCompletingId(taskId); setError(null);
@@ -54,6 +81,54 @@ export default function TasksPage() {
     finally { setCompletingId(null); }
   };
 
+  const loadTranslations = useCallback(async (visibleTasks: TaskListItem[], signal?: AbortSignal) => {
+    if (language !== 'ar' || visibleTasks.length === 0) {
+      setTranslations({});
+      setTranslationFailure(null);
+      return;
+    }
+    setTranslationsLoading(true);
+    setTranslationFailure(null);
+    const taskIds = visibleTasks.map((task) => task.id);
+    try {
+      const response = await fetch('/api/tasks/translations', {
+        method: 'POST', cache: 'no-store', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskIds }), signal,
+      });
+      const contentType = response.headers.get('content-type')?.toLowerCase() ?? '';
+      if (!contentType.includes('application/json')) {
+        setTranslations({});
+        setTranslationFailure('malformed');
+        return;
+      }
+      const payload: unknown = await response.json();
+      if (!response.ok) {
+        setTranslations({});
+        setTranslationFailure(response.status === 401 || response.status === 403
+          ? 'unauthorized'
+          : response.status === 400 || response.status === 409
+            ? 'invalid'
+            : response.status === 500 || response.status === 503
+              ? 'service'
+              : 'malformed');
+        return;
+      }
+      const validated = translationsFromPayload(payload, new Set(taskIds));
+      if (!validated) {
+        setTranslations({});
+        setTranslationFailure('malformed');
+        return;
+      }
+      setTranslations(validated);
+    } catch (translationError) {
+      if (signal?.aborted) return;
+      setTranslations({});
+      setTranslationFailure(translationError instanceof TypeError ? 'service' : 'malformed');
+    } finally {
+      if (!signal?.aborted) setTranslationsLoading(false);
+    }
+  }, [language]);
+
   const loadTasks = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
@@ -62,12 +137,9 @@ export default function TasksPage() {
       const values = await fetchJsonCollection('Tasks', '/api/tasks', signal ?? controller!.signal);
       const parsed = values.map(taskFromPayload);
       if (parsed.some((task) => task === null)) throw new Error('INVALID_TASK_RESPONSE');
-      setTasks(parsed as TaskListItem[]);
-      if (language === 'ar' && parsed.length > 0) {
-        const response = await fetch('/api/tasks/translations', { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ taskIds: parsed.map((task) => task!.id) }), signal: signal ?? controller!.signal });
-        const payload: unknown = await response.json();
-        if (response.ok && isRecord(payload) && isRecord(payload.translations)) setTranslations(payload.translations as Record<string, { title: string; description: string | null }>);
-      }
+      const visibleTasks = parsed as TaskListItem[];
+      setTasks(visibleTasks);
+      await loadTranslations(visibleTasks, signal ?? controller!.signal);
     } catch (loadError) {
       if (signal?.aborted || controller?.signal.aborted) return;
       logRouteDiagnostic('Tasks', loadError);
@@ -85,7 +157,7 @@ export default function TasksPage() {
     } finally {
       if (!signal?.aborted && !controller?.signal.aborted) setLoading(false);
     }
-  }, [language, t]);
+  }, [loadTranslations, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -136,13 +208,22 @@ export default function TasksPage() {
         </div>
       )}
 
+      {language === 'ar' && tasks.length > 0 && translationFailure && (
+        <div className="rounded-2xl border border-amber-400/25 bg-amber-500/10 p-4" role="alert">
+          <p className="text-sm text-amber-100">{translationMessages[translationFailure]}</p>
+          <button type="button" disabled={translationsLoading} onClick={() => void loadTranslations(tasks)} className="mt-3 min-h-11 rounded-xl bg-amber-100 px-4 text-sm font-semibold text-amber-950 disabled:opacity-60">
+            {translationsLoading ? 'جارٍ طلب الترجمة...' : 'إعادة محاولة الترجمة'}
+          </button>
+        </div>
+      )}
+
       {!error && tasks.length > 0 && <div className="grid gap-3 xl:grid-cols-2">
         {tasks.map((task) => (
           <article key={task.id} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/60 p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0"><h2 className="break-words text-lg font-bold text-white">{language === 'ar' && translations[task.id] ? translations[task.id].title : task.title}</h2>
                 {language === 'ar' && <p className="mt-1 text-xs font-semibold text-cyan-300">{t.tasks.arabicTranslation}</p>}
-                {language === 'ar' && !translations[task.id] && <p className="mt-2 text-sm text-slate-400">{t.tasks.translationPending}</p>}
+                {language === 'ar' && translationsLoading && !translations[task.id] && <p className="mt-2 text-sm text-slate-400">جارٍ إعداد الترجمة العربية...</p>}
                 {language === 'ar' && translations[task.id]?.description && <p className="mt-2 break-words text-sm text-slate-300">{translations[task.id].description}</p>}
                 <div className={language === 'ar' ? 'mt-3 border-t border-white/10 pt-3' : ''} dir="auto">
                   {language === 'ar' && <p className="mb-1 text-xs font-semibold text-slate-500">{t.tasks.original}</p>}
