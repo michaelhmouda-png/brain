@@ -79,7 +79,8 @@ test('Arabic tasks retain original text and use IDs for translation and completi
   assert.match(page, /task\.title/);
   assert.match(page, /JSON\.stringify\(\{ taskId \}\)/);
   assert.match(route, /\.in\('id', requestedTaskIds/);
-  assert.match(helper, /Preserve task IDs, employee names, numbers, quantities, dates/);
+  assert.match(helper, /Preserve task IDs exactly/);
+  assert.match(helper, /preserve calendar dates, quantities, prices, units, identifiers/);
   assert.match(route, /translateAuthorizedTaskRecords/);
   assert.doesNotMatch(route, /companyId.*body|employeeId.*body/);
 });
@@ -94,6 +95,30 @@ test('task translations use strict Structured Outputs and preserve the existing 
   assert.match(helper, /additionalProperties: false/);
   assert.match(route, /Object\.fromEntries\(translated\)/);
   assert.match(route, /return NextResponse\.json\(\{ translations \}/);
+});
+
+test('Arabic task translation fully localizes temporal and urgency words while preserving operational tokens', async () => {
+  const helper = await readFile(new URL('../lib/brain/employee-task-presentation.server.ts', import.meta.url), 'utf8');
+  for (const mapping of [
+    "am: 'صباحاً'", "pm: 'مساءً'", "tonight: 'الليلة'", "tomorrow: 'غداً'",
+    "today: 'اليوم'", "yesterday: 'أمس'", "morning: 'صباحاً'", "evening: 'مساءً'",
+    "urgent: 'عاجل'", "immediately: 'فوراً'",
+  ]) assert.match(helper, new RegExp(mapping));
+  assert.match(helper, /normalizeArabicTaskDisplayText\(title\)/);
+  assert.match(helper, /normalizeArabicTaskDisplayText\(description\)/);
+  assert.match(helper, /numeric values and punctuation inside times such as 9:00/);
+  assert.match(helper, /operational codes such as Bar B exactly/);
+  assert.match(helper, /Khaled as خالد/);
+  assert.match(helper, /proper names, brands, and location names unchanged/);
+  assert.match(helper, /calendar dates, quantities, prices, units, identifiers/);
+  assert.doesNotMatch(helper, /Preserve task IDs, employee names, numbers, quantities, dates/);
+});
+
+test('English task translations remain unchanged and UUID correspondence is still exact', async () => {
+  const helper = await readFile(new URL('../lib/brain/employee-task-presentation.server.ts', import.meta.url), 'utf8');
+  assert.match(helper, /if \(language === 'en' \|\| tasks\.length === 0\)[\s\S]*task\.originalTitle[\s\S]*task\.originalDescription/);
+  assert.match(helper, /validateTaskTranslations\(parsed, new Set\(tasks\.map\(\(task\) => task\.id\)\)\)/);
+  assert.match(helper, /!authorizedTaskIds\.has\(row\.taskId\) \|\| seen\.has\(row\.taskId\)/);
 });
 
 test('task translation validation fails closed for altered, duplicate, extra, unauthorized and partial IDs', async () => {
@@ -145,7 +170,7 @@ test('employee display projection never contains internal identity while preserv
   const helper = await readFile(new URL('../lib/brain/employee-task-presentation.server.ts', import.meta.url), 'utf8');
   const displayType = helper.slice(helper.indexOf('export type EmployeeTaskDisplay'), helper.indexOf('type Translation'));
   for (const forbidden of ['id:', 'companyId', 'employeeId', 'canonicalStatus', 'canonicalPriority', 'originalTitle']) assert.doesNotMatch(displayType, new RegExp(forbidden));
-  assert.match(helper, /employee names, numbers, quantities, dates, and operational values exactly/);
+  assert.match(helper, /calendar dates, quantities, prices, units, identifiers/);
   assert.match(helper, /translationFailed/);
   assert.match(helper, /translations = new Map\(tasks\.map\(\(task\) => \[task\.id, \{ title: task\.originalTitle/);
 });
