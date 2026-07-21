@@ -5,10 +5,10 @@ import test from 'node:test';
 import {
   classifyTaskRequestScope,
   resolveCompanyTaskEmployee,
+  resolveExplicitNamedTaskStatus,
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
-  taskRequestExplicitlyIncludesFilter,
   taskRequestUsesCompanyScope,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
@@ -131,13 +131,10 @@ test('named task assignees resolve uniquely inside the authorized company direct
 
 test('named assignee requests reject hidden model filters unless explicitly requested', () => {
   const request = "Show me Carla's tasks";
-  for (const filter of ['title', 'status', 'priority', 'due_date']) {
-    assert.equal(taskRequestExplicitlyIncludesFilter(request, filter), false);
-  }
-  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's pending tasks", 'status'), true);
-  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's critical tasks", 'priority'), true);
-  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's tasks due tomorrow", 'due_date'), true);
-  assert.equal(taskRequestExplicitlyIncludesFilter("Show Carla's task titled Clean bar", 'title'), true);
+  assert.equal(resolveExplicitNamedTaskStatus(request), null);
+  assert.equal(resolveExplicitNamedTaskStatus("Show Carla's pending tasks"), 'pending');
+  assert.equal(resolveExplicitNamedTaskStatus("Show Carla's in progress tasks"), 'in_progress');
+  assert.equal(resolveExplicitNamedTaskStatus("Show Carla's completed tasks"), 'completed');
 });
 
 test('an active named employee with exactly one task is selected by UUID before pagination', () => {
@@ -214,7 +211,8 @@ test('Tasks API and Brain apply the same canonical employee scope before optiona
   assert.match(getTasks, /shouldApplyModelTaskAssigneeFilter/);
   assert.match(getTasks, /applyModelAssigneeFilter && params\.assigned_employee_name/);
   assert.match(getTasks, /taskRequestReferencesCompanyEmployee/);
-  assert.match(getTasks, /taskRequestExplicitlyIncludesFilter/);
+  assert.match(getTasks, /resolveExplicitNamedTaskStatus/);
+  assert.match(getTasks, /if \(explicitNamedStatus\)/);
   assert.doesNotMatch(getTasks, /fullName\.includes\(searchName\)/);
   assert.match(brain, /report every task returned by get_tasks, including unassigned tasks/);
 });

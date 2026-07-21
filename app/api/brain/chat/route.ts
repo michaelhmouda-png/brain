@@ -37,10 +37,10 @@ import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
 import {
   classifyTaskRequestScope,
   resolveCompanyTaskEmployee,
+  resolveExplicitNamedTaskStatus,
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
-  taskRequestExplicitlyIncludesFilter,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
   type TaskRequestScopeIntent,
@@ -2541,14 +2541,10 @@ Status: ${previewStatus}`,
 
     const namedAssigneeRequest = requestedAssigneeId !== null;
     const ignoreImplicitModelFilters = this.unfilteredCompanyTaskRequest || namedAssigneeRequest;
-    const allowTitleFilter = !ignoreImplicitModelFilters ||
-      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'title');
-    const allowStatusFilter = !ignoreImplicitModelFilters ||
-      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'status');
-    const allowPriorityFilter = !ignoreImplicitModelFilters ||
-      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'priority');
-    const allowDueDateFilter = !ignoreImplicitModelFilters ||
-      taskRequestExplicitlyIncludesFilter(this.latestUserMessage, 'due_date');
+    const allowModelFilters = !ignoreImplicitModelFilters;
+    const explicitNamedStatus = namedAssigneeRequest
+      ? resolveExplicitNamedTaskStatus(this.latestUserMessage)
+      : null;
     const limit = resolveTaskResultLimit(params.limit, ignoreImplicitModelFilters);
 
     // ── Step 1: Query tasks only (no join — avoids schema cache relationship errors) ──
@@ -2567,14 +2563,16 @@ Status: ${previewStatus}`,
     }
 
     // [Phase 0B] Filter by title (partial match, case-insensitive)
-    if (allowTitleFilter && params.title) {
+    if (allowModelFilters && params.title) {
       const titleFilter = params.title.trim().toLowerCase();
       query = query.ilike('title', `%${titleFilter}%`);
       console.log('[Brain Diagnostic] getTasks title filter:', { search: titleFilter });
     }
 
     // [Phase 0B] Normalize status parameter from capitalized to lowercase before query
-    if (allowStatusFilter && params.status) {
+    if (explicitNamedStatus) {
+      query = query.eq('status', explicitNamedStatus);
+    } else if (allowModelFilters && params.status) {
       const canonicalStatusVal = canonicalStatus(params.status);
       console.log('[Brain Diagnostic] getTasks status normalization:', {
         input: params.status,
@@ -2586,7 +2584,7 @@ Status: ${previewStatus}`,
     }
 
     // [Phase 0B] Normalize priority parameter from capitalized to lowercase before query
-    if (allowPriorityFilter && params.priority) {
+    if (allowModelFilters && params.priority) {
       const canonicalPriorityVal = canonicalPriority(params.priority);
       console.log('[Brain Diagnostic] getTasks priority normalization:', {
         input: params.priority,
@@ -2598,7 +2596,7 @@ Status: ${previewStatus}`,
     }
 
     // Filter by due date
-    if (allowDueDateFilter && params.due_date) {
+    if (allowModelFilters && params.due_date) {
       const dueDateStr = params.due_date.trim().toLowerCase();
       if (dueDateStr === 'today') {
         query = query.eq('due_date', today);
@@ -2619,13 +2617,15 @@ Status: ${previewStatus}`,
     console.info('[Brain Chat] get_tasks query plan', {
       scope: visibility.kind,
       namedAssigneeResolved: namedAssigneeRequest,
+      companyId: this.userCompanyId,
+      resolvedEmployeeId: requestedAssigneeId,
       assignmentPredicate: visibility.kind === 'assigned' ? 'trusted_actor_employee' :
         namedAssigneeRequest ? 'resolved_company_employee' : 'none',
       filters: {
-        title: Boolean(allowTitleFilter && params.title),
-        status: Boolean(allowStatusFilter && params.status),
-        priority: Boolean(allowPriorityFilter && params.priority),
-        dueDate: Boolean(allowDueDateFilter && params.due_date),
+        title: Boolean(allowModelFilters && params.title),
+        status: explicitNamedStatus ?? (allowModelFilters && params.status ? canonicalStatus(params.status) : null),
+        priority: Boolean(allowModelFilters && params.priority),
+        dueDate: Boolean(allowModelFilters && params.due_date),
       },
       limit,
     });
@@ -2646,6 +2646,10 @@ Status: ${previewStatus}`,
     console.log('[Brain Diagnostic] getTasks Supabase query result', {
       rowsReturned: (data || []).length,
       hasTasks: (data || []).length > 0,
+      resolvedEmployeeId: requestedAssigneeId,
+      assignedPredicateMatches: requestedAssigneeId
+        ? (data || []).every((row: any) => row.assigned_employee_id === requestedAssigneeId)
+        : null,
     });
 
     // ── Step 2: Collect unique employee IDs and fetch names in one query ──
