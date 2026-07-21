@@ -451,7 +451,7 @@ export default function BrainChat() {
             disabled={isLoading}
             onUploaded={(taskTitle) => setMessages((previous) => [...previous, {
               id: crypto.randomUUID(), role: 'assistant',
-              content: `Evidence attached to ${taskTitle}. It is pending human review; the task was not completed automatically.`,
+              content: `Evidence attached to ${taskTitle}. It is queued for AI verification. The task was not completed automatically.`,
               timestamp: new Date(),
             }])}
           />
