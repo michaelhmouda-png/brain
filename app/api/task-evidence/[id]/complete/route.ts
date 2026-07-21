@@ -25,7 +25,12 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     if (error || !evidence || typeof evidence.storage_path !== 'string' || typeof evidence.expected_mime_type !== 'string' || typeof evidence.expected_size_bytes !== 'number') {
       return NextResponse.json({ error: 'Evidence is not available' }, { status: 404, headers: NO_STORE_HEADERS });
     }
-    if (evidence.upload_status === 'pending_review') return NextResponse.json({ evidenceId: id, status: 'pending_review' }, { headers: NO_STORE_HEADERS });
+    if (evidence.upload_status === 'pending_review') {
+      const { data: queuedData, error: queueError } = await supabase.rpc('enqueue_task_evidence_verification', { p_evidence_id: id });
+      const queued = firstRow(queuedData);
+      if (queueError || !queued || queued.verification_status !== 'queued') throw new Error('EVIDENCE_QUEUE_FAILED');
+      return NextResponse.json({ evidenceId: id, status: 'queued' }, { headers: NO_STORE_HEADERS });
+    }
 
     const { data: object, error: downloadError } = await supabase.storage.from(TASK_EVIDENCE_BUCKET).download(evidence.storage_path);
     if (downloadError || !object || object.size !== evidence.expected_size_bytes || object.size > TASK_EVIDENCE_MAX_BYTES) throw new Error('EVIDENCE_OBJECT_INVALID');
@@ -37,7 +42,10 @@ export async function POST(_request: Request, context: { params: Promise<{ id: s
     const { data: completedData, error: completionError } = await supabase.rpc('complete_task_evidence_upload', { p_evidence_id: id, p_verified_sha256: sha256 });
     const completed = firstRow(completedData);
     if (completionError || !completed) throw new Error('EVIDENCE_FINALIZE_FAILED');
-    return NextResponse.json({ evidenceId: id, taskId: completed.task_id, status: completed.evidence_status }, { headers: NO_STORE_HEADERS });
+    const { data: queuedData, error: queueError } = await supabase.rpc('enqueue_task_evidence_verification', { p_evidence_id: id });
+    const queued = firstRow(queuedData);
+    if (queueError || !queued || queued.verification_status !== 'queued') throw new Error('EVIDENCE_QUEUE_FAILED');
+    return NextResponse.json({ evidenceId: id, taskId: completed.task_id, status: 'queued' }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     await supabase.rpc('fail_task_evidence_upload', { p_evidence_id: id });
     console.error('[Task Evidence API] completion failed', { stage: 'evidence.complete', evidenceId: id, errorName: error instanceof Error ? error.name : 'UnknownError', errorMessage: error instanceof Error ? error.message : 'unknown_error' });

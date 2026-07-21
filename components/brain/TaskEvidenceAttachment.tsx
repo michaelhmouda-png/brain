@@ -119,7 +119,7 @@ export function TaskEvidenceAttachment({ disabled, onUploaded }: { disabled: boo
         }
         const completeResponse = await fetch(`/api/task-evidence/${prepared.evidenceId}/complete`, { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { Accept: 'application/json' } });
         const completed: unknown = await completeResponse.json();
-        if (!completeResponse.ok || !isRecord(completed) || completed.status !== 'pending_review') throw new Error(isRecord(completed) && typeof completed.error === 'string' ? completed.error : 'Evidence finalization failed.');
+        if (!completeResponse.ok || !isRecord(completed) || !['pending_review', 'queued'].includes(String(completed.status))) throw new Error(isRecord(completed) && typeof completed.error === 'string' ? completed.error : 'Evidence finalization failed.');
       }
       const taskTitle = selectedTask?.title ?? 'task';
       resetAndClose();

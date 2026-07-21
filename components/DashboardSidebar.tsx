@@ -12,6 +12,7 @@ interface NavSection {
   items: Array<{
     href: string;
     label: string;
+    reviewOnly?: boolean;
   }>;
 }
 
@@ -33,6 +34,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/dashboard/operations', label: 'Operations' },
       { href: '/dashboard/tasks', label: 'Tasks' },
+      { href: '/dashboard/evidence-review', label: 'Evidence Review', reviewOnly: true },
       { href: '/dashboard/shifts', label: 'Shifts' },
       { href: '/dashboard/maintenance', label: 'Maintenance' },
       { href: '/dashboard/inventory', label: 'Inventory' },
@@ -183,7 +185,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
             {section.title}
           </p>
           <div className="space-y-0.5 lg:space-y-1">
-            {section.items.map((item) => (
+            {section.items.filter((item) => !item.reviewOnly || (profile && ['manager', 'owner', 'super_admin'].includes(profile.role))).map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
