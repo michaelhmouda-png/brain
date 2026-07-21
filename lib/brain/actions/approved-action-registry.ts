@@ -3,7 +3,7 @@ import type { BrainRequestContext } from '../kernel/request-context.ts';
 import type { CreateTaskApplicationService } from '../tasks/application/create-task-application-service.ts';
 import { logApprovedExecutionFailure } from '../execution-diagnostics.server.ts';
 
-export type LegacyApprovedAction = Exclude<ProposalAction, 'create_task'>;
+export type LegacyApprovedAction = Exclude<ProposalAction, 'create_task' | 'create_task_batch'>;
 
 export interface ExecuteApprovedActionInput {
   readonly context: BrainRequestContext;
@@ -14,6 +14,7 @@ export interface ExecuteApprovedActionInput {
 
 export interface ApprovedActionExecutionResult {
   readonly success: boolean;
+  readonly createdCount?: number;
 }
 
 export interface ApprovedActionRegistry {
@@ -26,6 +27,7 @@ export type LegacyApprovedActionExecutor = (
 
 export interface ApprovedActionRegistryDependencies {
   readonly createTaskApplicationService: CreateTaskApplicationService | null;
+  readonly executeCreateTaskBatch?: ((input: ExecuteApprovedActionInput) => Promise<{ success: true; createdCount: number }>) | null;
   readonly legacyExecutors: Readonly<Record<LegacyApprovedAction, LegacyApprovedActionExecutor>>;
 }
 
@@ -40,9 +42,10 @@ export class ApprovedActionRegistryError extends Error {
 }
 
 function safeResult(result: unknown): ApprovedActionExecutionResult {
+  const record = result && typeof result === 'object' ? result as Record<string, unknown> : null;
   return Object.freeze({
-    success: Boolean(result && typeof result === 'object' &&
-      (result as Record<string, unknown>).success === true),
+    success: record?.success === true,
+    ...(typeof record?.createdCount === 'number' ? { createdCount: record.createdCount } : {}),
   });
 }
 
@@ -81,6 +84,9 @@ export function createApprovedActionRegistry(
             throw error;
           }
           return Object.freeze({ success: true });
+        case 'create_task_batch':
+          if (!dependencies.executeCreateTaskBatch) throw new ApprovedActionRegistryError('APPROVED_ACTION_EXECUTION_FAILED');
+          return safeResult(await dependencies.executeCreateTaskBatch(input));
         case 'create_employee': return executeLegacy(input.action, input.payload);
         case 'record_inventory_movement': return executeLegacy(input.action, input.payload);
         case 'create_shift': return executeLegacy(input.action, input.payload);

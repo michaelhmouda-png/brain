@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, RefreshCw, UserRound } from 'lucide-react';
+import { AlertCircle, CalendarDays, CheckCircle2, MapPin, RefreshCw, UserRound } from 'lucide-react';
 import { ClientApiError, fetchJsonCollection, isRecord, logRouteDiagnostic, stringField } from '@/lib/client-api';
 import type { TaskListItem } from '@/lib/task-list';
 import { useLocale } from '@/components/LocaleProvider';
@@ -13,6 +13,7 @@ function taskFromPayload(value: unknown): TaskListItem | null {
   if (!['critical', 'high', 'medium', 'low'].includes(priority) ||
       !['pending', 'in_progress', 'completed', 'cancelled'].includes(status)) return null;
   const assigned = isRecord(value.assignedEmployee) ? value.assignedEmployee : null;
+  const location = isRecord(value.location) ? value.location : null;
   return {
     id: stringField(value, 'id'),
     title: stringField(value, 'title'),
@@ -20,6 +21,9 @@ function taskFromPayload(value: unknown): TaskListItem | null {
     priority: priority as TaskListItem['priority'],
     status: status as TaskListItem['status'],
     dueDate: typeof value.dueDate === 'string' ? value.dueDate : null,
+    dueAt: typeof value.dueAt === 'string' ? value.dueAt : null,
+    companyTimezone: typeof value.companyTimezone === 'string' ? value.companyTimezone : null,
+    location: location ? { id: stringField(location, 'id'), name: stringField(location, 'name') } : null,
     assignedEmployee: assigned ? {
       id: stringField(assigned, 'id'),
       firstName: stringField(assigned, 'firstName'),
@@ -239,7 +243,8 @@ export default function TasksPage() {
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
               <span className="text-slate-200">{t.status[task.status]}</span>
               <span className="inline-flex items-center gap-1.5"><UserRound className="h-4 w-4" />{task.assignedEmployee ? `${task.assignedEmployee.firstName} ${task.assignedEmployee.lastName ?? ''}`.trim() : t.tasks.unassigned}</span>
-              <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{task.dueDate ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', { dateStyle: 'medium' }).format(new Date(task.dueDate)) : t.tasks.noDue}</span>
+              {task.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{task.location.name}</span>}
+              <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{task.dueAt ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', { dateStyle: 'medium', timeStyle: 'short', timeZone: task.companyTimezone ?? undefined }).format(new Date(task.dueAt)) : task.dueDate ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', { dateStyle: 'medium' }).format(new Date(task.dueDate)) : t.tasks.noDue}</span>
             </div>
             {role === 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && <button type="button" disabled={completingId === task.id} onClick={() => void completeTask(task.id)} className="mt-4 min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{completingId === task.id ? t.tasks.completing : t.tasks.complete}</button>}
           </article>

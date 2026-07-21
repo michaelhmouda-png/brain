@@ -6,7 +6,7 @@ export const PROPOSAL_SCHEMA_VERSION = 1;
 export const PROPOSAL_TTL_MS = 10 * 60 * 1000;
 
 export const PROPOSAL_ACTIONS = [
-  'create_employee', 'create_task', 'record_inventory_movement',
+  'create_employee', 'create_task', 'create_task_batch', 'record_inventory_movement',
   'create_shift', 'update_shift', 'delete_shift',
   'create_maintenance_ticket', 'update_maintenance_ticket',
   'delete_maintenance_ticket', 'complete_maintenance_ticket',
@@ -126,10 +126,27 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
   if (!PROPOSAL_ACTIONS.includes(action as ProposalAction)) throw new Error('UNSUPPORTED_PROPOSAL_ACTION');
   const a = action as ProposalAction;
   const i = object(raw);
+  if (a === 'create_task_batch') {
+    if (typeof i.timezone !== 'string' || !i.timezone.trim() || !Array.isArray(i.tasks) || i.tasks.length < 1 || i.tasks.length > 25) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+    const tasks = i.tasks.map((value, index) => {
+      const item = object(value);
+      const allowed = ['item_index','title','description','assigned_employee_id','assigned_employee_name','location_id','location_name','priority','status','due_local','due_at','due_date'];
+      if (Object.keys(item).some((key) => !allowed.includes(key)) || item.item_index !== index) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+      const title = string(item, 'title', true); const description = string(item, 'description', true);
+      const employeeId = uuidValue(item, 'assigned_employee_id', true); const employeeName = string(item, 'assigned_employee_name', true);
+      const locationId = uuidValue(item, 'location_id', true); const locationName = string(item, 'location_name', true);
+      const priority = enumValue(item, 'priority', ['low','medium','high','critical'], true);
+      const status = enumValue(item, 'status', ['pending'], true); const dueLocal = string(item, 'due_local', true);
+      const dueAt = string(item, 'due_at', true); const dueDate = string(item, 'due_date', true);
+      if (!dueLocal || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(dueLocal) || !dueAt || Number.isNaN(Date.parse(dueAt)) || !dueDate || !date.test(dueDate)) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+      return { item_index: index, title, description, assigned_employee_id: employeeId, assigned_employee_name: employeeName, location_id: locationId, location_name: locationName, priority, status, due_local: dueLocal, due_at: new Date(dueAt).toISOString(), due_date: dueDate };
+    });
+    return { action: a, payload: { timezone: i.timezone.trim(), tasks } };
+  }
   const p: Record<string, unknown> = {};
   const textKeys: Record<ProposalAction, string[]> = {
     create_employee: ['full_name','job_title','email','phone','notes','hire_date'],
-    create_task: ['title','description','assigned_employee_name','urgency','due_date'],
+    create_task: ['title','description','assigned_employee_name','urgency','due_date'], create_task_batch: [],
     record_inventory_movement: ['reason'], create_shift: ['notes'], update_shift: ['notes','shift_date'], delete_shift: [],
     create_maintenance_ticket: ['title','description','due_date'], update_maintenance_ticket: ['title','description','due_date'],
     delete_maintenance_ticket: [], complete_maintenance_ticket: ['completion_notes'],
@@ -140,7 +157,7 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
   for (const key of textKeys[a]) add(p, key, string(i, key, requiredText.has(`${a}:${key}`)));
 
   const uuidKeys: Record<ProposalAction, string[]> = {
-    create_employee:['department_id','location_id'], create_task:['assigned_employee_id'], record_inventory_movement:['inventory_item_id'],
+    create_employee:['department_id','location_id'], create_task:['assigned_employee_id'], create_task_batch: [], record_inventory_movement:['inventory_item_id'],
     create_shift:['employee_id','department_id'], update_shift:['shift_id','employee_id'], delete_shift:['shift_id'],
     create_maintenance_ticket:['location_id','assigned_to_id'], update_maintenance_ticket:['ticket_id','assigned_to_id'],
     delete_maintenance_ticket:['ticket_id'], complete_maintenance_ticket:['ticket_id'],
@@ -196,7 +213,7 @@ export async function createProposal(store: ProposalStore, input: { context: Bra
     id, actorId: identity.actorId, profileId: identity.profileId, tenantId: identity.tenantId,
     canonicalAction: action, canonicalPayload: payload, payloadHash, schemaVersion: PROPOSAL_SCHEMA_VERSION,
     risk: action.startsWith('delete_') || action === 'record_inventory_movement' ? 'high' : 'medium',
-    requiredRole: action === 'create_employee' ? 'manager_or_above' : null,
+    requiredRole: action === 'create_employee' || action === 'create_task_batch' ? 'manager_or_above' : null,
     preview: input.preview, status: 'pending', correlationId: input.context.actor.correlationId,
     idempotencyKey: `${id}:${payloadHash}`, createdAt: now.toISOString(), expiresAt: new Date(now.getTime()+PROPOSAL_TTL_MS).toISOString(),
     executedAt: null, safeResult: null,

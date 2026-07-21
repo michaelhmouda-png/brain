@@ -40,11 +40,15 @@ export async function GET() {
       );
     }
 
+    const { data: company, error: companyError } = await supabase
+      .from('companies').select('timezone').eq('id', authorization.companyId).single();
+    if (companyError) throw new Error('TASK_COMPANY_TIMEZONE_QUERY_FAILED');
+    const companyTimezone = typeof company?.timezone === 'string' ? company.timezone : null;
     const tasks = await loadCompanyTasks({
       async listTasks(companyId, assignedEmployeeId) {
         let query = supabase
           .from('tasks')
-          .select('id, title, description, priority, status, due_date, assigned_employee_id, created_at, updated_at')
+          .select('id, title, description, priority, status, due_date, due_at, assigned_employee_id, location:locations(id,name), created_at, updated_at')
           .eq('company_id', companyId)
           .order('created_at', { ascending: false });
         if (assignedEmployeeId) query = query.eq('assigned_employee_id', assignedEmployeeId);
@@ -58,7 +62,7 @@ export async function GET() {
           .eq('company_id', companyId)
           .in('id', employeeIds);
       },
-    }, authorization.companyId, visibility.kind === 'assigned' ? visibility.employeeId : null);
+    }, authorization.companyId, visibility.kind === 'assigned' ? visibility.employeeId : null, companyTimezone);
 
     if (visibility.kind === 'assigned' && tasks.length === 0) {
       const { data: visibleAssignedHistory, error: visibleAssignedHistoryError } = await supabase

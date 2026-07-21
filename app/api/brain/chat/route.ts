@@ -31,6 +31,7 @@ import { tenantScopeFromActor } from '@/lib/brain/kernel/tenant-scope';
 import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
 import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
+import { executeCreateTaskBatch, prepareCreateTaskBatch } from '@/lib/brain/tasks/batch/create-task-batch.server';
 import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quota.server';
 import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
@@ -758,6 +759,36 @@ const TOOLS = [
         },
       },
       required: ['title'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'create_task_batch',
+    description: 'Create two or more tasks as one reviewed, atomic batch. Use this instead of create_task whenever one user request contains multiple distinct tasks.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        tasks: {
+          type: 'array',
+          minItems: 1,
+          maxItems: 25,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              title: { type: 'string', description: 'Concise task title.' },
+              description: { type: 'string', description: 'Complete task instructions.' },
+              assignedEmployeeName: { type: 'string', description: 'Employee name as stated by the user.' },
+              locationName: { type: 'string', description: 'Company location name as stated by the user.' },
+              priority: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+              dueLocal: { type: 'string', description: 'Company-local due date and time in YYYY-MM-DDTHH:mm format.' },
+            },
+            required: ['title', 'description', 'assignedEmployeeName', 'locationName', 'priority', 'dueLocal'],
+          },
+        },
+      },
+      required: ['tasks'],
     },
   },
   {
@@ -4494,7 +4525,7 @@ function authorizedEmployeeTaskRecords(
 
 function safeExecutionMessage(action: ProposalAction): string {
   const labels: Partial<Record<ProposalAction, string>> = {
-    create_employee: 'Employee created successfully.', create_task: 'Task created successfully.',
+    create_employee: 'Employee created successfully.', create_task: 'Task created successfully.', create_task_batch: 'Task batch created successfully.',
     record_inventory_movement: 'Inventory movement recorded successfully.', create_shift: 'Shift created successfully.',
     update_shift: 'Shift updated successfully.', delete_shift: 'Shift deleted successfully.',
     create_maintenance_ticket: 'Maintenance ticket created successfully.', update_maintenance_ticket: 'Maintenance ticket updated successfully.',
@@ -4619,6 +4650,7 @@ export async function POST(request: NextRequest) {
           : null;
         const approvedActionRegistry = createApprovedActionRegistry({
           createTaskApplicationService,
+          executeCreateTaskBatch,
           legacyExecutors: {
             create_employee: payload => executionHandlers.createEmployee(payload as unknown as CreateEmployeeInput),
             record_inventory_movement: payload => executionHandlers.recordInventoryMovement(payload as unknown as RecordInventoryMovementInput),
@@ -4660,7 +4692,9 @@ export async function POST(request: NextRequest) {
           await markProposalFailed(proposalStore, stored.id, stored.payloadHash, 'EXECUTION_REJECTED');
           return NextResponse.json({ error: 'Action execution failed.', code: 'EXECUTION_REJECTED' }, { status: 409 });
         }
-        const safeMessage = safeExecutionMessage(stored.canonicalAction);
+        const safeMessage = stored.canonicalAction === 'create_task_batch' && typeof result.createdCount === 'number'
+          ? `${result.createdCount} tasks created successfully as one complete batch.`
+          : safeExecutionMessage(stored.canonicalAction);
         try {
           await markProposalExecuted(proposalStore, stored.id, stored.payloadHash, safeMessage);
         } catch {
@@ -4928,6 +4962,7 @@ When a user asks about employees (e.g., "Show all employees", "Who are my manage
 - If no results match, suggest alternative searches
 
 WRITE OPERATIONS — MANDATORY CONFIRMATION FLOW:
+When one user message requests multiple distinct tasks, call create_task_batch exactly once with every requested task in the original order. Never call create_task repeatedly and never stop after the first item. The returned single preview is the complete atomic batch and requires one confirmation.
 When a user asks to create an employee:
 1. Call create_employee with confirmed=false to generate a preview. Never insert without this step.
 2. Present the preview clearly: full name, job title, role, department, location, email.
@@ -5258,7 +5293,9 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
         console.log('[Brain Chat] Tool called:', {
           toolName,
-          arguments: toolInput,
+          arguments: toolName === 'create_task_batch'
+            ? { taskCount: Array.isArray(toolInput.tasks) ? toolInput.tasks.length : null }
+            : toolInput,
           timestamp: new Date().toISOString(),
         });
 
@@ -5306,6 +5343,9 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
               break;
             case 'create_task':
               toolResult = await handlers.createTask(toolInput as unknown as CreateTaskInput);
+              break;
+            case 'create_task_batch':
+              toolResult = await prepareCreateTaskBatch(supabase, requestContext, toolInput);
               break;
             case 'get_tasks':
               toolResult = await handlers.getTasks(toolInput as unknown as GetTasksInput);
@@ -5472,7 +5512,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
             const created = await createProposal(proposalStore, {
               context: requestContext,
               action: toolName,
-              rawArguments: toolInput,
+              rawArguments: tr.canonicalArguments ?? toolInput,
               preview: { label, rows },
             });
             console.log('[Brain Chat] Proposal created', { proposalId: created.id, correlationId: created.correlationId, action: created.canonicalAction, status: created.status });

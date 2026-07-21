@@ -5,6 +5,9 @@ export type TaskListItem = {
   priority: 'critical' | 'high' | 'medium' | 'low';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   dueDate: string | null;
+  dueAt: string | null;
+  companyTimezone: string | null;
+  location: { id: string; name: string } | null;
   assignedEmployee: {
     id: string;
     firstName: string;
@@ -50,6 +53,7 @@ export async function loadCompanyTasks(
   access: TaskListAccess,
   companyId: string,
   assignedEmployeeId: string | null = null,
+  companyTimezone: string | null = null,
 ): Promise<TaskListItem[]> {
   const taskResult = await access.listTasks(companyId, assignedEmployeeId);
   if (taskResult.error || !Array.isArray(taskResult.data)) throw new Error('TASK_LIST_QUERY_FAILED');
@@ -84,6 +88,8 @@ export async function loadCompanyTasks(
     const status = requiredString(row, 'status');
     if (!PRIORITIES.has(priority) || !STATUSES.has(status)) throw new Error('INVALID_TASK_LIST_DATA');
     const employeeId = optionalString(row, 'assigned_employee_id');
+    const rawLocation = Array.isArray(row.location) ? row.location[0] : row.location;
+    const location = record(rawLocation);
     return {
       id: requiredString(row, 'id'),
       title: requiredString(row, 'title'),
@@ -91,6 +97,9 @@ export async function loadCompanyTasks(
       priority: priority as TaskListItem['priority'],
       status: status as TaskListItem['status'],
       dueDate: optionalString(row, 'due_date'),
+      dueAt: optionalString(row, 'due_at'),
+      companyTimezone,
+      location: location ? { id: requiredString(location, 'id'), name: requiredString(location, 'name') } : null,
       assignedEmployee: employeeId ? employeeById.get(employeeId) ?? null : null,
       createdAt: requiredString(row, 'created_at'),
       updatedAt: requiredString(row, 'updated_at'),
