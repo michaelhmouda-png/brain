@@ -40,12 +40,25 @@ import {
   resolveExplicitNamedTaskStatus,
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
+  resolveEmployeeTaskCompletionIntent,
   shouldApplyModelTaskAssigneeFilter,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
 import { employeeMayUseBrainTool } from '@/lib/employee-access';
+import {
+  buildEmployeeTaskPresentation,
+  employeeTaskOutputIsSafe,
+  formatCompletionClarification,
+  formatEmployeeDailySummary,
+  formatEmployeeTaskList,
+  matchEmployeeTaskReference,
+  safeEmployeeTaskError,
+  type AuthorizedEmployeeTaskRecord,
+  type EmployeeTaskDisplay,
+  type EmployeeTaskLanguage,
+} from '@/lib/brain/employee-task-presentation.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4440,6 +4453,43 @@ function mayExecuteProposal(action: ProposalAction, role: string): boolean {
   return action !== 'create_employee' || ['super_admin', 'owner', 'manager'].includes(role);
 }
 
+function localDateInTimezone(timeZone: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+function authorizedEmployeeTaskRecords(
+  rows: readonly Record<string, unknown>[],
+  companyId: string,
+  employeeId: string,
+): AuthorizedEmployeeTaskRecord[] | null {
+  const records: AuthorizedEmployeeTaskRecord[] = [];
+  for (const row of rows) {
+    let id: string | null;
+    try { id = nullableUuid(row.id); } catch { return null; }
+    const status = canonicalStatus(typeof row.status === 'string' ? row.status : undefined);
+    const priority = canonicalPriority(typeof row.priority === 'string' ? row.priority : undefined);
+    if (!id || !status || !priority || typeof row.title !== 'string' || !row.title.trim()) return null;
+    if ('company_id' in row && row.company_id !== companyId) return null;
+    if ('assigned_employee_id' in row && row.assigned_employee_id !== employeeId) return null;
+    records.push({
+      id,
+      companyId,
+      assignedEmployeeId: employeeId,
+      canonicalStatus: status,
+      canonicalPriority: priority,
+      originalTitle: row.title,
+      originalDescription: typeof row.description === 'string' ? row.description : null,
+      dueDate: typeof row.due_date === 'string' ? row.due_date : null,
+    });
+  }
+  return records;
+}
+
 function safeExecutionMessage(action: ProposalAction): string {
   const labels: Partial<Record<ProposalAction, string>> = {
     create_employee: 'Employee created successfully.', create_task: 'Task created successfully.',
@@ -4660,8 +4710,11 @@ export async function POST(request: NextRequest) {
     const deterministicEmployeeDailyTaskRequest = actorContext.role === 'employee' && taskRequestScopeIntent === 'self_daily';
     const deterministicEmployeeTaskReadRequest = actorContext.role === 'employee' &&
       (taskRequestScopeIntent === 'self_daily' || taskRequestScopeIntent === 'self');
+    const employeeCompletionIntent = actorContext.role === 'employee' && latestUserMessage
+      ? resolveEmployeeTaskCompletionIntent(latestUserMessage.content)
+      : null;
     let companyTimezone = 'UTC';
-    if (deterministicEmployeeDailyTaskRequest) {
+    if (deterministicEmployeeDailyTaskRequest || employeeCompletionIntent) {
       const { data: companySettings, error: companySettingsError } = await supabase
         .from('companies')
         .select('timezone')
@@ -4733,6 +4786,68 @@ export async function POST(request: NextRequest) {
       provisioningValidation: 'passed',
     });
 
+    const employeeLanguage: EmployeeTaskLanguage = actorContext.preferredLanguage === 'ar' ? 'ar' : 'en';
+    const companyToday = localDateInTimezone(companyTimezone);
+
+    // Employee completion references are resolved only against a fresh,
+    // server-scoped query. Neither model arguments nor browser context can
+    // supply the employee identity or task UUID.
+    if (employeeCompletionIntent) {
+      if (!actorContext.employeeId) {
+        return NextResponse.json({
+          message: employeeLanguage === 'ar' ? 'حسابك مش مربوط بسجل موظف.' : 'Your account is not linked to an employee record.',
+          role: 'assistant', quota: admittedQuota,
+        }, { status: 409 });
+      }
+      const { data: completionRows, error: completionQueryError } = await supabase
+        .from('tasks')
+        .select('id,company_id,assigned_employee_id,title,description,priority,status,due_date')
+        .eq('company_id', actorContext.companyId)
+        .eq('assigned_employee_id', actorContext.employeeId)
+        .in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS])
+        .limit(100);
+      if (completionQueryError || !Array.isArray(completionRows)) {
+        return NextResponse.json({ message: safeEmployeeTaskError(employeeLanguage), role: 'assistant', quota: admittedQuota }, { status: 503 });
+      }
+      const records = authorizedEmployeeTaskRecords(completionRows, actorContext.companyId, actorContext.employeeId);
+      if (!records) {
+        return NextResponse.json({ message: safeEmployeeTaskError(employeeLanguage), role: 'assistant', quota: admittedQuota }, { status: 503 });
+      }
+      const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, { openai });
+      const matches = matchEmployeeTaskReference(employeeCompletionIntent.taskReference, records, presentation.displays);
+      if (matches.length === 0) {
+        return NextResponse.json({
+          message: employeeLanguage === 'ar'
+            ? 'ما لقيت مهمة نشطة معيّنة إلك بهالاسم. جرّب اكتب اسم المهمة مثل ما ظاهر عندك.'
+            : 'I could not find an active assigned task with that name. Please use the title shown in your task list.',
+          role: 'assistant', quota: admittedQuota,
+        });
+      }
+      if (matches.length > 1) {
+        const clarification = formatCompletionClarification(matches.map((index) => presentation.displays[index]), employeeLanguage);
+        return NextResponse.json({
+          message: employeeTaskOutputIsSafe(clarification) ? clarification : safeEmployeeTaskError(employeeLanguage),
+          role: 'assistant', quota: admittedQuota,
+        });
+      }
+      const matchedIndex = matches[0];
+      const matchedRecord = records[matchedIndex];
+      const matchedDisplay = presentation.displays[matchedIndex];
+      const { error: completionError } = await supabase.rpc('complete_my_assigned_task', { p_task_id: matchedRecord.id });
+      if (completionError) {
+        return NextResponse.json({
+          message: employeeLanguage === 'ar' ? 'ما قدرت علّم المهمة كمكتملة. تأكد إنها بعدها معيّنة إلك وجرب مرة تانية.' : 'I could not complete that task. Make sure it is still assigned to you and try again.',
+          role: 'assistant', quota: admittedQuota,
+        }, { status: 409 });
+      }
+      const completionMessage = employeeLanguage === 'ar' ? `تم تسجيل «${matchedDisplay.title}» كمكتملة.` : `“${matchedDisplay.title}” is now done.`;
+      return NextResponse.json({
+        message: employeeTaskOutputIsSafe(completionMessage) ? completionMessage :
+          (employeeLanguage === 'ar' ? 'تم تسجيل المهمة كمكتملة.' : 'The task is now done.'),
+        role: 'assistant', quota: admittedQuota,
+      });
+    }
+
     // 7. Build instructions and initial input for Responses API
     failureStage = 'prompt.build';
     const recentEmployeesList = conversationContext.recentEmployees
@@ -4740,8 +4855,12 @@ export async function POST(request: NextRequest) {
       .join('\n');
 
     const languageInstructions = actorContext.preferredLanguage === 'ar'
-      ? `LANGUAGE: Respond in clear Arabic. Understand Modern Standard Arabic and Lebanese Arabic. Prefer simple hospitality wording a Lebanese Arabic speaker can follow. Keep tool names, IDs, database enum values, and internal operations canonical and unchanged.`
-      : `LANGUAGE: Respond in English.`;
+      ? actorContext.role === 'employee'
+        ? `LANGUAGE: Respond in clear Arabic. Understand Modern Standard Arabic and Lebanese Arabic. Prefer simple hospitality wording a Lebanese Arabic speaker can follow. Never display internal identifiers, field names, or database values.`
+        : `LANGUAGE: Respond in clear Arabic. Understand Modern Standard Arabic and Lebanese Arabic. Prefer simple hospitality wording a Lebanese Arabic speaker can follow. Keep tool names, IDs, database enum values, and internal operations canonical and unchanged.`
+      : actorContext.role === 'employee'
+        ? `LANGUAGE: Respond in natural English. Never display internal identifiers, field names, or database values.`
+        : `LANGUAGE: Respond in English.`;
     const employeeSystemInstructions = `You are Brain, a personal hospitality work assistant for an employee.
 Answer naturally, clearly, and directly in the user's preferred language.
 Current user: ${actorContext.displayName || 'Employee'} (employee)
@@ -5085,6 +5204,8 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
 
     // Input array for Responses API — previous turns go in first, then the latest user message
     const inputItems: any[] = [...messages];
+    let employeeTaskDisplays: EmployeeTaskDisplay[] | null = null;
+    let employeeTaskTranslationFailed = false;
 
     // [Phase 0B] Log before OpenAI call
     console.log('[Brain Diagnostic] Calling OpenAI Responses API', {
@@ -5289,6 +5410,22 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
           };
         }
 
+        if (actorContext.role === 'employee' && toolName === 'get_tasks' && actorContext.employeeId) {
+          const result = toolResult && typeof toolResult === 'object' ? toolResult as Record<string, unknown> : null;
+          const rows = result && Array.isArray(result.tasks) ? result.tasks.filter(
+            (task): task is Record<string, unknown> => Boolean(task && typeof task === 'object' && !Array.isArray(task)),
+          ) : null;
+          const records = rows ? authorizedEmployeeTaskRecords(rows, actorContext.companyId, actorContext.employeeId) : null;
+          if (!records) {
+            toolResult = { error: safeEmployeeTaskError(employeeLanguage), code: 'EMPLOYEE_TASK_PRESENTATION_INVALID' };
+          } else {
+            const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, { openai });
+            employeeTaskDisplays = presentation.displays;
+            employeeTaskTranslationFailed = presentation.translationFailed;
+            toolResult = { tasks: presentation.displays, count: presentation.displays.length };
+          }
+        }
+
         // ── CONFIRMATION INTERCEPT ───────────────────────────────────────────
         // When a write tool returns a preview, return directly to browser
         // so the frontend can display the confirmation card and store the pendingAction.
@@ -5351,7 +5488,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
           const result = toolResult as any;
 
           // After getTasks, store the first task in context for "Make it critical" type commands
-          if (toolName === 'get_tasks' && result.tasks && result.tasks.length > 0) {
+          if (actorContext.role !== 'employee' && toolName === 'get_tasks' && result.tasks && result.tasks.length > 0) {
             const firstTask = result.tasks[0];
             if (conversationContext) {
               conversationContext.lastMentionedTaskId = firstTask.id;
@@ -5442,7 +5579,20 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
     }
 
     // 10. Extract final text via output_text convenience property
-    const finalText: string = (response as any).output_text || 'No response generated';
+    const modelText: string = (response as any).output_text || 'No response generated';
+    let finalText = modelText;
+    if (actorContext.role === 'employee' && employeeTaskDisplays) {
+      const deterministicFallback = deterministicEmployeeDailyTaskRequest
+        ? formatEmployeeDailySummary(employeeTaskDisplays, employeeLanguage, employeeTaskTranslationFailed)
+        : formatEmployeeTaskList(employeeTaskDisplays, employeeLanguage, employeeTaskTranslationFailed);
+      finalText = deterministicEmployeeDailyTaskRequest || !employeeTaskOutputIsSafe(modelText)
+        ? deterministicFallback
+        : modelText;
+      if (!employeeTaskOutputIsSafe(finalText)) finalText = safeEmployeeTaskError(employeeLanguage);
+    }
+    if (actorContext.role === 'employee' && !employeeTaskOutputIsSafe(finalText)) {
+      finalText = safeEmployeeTaskError(employeeLanguage);
+    }
 
     // [Phase 0B] Log final response state
     console.log('[Brain Diagnostic] final response', {
@@ -5452,7 +5602,7 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
     return NextResponse.json({
       message: finalText,
       role: 'assistant',
-      context: conversationContext,
+      ...(actorContext.role === 'employee' ? {} : { context: conversationContext }),
       quota: admittedQuota,
     });
   } catch (error) {

@@ -6,6 +6,7 @@ import {
   classifyTaskRequestScope,
   resolveCompanyTaskEmployee,
   resolveExplicitNamedTaskStatus,
+  resolveEmployeeTaskCompletionIntent,
   resolveTaskResultLimit,
   resolveTaskVisibilityScope,
   shouldApplyModelTaskAssigneeFilter,
@@ -58,6 +59,35 @@ test('self-referential task wording scopes every canonical role to its trusted e
     resolveTaskVisibilityScope({ role: 'manager', employeeId: EMPLOYEE }, 'default'),
     { kind: 'company' },
   );
+});
+
+test('employee completion intent recognizes bounded Arabic and English title references', () => {
+  for (const [wording, title] of [
+    ['خلصت تنظيف المكتب', 'تنظيف المكتب'],
+    ['خلصت مهمة تنظيف المكتب', 'تنظيف المكتب'],
+    ['أنهيت تنظيف المكتب', 'تنظيف المكتب'],
+    ['أكملت تنظيف المكتب', 'تنظيف المكتب'],
+    ['انتهيت من تنظيف المكتب', 'تنظيف المكتب'],
+    ['I finished cleaning the office', 'cleaning the office'],
+    ["I'm done with the cleaning task", 'cleaning task'],
+  ]) assert.equal(resolveEmployeeTaskCompletionIntent(wording)?.taskReference, title);
+  for (const unrelated of ['هل المكتب نظيف؟', 'اعرض مهامي', 'finished', 'complete it']) {
+    assert.equal(resolveEmployeeTaskCompletionIntent(unrelated), null);
+  }
+});
+
+test('employee natural completion requeries only trusted active assignments and passes the resolved UUID to the RPC', () => {
+  const brain = read('app/api/brain/chat/route.ts');
+  const completion = brain.slice(brain.indexOf('if (employeeCompletionIntent)'), brain.indexOf('// 7. Build instructions'));
+  assert.match(completion, /actorContext\.employeeId/);
+  assert.match(completion, /\.eq\('company_id', actorContext\.companyId\)/);
+  assert.match(completion, /\.eq\('assigned_employee_id', actorContext\.employeeId\)/);
+  assert.match(completion, /\.in\('status', \[TASK_STATUS\.PENDING, TASK_STATUS\.IN_PROGRESS\]\)/);
+  assert.match(completion, /matchEmployeeTaskReference/);
+  assert.match(completion, /matches\.length === 0/);
+  assert.match(completion, /matches\.length > 1/);
+  assert.match(completion, /complete_my_assigned_task[\s\S]*p_task_id: matchedRecord\.id/);
+  assert.doesNotMatch(completion, /params\.task_id|requestBody\.task|conversationContext/);
 });
 
 test('Lebanese and Modern Standard Arabic daily-work wording is bounded and self-scoped', () => {

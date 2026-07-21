@@ -23,6 +23,7 @@ export type CompanyTaskEmployeeResolution =
   | { kind: 'ambiguous' };
 
 export type ExplicitTaskStatus = 'pending' | 'in_progress' | 'completed';
+export type EmployeeTaskCompletionIntent = { taskReference: string };
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -96,6 +97,24 @@ export function classifyTaskRequestScope(message: string): TaskRequestScopeInten
   if (taskRequestUsesSelfScope(message)) return 'self';
   if (taskRequestUsesCompanyScope(message)) return 'company';
   return 'default';
+}
+
+export function resolveEmployeeTaskCompletionIntent(message: string): EmployeeTaskCompletionIntent | null {
+  const normalized = message.normalize('NFKC')
+    .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g, '')
+    .replace(/[،؛؟!?.,]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const patterns = [
+    /^(?:خلصت|انهيت|أنهيت|اكملت|أكملت)\s+(?:مهمة\s+)?(.+)$/u,
+    /^انتهيت\s+من\s+(?:مهمة\s+)?(.+)$/u,
+    /^(?:i\s+(?:finished|completed)|i(?:'m| am)\s+done\s+with)\s+(?:the\s+)?(?:task\s+)?(.+)$/i,
+    /^(?:mark|complete)\s+(?:the\s+)?(.+?)\s+(?:task\s+)?(?:as\s+)?(?:done|complete|completed)$/i,
+  ];
+  for (const pattern of patterns) {
+    const match = normalized.match(pattern);
+    const taskReference = match?.[1]?.trim();
+    if (taskReference && taskReference.length >= 3 && taskReference.length <= 200) return { taskReference };
+  }
+  return null;
 }
 
 export function resolveTaskVisibilityScope(
