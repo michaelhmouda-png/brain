@@ -4676,6 +4676,7 @@ export async function POST(request: NextRequest) {
             action: stored.canonicalAction,
             payload: stored.canonicalPayload,
             proposalId: stored.id,
+            proposalCorrelationId: stored.correlationId,
           });
         } catch (error) {
           logApprovedExecutionFailure({

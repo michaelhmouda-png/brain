@@ -10,6 +10,7 @@ export interface ExecuteApprovedActionInput {
   readonly action: ProposalAction;
   readonly payload: Readonly<Record<string, unknown>>;
   readonly proposalId: string;
+  readonly proposalCorrelationId: string;
 }
 
 export interface ApprovedActionExecutionResult {

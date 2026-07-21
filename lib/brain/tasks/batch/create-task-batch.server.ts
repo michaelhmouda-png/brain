@@ -86,14 +86,14 @@ export async function prepareCreateTaskBatch(
   return { preview: true, action: 'Create task batch', message: `Please review all ${canonical.length} tasks. One confirmation creates the complete batch.`, fields, canonicalArguments: { timezone, tasks: canonical } };
 }
 
-export async function executeCreateTaskBatch(input: { context: BrainRequestContext; proposalId: string; payload: Readonly<Record<string, unknown>> }): Promise<{ success: true; createdCount: number }> {
+export async function executeCreateTaskBatch(input: { context: BrainRequestContext; proposalId: string; proposalCorrelationId: string; payload: Readonly<Record<string, unknown>> }): Promise<{ success: true; createdCount: number }> {
   const tasks = input.payload.tasks;
   if (!Array.isArray(tasks) || tasks.length < 1 || tasks.length > MAX_TASK_BATCH_SIZE) throw new Error('INVALID_BATCH_PAYLOAD');
   const executionItems = tasks.map((task, index) => {
     const business = task as Record<string, unknown>;
     const seed = `${input.proposalId}:${index}:${JSON.stringify(business)}:${input.context.actor.actorId}:${input.context.tenant.companyId}:1`;
     const commandId = deterministicUuid(`${seed}:command`);
-    return { ...business, task_id: deterministicUuid(`${seed}:task`), event_id: deterministicUuid(`${seed}:event`), command_id: commandId, correlation_id: input.context.actor.correlationId, idempotency_key: createHash('sha256').update(seed).digest('hex') };
+    return { ...business, task_id: deterministicUuid(`${seed}:task`), event_id: deterministicUuid(`${seed}:event`), command_id: commandId, correlation_id: input.proposalCorrelationId, idempotency_key: createHash('sha256').update(seed).digest('hex') };
   });
   const service = createSupabaseServer();
   const { data, error } = await service.rpc('create_task_batch_with_outbox_events', { p_actor_id: input.context.actor.actorId, p_profile_id: input.context.actor.profileId, p_tenant_id: input.context.tenant.companyId, p_proposal_id: input.proposalId, p_items: executionItems });
