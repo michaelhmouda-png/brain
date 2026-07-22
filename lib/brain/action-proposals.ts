@@ -146,7 +146,7 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
   const p: Record<string, unknown> = {};
   const textKeys: Record<ProposalAction, string[]> = {
     create_employee: ['full_name','job_title','email','phone','notes','hire_date'],
-    create_task: ['title','description','assigned_employee_name','urgency','due_date'], create_task_batch: [],
+    create_task: ['title','description','assigned_employee_name','urgency','due_date','due_time','due_local','due_at','timezone'], create_task_batch: [],
     record_inventory_movement: ['reason'], create_shift: ['notes'], update_shift: ['notes','shift_date'], delete_shift: [],
     create_maintenance_ticket: ['title','description','due_date'], update_maintenance_ticket: ['title','description','due_date'],
     delete_maintenance_ticket: [], complete_maintenance_ticket: ['completion_notes'],
@@ -178,6 +178,18 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
   for (const [key, values, applicable] of enumSpecs) if (applicable && i[key] !== undefined) add(p, key, enumValue(i, key, values, a === 'record_inventory_movement' && key === 'movement_type'));
   for (const key of ['quantity','unit_cost']) if (i[key] !== undefined) add(p, key, number(i, key, a === 'record_inventory_movement' && key === 'quantity'));
   for (const key of ['hire_date','shift_date','due_date']) if (p[key] !== undefined && !date.test(String(p[key])) && (key === 'hire_date' || !relativeDate.test(String(p[key])))) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+  if (a === 'create_task') {
+    const timingKeys = ['due_time', 'due_local', 'due_at', 'timezone'] as const;
+    const timingCount = timingKeys.filter((key) => p[key] !== undefined).length;
+    if (timingCount !== 0 && timingCount !== timingKeys.length) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+    if (timingCount === timingKeys.length) {
+      if (!date.test(String(p.due_date)) || !/^\d{2}:\d{2}$/.test(String(p.due_time)) ||
+          p.due_local !== `${p.due_date}T${p.due_time}` || Number.isNaN(Date.parse(String(p.due_at)))) {
+        throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+      }
+      p.due_at = new Date(String(p.due_at)).toISOString();
+    }
+  }
   for (const key of ['start_time','end_time']) if (i[key] !== undefined) { const v=string(i,key,a==='create_shift'); if (!v || !time.test(v)) throw new Error('INVALID_PROPOSAL_ARGUMENTS'); p[key]=v; }
   if (a === 'create_shift') {
     const shiftDate = string(i,'shift_date',true);

@@ -71,9 +71,13 @@ async function createTaskRecord(
     assignedEmployeeId: assignee.id,
     assignedEmployeeName: assignee.name,
     dueDate: dueDateResult?.date ?? null,
+    dueAt: input.payload.dueAt,
   };
   const event = createTaskCreatedEvent({ command: input.command, result: preparedResult });
-  const { data, error } = await serviceSupabase.rpc('create_task_with_outbox_event', {
+  const rpcName = preparedResult.dueAt
+    ? 'create_task_with_outbox_event_due_at'
+    : 'create_task_with_outbox_event';
+  const rpcArguments = {
     p_task_id: taskId,
     p_actor_id: input.actorId,
     p_profile_id: input.command.actor.profileId,
@@ -84,6 +88,7 @@ async function createTaskRecord(
     p_status: preparedResult.status,
     p_assigned_employee_id: preparedResult.assignedEmployeeId,
     p_due_date: preparedResult.dueDate,
+    ...(preparedResult.dueAt ? { p_due_at: preparedResult.dueAt } : {}),
     p_event_id: event.eventId,
     p_event_type: event.eventType,
     p_event_schema_version: event.schemaVersion,
@@ -96,7 +101,8 @@ async function createTaskRecord(
     p_idempotency_key: input.command.idempotencyKey,
     p_event_payload: event.payload,
     p_occurred_at: event.occurredAt,
-  });
+  };
+  const { data, error } = await serviceSupabase.rpc(rpcName, rpcArguments);
   const row = Array.isArray(data) ? data[0] : data;
   if (error || !row || row.outbox_event_id !== event.eventId || row.task_id !== taskId) {
     const failure = new Error('TASK_INSERT_FAILED', { cause: error ?? undefined });
@@ -123,6 +129,7 @@ async function createTaskRecord(
     assignedEmployeeId: row.assigned_employee_id ?? null,
     assignedEmployeeName: assignee.name,
     dueDate: row.due_date ?? null,
+    dueAt: row.due_at ?? preparedResult.dueAt,
     outboxEvent: event,
   };
 }

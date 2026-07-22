@@ -25,13 +25,13 @@ test('creates a valid immutable task.create command envelope',()=>{
 });
 
 test('canonical task payload trims, normalizes enums, maps fields, and removes unknowns',()=>{
-  assert.deepEqual(canonicalizeCreateTaskPayload(raw),{title:'Clean the bar',description:'Before service',priority:'high',status:'in_progress',assignedEmployeeId:EMPLOYEE,assignedEmployeeName:'Maroun',urgency:null,dueDate:'tomorrow'});
+  assert.deepEqual(canonicalizeCreateTaskPayload(raw),{title:'Clean the bar',description:'Before service',priority:'high',status:'in_progress',assignedEmployeeId:EMPLOYEE,assignedEmployeeName:'Maroun',urgency:null,dueDate:'tomorrow',dueAt:null});
   assert.equal('unknown'in command().payload,false);
 });
 
 test('empty optional strings normalize to null',()=>{
   const p=canonicalizeCreateTaskPayload({title:'Task',description:' ',assigned_employee_id:'',assigned_employee_name:'',urgency:'',due_date:''});
-  assert.deepEqual({...p},{title:'Task',description:null,priority:'medium',status:'pending',assignedEmployeeId:null,assignedEmployeeName:null,urgency:null,dueDate:null});
+  assert.deepEqual({...p},{title:'Task',description:null,priority:'medium',status:'pending',assignedEmployeeId:null,assignedEmployeeName:null,urgency:null,dueDate:null,dueAt:null});
 });
 
 test('current natural-language urgency behavior remains canonical',()=>{

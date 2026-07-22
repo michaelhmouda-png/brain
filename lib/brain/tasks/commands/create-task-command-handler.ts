@@ -40,6 +40,7 @@ export interface CreateTaskRecordResult {
   readonly assignedEmployeeId: string | null;
   readonly assignedEmployeeName: string | null;
   readonly dueDate: string | null;
+  readonly dueAt?: string | null;
   readonly outboxEvent?: Readonly<TaskCreatedEvent>;
 }
 

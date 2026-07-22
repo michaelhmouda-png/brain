@@ -83,7 +83,7 @@ test('handler receives canonical payload only and unknown fields do not reach in
   const harness = dependencyHarness();
   await createTaskCommandHandler(harness.dependencies, eventRecorder).execute(command());
   assert.deepEqual(Object.keys(harness.calls[0].payload).sort(), [
-    'assignedEmployeeId', 'assignedEmployeeName', 'description', 'dueDate',
+    'assignedEmployeeId', 'assignedEmployeeName', 'description', 'dueAt', 'dueDate',
     'priority', 'status', 'title', 'urgency',
   ]);
   assert.equal(harness.calls[0].payload.title, 'Inspect freezer');

@@ -32,6 +32,7 @@ import type { BrainRequestContext } from '@/lib/brain/kernel/request-context';
 import { createSupabaseCreateTaskApplicationService } from '@/lib/brain/tasks/application/create-task-application-service.server';
 import { createApprovedActionRegistry } from '@/lib/brain/actions/approved-action-registry';
 import { executeCreateTaskBatch, prepareCreateTaskBatch } from '@/lib/brain/tasks/batch/create-task-batch.server';
+import { localDateTimeToInstant } from '@/lib/brain/tasks/batch/task-batch-time';
 import { logApprovedExecutionFailure } from '@/lib/brain/execution-diagnostics.server';
 import { admitBrainChatRequest, type BrainChatQuota } from '@/lib/brain/chat-quota.server';
 import { validateMaintenanceLocation } from '@/lib/brain/maintenance-location';
@@ -45,6 +46,7 @@ import {
   shouldApplyModelTaskAssigneeFilter,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
+  taskRequestUsesTodayScope,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
 import { employeeMayUseBrainTool } from '@/lib/employee-access';
@@ -222,6 +224,7 @@ interface CreateTaskInput {
   priority?: 'critical' | 'high' | 'medium' | 'low';
   urgency?: string;                 // Natural language: "urgent", "immediately", "important", "normal", etc.
   due_date?: string;                // YYYY-MM-DD format or "today", "tomorrow", "next Friday", "July 20"
+  due_time?: string;                // company-local 24-hour time (HH:mm), only when explicitly requested
   status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   confirmed?: boolean;              // true = execute; false or undefined = show preview
 }
@@ -755,7 +758,12 @@ const TOOLS = [
         },
         due_date: {
           type: 'string',
-          description: 'Due date in YYYY-MM-DD format (optional)',
+          description: 'Due date in YYYY-MM-DD format, or today/tomorrow (optional)',
+        },
+        due_time: {
+          type: 'string',
+          pattern: '^([01]\\d|2[0-3]):[0-5]\\d$',
+          description: 'Company-local due time in 24-hour HH:mm format. Include only when the user explicitly supplies a time.',
         },
       },
       required: ['title'],
@@ -1510,6 +1518,23 @@ class ToolHandlers {
     return `${value('year')}-${value('month')}-${value('day')}`;
   }
 
+  private async loadTrustedCompanyTimezone(): Promise<string> {
+    const { data, error } = await this.supabase
+      .from('companies')
+      .select('timezone')
+      .eq('id', this.userCompanyId)
+      .maybeSingle();
+    const timezone = data?.timezone;
+    if (error || typeof timezone !== 'string' || !timezone.trim()) throw new Error('COMPANY_TIMEZONE_UNAVAILABLE');
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone }).format();
+    } catch {
+      throw new Error('COMPANY_TIMEZONE_UNAVAILABLE');
+    }
+    this.companyTimezone = timezone;
+    return timezone;
+  }
+
   async getCurrentUserProfile() {
     const { data: { user } } = await this.supabase.auth.getUser();
     
@@ -2059,12 +2084,12 @@ class ToolHandlers {
 
     // Special keywords
     if (input === 'today') {
-      return { date: this.toLocalDateString(today) };
+      return { date: this.companyLocalDate() };
     }
     if (input === 'tomorrow') {
-      const tomorrow = new Date(today);
-      tomorrow.setDate(tomorrow.getDate() + 1);
-      return { date: this.toLocalDateString(tomorrow) };
+      const [year, month, day] = this.companyLocalDate().split('-').map(Number);
+      const tomorrow = new Date(Date.UTC(year, month - 1, day + 1));
+      return { date: tomorrow.toISOString().slice(0, 10) };
     }
 
     // Yesterday
@@ -2198,16 +2223,35 @@ class ToolHandlers {
       }
     }
 
-    // 2. Parse date
+    // 2. Parse date and any explicit company-local time.
     let resolvedDueDate: string | null = null;
+    let resolvedDueAt: string | null = null;
+    let resolvedDueTime: string | null = null;
+    let dueTimezone: string | null = null;
     let dateParsingError: string | null = null;
 
     if (params.due_date && typeof params.due_date === 'string') {
+      if (/^(today|tomorrow)$/i.test(params.due_date.trim()) || params.due_time !== undefined) {
+        try { await this.loadTrustedCompanyTimezone(); } catch { return { error: 'The company timezone is unavailable.' }; }
+      }
       const dateResult = this.parseNaturalLanguageDate(params.due_date);
       if (dateResult.error) {
         dateParsingError = dateResult.error;
       } else {
         resolvedDueDate = dateResult.date;
+      }
+    }
+    if (params.due_time !== undefined) {
+      if (typeof params.due_time !== 'string' || !/^([01]\d|2[0-3]):[0-5]\d$/.test(params.due_time.trim()) || !resolvedDueDate) {
+        dateParsingError = 'A valid due date and explicit 24-hour time are required.';
+      } else {
+        try {
+          dueTimezone = await this.loadTrustedCompanyTimezone();
+          resolvedDueTime = params.due_time.trim();
+          resolvedDueAt = localDateTimeToInstant(`${resolvedDueDate}T${resolvedDueTime}`, dueTimezone).dueAt;
+        } catch {
+          dateParsingError = 'The requested local due time is invalid or ambiguous.';
+        }
       }
     }
 
@@ -2231,11 +2275,34 @@ class ToolHandlers {
       const previewStatus = params.status || 'pending';
       return {
         preview: true,
+        action: 'Create task',
+        fields: [
+          { label: 'Task', value: params.title.trim() },
+          { label: 'Description', value: params.description?.trim() || '(none)' },
+          { label: 'Assigned to', value: assignedEmployeeName },
+          { label: 'Due', value: resolvedDueAt ? `${resolvedDueDate} ${resolvedDueTime} (${dueTimezone})` : resolvedDueDate || '(no due date)' },
+          { label: 'Priority', value: priorityDisplay },
+          { label: 'Status', value: previewStatus },
+        ],
+        canonicalArguments: {
+          title: params.title.trim(),
+          ...(params.description?.trim() ? { description: params.description.trim() } : {}),
+          ...(assignedEmployeeId ? { assigned_employee_id: assignedEmployeeId, assigned_employee_name: assignedEmployeeName } : {}),
+          priority: priorityDbValue,
+          status: previewStatus,
+          ...(resolvedDueDate ? { due_date: resolvedDueDate } : {}),
+          ...(resolvedDueAt && resolvedDueTime && dueTimezone ? {
+            due_time: resolvedDueTime,
+            due_local: `${resolvedDueDate}T${resolvedDueTime}`,
+            due_at: resolvedDueAt,
+            timezone: dueTimezone,
+          } : {}),
+        },
         message: `Please confirm this task:
 
 Task: ${params.title.trim()}
 Assigned to: ${assignedEmployeeName}
-Due: ${resolvedDueDate || '(no due date)'}
+Due: ${resolvedDueAt ? `${resolvedDueDate} ${resolvedDueTime} (${dueTimezone})` : resolvedDueDate || '(no due date)'}
 Priority: ${priorityDisplay}
 Status: ${previewStatus}`,
       };
@@ -2575,8 +2642,6 @@ Status: ${previewStatus}`,
       visibility,
       this.taskRequestScopeIntent,
     );
-    const today = this.companyLocalDate();
-
     let requestedAssigneeId: string | null = null;
     if (applyModelAssigneeFilter && params.assigned_employee_name && typeof params.assigned_employee_name === 'string') {
       const { data: companyEmployees, error: employeeDirectoryError } = await this.supabase
@@ -2599,6 +2664,13 @@ Status: ${previewStatus}`,
     }
 
     const namedAssigneeRequest = requestedAssigneeId !== null;
+    const trustedTodayRequest = taskRequestUsesTodayScope(this.latestUserMessage);
+    if (trustedTodayRequest) {
+      try { await this.loadTrustedCompanyTimezone(); } catch {
+        return { error: 'The company timezone is unavailable.', code: 'COMPANY_TIMEZONE_UNAVAILABLE' };
+      }
+    }
+    const today = this.companyLocalDate();
     const ignoreImplicitModelFilters = this.unfilteredCompanyTaskRequest || namedAssigneeRequest || deterministicDailySelfRequest || activeSelfRequest;
     const allowModelFilters = !ignoreImplicitModelFilters;
     const explicitNamedStatus = namedAssigneeRequest
@@ -2630,6 +2702,10 @@ Status: ${previewStatus}`,
       query = explicitSelfStatus
         ? query.eq('status', explicitSelfStatus)
         : query.in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS]);
+    } else if (namedAssigneeRequest && trustedTodayRequest) {
+      // The name is used only for same-company directory resolution. The task
+      // predicate is the immutable employee UUID plus the trusted local date.
+      query = query.eq('due_date', today);
     }
 
     // [Phase 0B] Filter by title (partial match, case-insensitive)
@@ -2696,6 +2772,7 @@ Status: ${previewStatus}`,
         status: explicitNamedStatus ?? (allowModelFilters && params.status ? canonicalStatus(params.status) : null),
         priority: Boolean(allowModelFilters && params.priority),
         dueDate: Boolean(allowModelFilters && params.due_date),
+        trustedNamedToday: namedAssigneeRequest && trustedTodayRequest,
       },
       limit,
     });
@@ -4982,8 +5059,11 @@ NATURAL LANGUAGE TASK CREATION (RECOMMENDED):
 The create_task tool automatically handles:
 1. Employee name resolution (e.g., "Maroun" → UUID lookup, case-insensitive)
 2. Natural language date parsing
-3. Urgency to priority mapping
-4. Confirmation preview before insertion
+3. Explicit local-time parsing in the persisted company timezone
+4. Urgency to priority mapping
+5. Confirmation preview before insertion
+
+When the user supplies a specific time, always send due_time in 24-hour HH:mm format as well as due_date. Never invent due_time for a date-only request. The previewed local date, time, and timezone are authoritative for confirmation.
 
 EXAMPLES OF NATURAL LANGUAGE TASK CREATION:
 - "Assign Maroun to restock the bar for tomorrow. It's urgent."
@@ -5000,6 +5080,7 @@ DATE PARSING (Supported Formats):
 - Days: "Friday", "next Friday", "next Monday"
 - Month-day: "July 20", "Dec 25", "12/25"
 - ISO format: "2026-07-20" (passthrough)
+- Explicit times: send due_time separately in 24-hour HH:mm format (for example, 4:30 PM becomes "16:30")
 
 URGENCY MAPPING (Automatic Priority Conversion):
 - "urgent", "immediately", "critical", "ASAP" → Critical
@@ -5218,6 +5299,7 @@ FIND SPECIFIC TASK:
 "Show me the cleaning task assigned to Khaled" → get_tasks(title="cleaning", assigned_employee_name="Khaled")
 "Find the task due July 18" → get_tasks(due_date="2026-07-18")
 Title search is case-insensitive partial match ("restock" will find "Restock the bar").
+For a named employee's work today, report every returned status honestly. Pending and in-progress tasks are assigned work, not completed work.
 
 VIP CUSTOMERS INACTIVE:
 "Which VIP customers haven't visited in 30 days?" → get_customers(inactive_days=30)

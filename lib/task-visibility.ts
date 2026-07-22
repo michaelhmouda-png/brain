@@ -99,6 +99,11 @@ export function classifyTaskRequestScope(message: string): TaskRequestScopeInten
   return 'default';
 }
 
+export function taskRequestUsesTodayScope(message: string): boolean {
+  const normalized = normalizeTaskIntentText(message);
+  return /(?:^|\s)(?:today|اليوم|هاليوم)(?:\s|$)/.test(normalized);
+}
+
 export function resolveEmployeeTaskCompletionIntent(message: string): EmployeeTaskCompletionIntent | null {
   const normalized = message.normalize('NFKC')
     .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g, '')

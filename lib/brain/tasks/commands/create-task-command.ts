@@ -21,6 +21,7 @@ export interface CreateTaskCommandPayload {
   readonly assignedEmployeeName: string | null;
   readonly urgency: string | null;
   readonly dueDate: string | null;
+  readonly dueAt: string | null;
 }
 
 export type CreateTaskCommand = CommandEnvelope<'task.create', CreateTaskCommandPayload>;
@@ -53,6 +54,10 @@ export function canonicalizeCreateTaskPayload(input: unknown): CreateTaskCommand
   if (dueDateInput && !DATE_PATTERN.test(dueDateInput) && !RELATIVE_DATE_PATTERN.test(dueDateInput)) {
     throw new CommandError('INVALID_COMMAND_PAYLOAD');
   }
+  const dueAtInput = optionalString(raw.due_at ?? raw.dueAt);
+  if (dueAtInput && (Number.isNaN(Date.parse(dueAtInput)) || !dueDateInput || !DATE_PATTERN.test(dueDateInput))) {
+    throw new CommandError('INVALID_COMMAND_PAYLOAD');
+  }
   const priorityInput = optionalString(raw.priority);
   const statusInput = optionalString(raw.status);
   const priority = priorityInput === null
@@ -70,6 +75,7 @@ export function canonicalizeCreateTaskPayload(input: unknown): CreateTaskCommand
     assignedEmployeeName,
     urgency,
     dueDate: dueDateInput && RELATIVE_DATE_PATTERN.test(dueDateInput) ? dueDateInput.toLowerCase() : dueDateInput,
+    dueAt: dueAtInput ? new Date(dueAtInput).toISOString() : null,
   };
 }
 

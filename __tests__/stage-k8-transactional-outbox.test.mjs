@@ -82,7 +82,8 @@ test('corrective RPC migration qualifies every queried table column that can col
 test('production create_task repository uses the atomic RPC and the canonical K5 event factory', async () => {
   const source = await readFile(new URL('../lib/brain/tasks/infrastructure/create-task-record.server.ts', import.meta.url), 'utf8');
   assert.match(source, /createTaskCreatedEvent\(\{ command: input\.command, result: preparedResult \}\)/);
-  assert.match(source, /serviceSupabase\.rpc\('create_task_with_outbox_event'/);
+  assert.match(source, /: 'create_task_with_outbox_event'/);
+  assert.match(source, /serviceSupabase\.rpc\(rpcName, rpcArguments\)/);
   assert.doesNotMatch(source, /\.from\('tasks'\)\s*\.insert/);
   assert.match(source, /p_command_id: event\.commandId/);
   assert.match(source, /p_correlation_id: event\.correlationId/);
