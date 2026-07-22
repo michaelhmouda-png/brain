@@ -64,6 +64,7 @@ import {
   type EmployeeTaskDisplay,
   type EmployeeTaskLanguage,
 } from '@/lib/brain/employee-task-presentation.server';
+import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4902,6 +4903,18 @@ export async function POST(request: NextRequest) {
 
     const employeeLanguage: EmployeeTaskLanguage = actorContext.preferredLanguage === 'ar' ? 'ar' : 'en';
     const companyToday = localDateInTimezone(companyTimezone);
+    const storedEmployeeTaskTranslations = async (records: readonly AuthorizedEmployeeTaskRecord[]) => {
+      if (employeeLanguage !== 'ar') return undefined;
+      const localizations = await loadTaskDisplayLocalizations({
+        companyId: actorContext.companyId,
+        language: 'ar',
+        tasks: records.map((task) => ({ id: task.id, title: task.originalTitle, description: task.originalDescription })),
+      });
+      return new Map([...localizations].flatMap(([taskId, value]) =>
+        value.translationState === 'ready' && value.displayTitle
+          ? [[taskId, { title: value.displayTitle, description: value.displayDescription }] as const]
+          : []));
+    };
 
     // Employee completion references are resolved only against a fresh,
     // server-scoped query. Neither model arguments nor browser context can
@@ -4927,7 +4940,9 @@ export async function POST(request: NextRequest) {
       if (!records) {
         return NextResponse.json({ message: safeEmployeeTaskError(employeeLanguage), role: 'assistant', quota: admittedQuota }, { status: 503 });
       }
-      const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, { openai });
+      const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, {
+        openai, storedTranslations: await storedEmployeeTaskTranslations(records),
+      });
       const matches = matchEmployeeTaskReference(employeeCompletionIntent.taskReference, records, presentation.displays);
       if (matches.length === 0) {
         return NextResponse.json({
@@ -5550,7 +5565,9 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
           if (!records) {
             toolResult = { error: safeEmployeeTaskError(employeeLanguage), code: 'EMPLOYEE_TASK_PRESENTATION_INVALID' };
           } else {
-            const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, { openai });
+            const presentation = await buildEmployeeTaskPresentation(records, employeeLanguage, companyToday, {
+              openai, storedTranslations: await storedEmployeeTaskTranslations(records),
+            });
             employeeTaskDisplays = presentation.displays;
             employeeTaskTranslationFailed = presentation.translationFailed;
             toolResult = { tasks: presentation.displays, count: presentation.displays.length };

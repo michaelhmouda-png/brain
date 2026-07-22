@@ -143,7 +143,7 @@ export function validateTaskTranslations(value: unknown, authorizedTaskIds: Read
 export async function translateAuthorizedTaskRecords(
   tasks: readonly Pick<AuthorizedEmployeeTaskRecord, 'id' | 'originalTitle' | 'originalDescription'>[],
   language: EmployeeTaskLanguage,
-  options: { openai?: OpenAI; apiKey?: string } = {},
+  options: { openai?: OpenAI; apiKey?: string; storedTranslations?: Map<string, { title: string; description: string | null }> } = {},
 ): Promise<Map<string, { title: string; description: string | null }>> {
   if (language === 'en' || tasks.length === 0) {
     return new Map(tasks.map((task) => [task.id, { title: task.originalTitle, description: task.originalDescription }]));
@@ -189,20 +189,23 @@ export async function buildEmployeeTaskPresentation(
   tasks: readonly AuthorizedEmployeeTaskRecord[],
   language: EmployeeTaskLanguage,
   today: string,
-  options: { openai?: OpenAI; apiKey?: string } = {},
+  options: { openai?: OpenAI; apiKey?: string; storedTranslations?: Map<string, { title: string; description: string | null }> } = {},
 ): Promise<{ displays: EmployeeTaskDisplay[]; translationFailed: boolean }> {
   let translations: Map<string, { title: string; description: string | null }>;
   let translationFailed = false;
   try {
-    translations = await translateAuthorizedTaskRecords(tasks, language, options);
+    translations = options.storedTranslations ?? await translateAuthorizedTaskRecords(tasks, language, options);
+    translationFailed = language === 'ar' && options.storedTranslations !== undefined && translations.size !== tasks.length;
   } catch {
     translationFailed = true;
-    translations = new Map(tasks.map((task) => [task.id, { title: task.originalTitle, description: task.originalDescription }]));
+    translations = language === 'ar' ? new Map() : new Map(tasks.map((task) => [task.id, { title: task.originalTitle, description: task.originalDescription }]));
   }
   return {
     translationFailed,
     displays: tasks.map((task) => {
-      const translated = translations.get(task.id) ?? { title: task.originalTitle, description: task.originalDescription };
+      const translated = translations.get(task.id) ?? (language === 'ar'
+        ? { title: 'تعذّر إعداد ترجمة هذه المهمة', description: null }
+        : { title: task.originalTitle, description: task.originalDescription });
       const safeTitle = containsInternalReference(translated.title)
         ? (language === 'ar' ? 'مهمة معيّنة' : 'Assigned task')
         : translated.title;

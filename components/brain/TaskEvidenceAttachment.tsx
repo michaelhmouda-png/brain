@@ -7,14 +7,16 @@ import { fetchJsonCollection, isRecord, stringField } from '@/lib/client-api';
 import { TASK_EVIDENCE_MAX_BYTES, TASK_EVIDENCE_MIME_TYPES, type TaskEvidenceSourceType } from '@/lib/task-evidence';
 import { useLocale } from '@/components/LocaleProvider';
 
-type TaskOption = { id: string; title: string; status: string };
+type TaskOption = { id: string; displayTitle: string | null; translationState: 'not_required' | 'ready' | 'pending' | 'failed'; status: string };
 type SelectedEvidence = { file: File; sourceType: TaskEvidenceSourceType; previewUrl: string; idempotencyKey: string };
 
 function taskOption(value: unknown): TaskOption | null {
   if (!isRecord(value)) return null;
   const id = stringField(value, 'id');
-  const title = stringField(value, 'title');
-  return id && title ? { id, title, status: stringField(value, 'status') } : null;
+  const displayTitle = typeof value.displayTitle === 'string' ? value.displayTitle : null;
+  const translationState = ['not_required', 'ready', 'pending', 'failed'].includes(String(value.translationState))
+    ? value.translationState as TaskOption['translationState'] : 'pending';
+  return id ? { id, displayTitle, translationState, status: stringField(value, 'status') } : null;
 }
 
 async function sha256(file: File): Promise<string> {
@@ -130,7 +132,7 @@ export function TaskEvidenceAttachment({ disabled, onUploaded }: { disabled: boo
         const completed: unknown = await completeResponse.json();
         if (!completeResponse.ok || !isRecord(completed) || !['pending_review', 'queued'].includes(String(completed.status))) throw new Error(t.evidence.finalizeFailed);
       }
-      const taskTitle = selectedTask?.title ?? 'task';
+      const taskTitle = selectedTask?.displayTitle ?? t.evidence.task;
       resetAndClose();
       onUploaded(taskTitle);
     } catch (uploadError) {
@@ -147,7 +149,7 @@ export function TaskEvidenceAttachment({ disabled, onUploaded }: { disabled: boo
     {open && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4" role="dialog" aria-modal="true" aria-labelledby="evidence-title"><div lang={language} dir={language === 'ar' ? 'rtl' : 'ltr'} className="max-h-[100dvh] w-full overflow-y-auto rounded-t-3xl bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-white shadow-2xl sm:max-w-lg sm:rounded-2xl sm:p-6"><div className="flex items-center justify-between"><h2 id="evidence-title" className="text-xl font-bold">{t.evidence.attach}</h2><button type="button" onClick={resetAndClose} disabled={uploading} aria-label={t.evidence.close} className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10"><X className="h-5 w-5" /></button></div>
       <p className="mt-2 text-sm text-slate-400">{t.evidence.privacy}</p>
       <div className="mt-5 space-y-4">
-        {loadingTasks ? <p role="status" className="text-sm text-slate-300">{t.evidence.loadingTasks}</p> : tasksLoaded && tasks.length === 0 ? <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">{t.evidence.noActiveTasks}</p> : <label className="block text-sm font-semibold">{t.evidence.task}<select value={taskId} onChange={(event) => setTaskId(event.target.value)} disabled={uploading || tasks.length === 0} className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"><option value="">{t.evidence.selectTask}</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.title} ({t.status[task.status as 'pending' | 'in_progress']})</option>)}</select></label>}
+        {loadingTasks ? <p role="status" className="text-sm text-slate-300">{t.evidence.loadingTasks}</p> : tasksLoaded && tasks.length === 0 ? <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">{t.evidence.noActiveTasks}</p> : <label className="block text-sm font-semibold">{t.evidence.task}<select value={taskId} onChange={(event) => setTaskId(event.target.value)} disabled={uploading || tasks.length === 0} className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"><option value="">{t.evidence.selectTask}</option>{tasks.map((task) => <option key={task.id} value={task.id}>{task.displayTitle ?? t.tasks.translationPending} ({t.status[task.status as 'pending' | 'in_progress']})</option>)}</select></label>}
         {!selected ? <><div className="grid grid-cols-2 gap-3"><button type="button" disabled={tasks.length === 0} onClick={() => cameraInput.current?.click()} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 text-cyan-200 disabled:opacity-50"><Camera className="h-6 w-6" />{t.evidence.takePhoto}</button><button type="button" disabled={tasks.length === 0} onClick={() => galleryInput.current?.click()} className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-3 text-slate-200 disabled:opacity-50"><ImagePlus className="h-6 w-6" />{t.evidence.chooseGallery}</button></div><p className="text-xs text-slate-500">{t.evidence.cameraHelp} {t.evidence.galleryHelp}</p></> : <div className="relative overflow-hidden rounded-xl border border-slate-700 bg-black"><Image unoptimized src={selected.previewUrl} alt={t.evidence.preview} width={768} height={576} className="max-h-72 w-full object-contain" /><button type="button" onClick={() => { URL.revokeObjectURL(selected.previewUrl); setSelected(null); setProgress(0); }} disabled={uploading} className="absolute end-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/70" aria-label={t.evidence.remove}><X className="h-5 w-5" /></button></div>}
         {uploading && <div aria-label={t.evidence.progress}><div className="mb-1 flex justify-between text-sm text-slate-300"><span>{progress > 0 ? t.evidence.uploading : t.evidence.preparing}</span><span>{progress}%</span></div><div className="h-2 overflow-hidden rounded-full bg-slate-800"><div className="h-full bg-cyan-500 transition-[width]" style={{ width: `${progress}%` }} /></div></div>}
         <p className="text-xs text-slate-500">{t.evidence.queuedReview}</p>

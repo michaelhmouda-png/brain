@@ -288,7 +288,8 @@ test('employee UI and home metrics exclude task history before rendering or tran
   const page = read('app/dashboard/tasks/page.tsx');
   const home = read('components/EmployeeHome.tsx');
   assert.match(page, /role === 'employee'[\s\S]*task\.status === 'pending' \|\| task\.status === 'in_progress'/);
-  assert.match(page, /const visibleTasks[\s\S]*setTasks\(visibleTasks\)[\s\S]*loadTranslations\(visibleTasks/);
+  assert.match(page, /const visibleTasks[\s\S]*setTasks\(visibleTasks\)/);
+  assert.doesNotMatch(page, /loadTranslations\(visibleTasks/);
   assert.match(page, /role === 'employee'[\s\S]*current\.filter\(\(task\) => task\.id !== taskId\)/);
   assert.match(home, /activeTasks = tasks\.filter\(\(task\) => task\.status === 'pending' \|\| task\.status === 'in_progress'\)/);
   assert.match(home, /tasks: activeTasks\.length[\s\S]*today: activeTasks\.filter[\s\S]*overdue: activeTasks\.filter/);

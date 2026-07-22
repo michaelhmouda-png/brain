@@ -2,6 +2,9 @@ export type TaskListItem = {
   id: string;
   title: string;
   description: string | null;
+  displayTitle: string | null;
+  displayDescription: string | null;
+  translationState: 'not_required' | 'ready' | 'pending' | 'failed';
   priority: 'critical' | 'high' | 'medium' | 'low';
   status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   dueDate: string | null;
@@ -94,6 +97,9 @@ export async function loadCompanyTasks(
       id: requiredString(row, 'id'),
       title: requiredString(row, 'title'),
       description: optionalString(row, 'description'),
+      displayTitle: requiredString(row, 'title'),
+      displayDescription: optionalString(row, 'description'),
+      translationState: 'not_required',
       priority: priority as TaskListItem['priority'],
       status: status as TaskListItem['status'],
       dueDate: optionalString(row, 'due_date'),

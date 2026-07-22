@@ -71,12 +71,12 @@ test('employee daily work cannot bypass retrieval or reach privileged execution 
   assert.match(source, /const availableTools = actorContext\.role === 'employee'[\s\S]*TOOLS\.filter/);
 });
 
-test('Arabic tasks retain original text and use IDs for translation and completion', async () => {
+test('Arabic tasks retain canonical text internally and use IDs for localization and completion', async () => {
   const page = await readFile(new URL('../app/dashboard/tasks/page.tsx', import.meta.url), 'utf8');
   const route = await readFile(new URL('../app/api/tasks/translations/route.ts', import.meta.url), 'utf8');
   const helper = await readFile(new URL('../lib/brain/employee-task-presentation.server.ts', import.meta.url), 'utf8');
-  assert.match(page, /t\.tasks\.original/);
-  assert.match(page, /task\.title/);
+  assert.match(page, /title: stringField\(value, 'title'\)/);
+  assert.match(page, /task\.displayTitle/);
   assert.match(page, /JSON\.stringify\(\{ taskId \}\)/);
   assert.match(route, /\.in\('id', requestedTaskIds/);
   assert.match(helper, /Preserve task IDs exactly/);
@@ -172,7 +172,8 @@ test('employee display projection never contains internal identity while preserv
   for (const forbidden of ['id:', 'companyId', 'employeeId', 'canonicalStatus', 'canonicalPriority', 'originalTitle']) assert.doesNotMatch(displayType, new RegExp(forbidden));
   assert.match(helper, /calendar dates, quantities, prices, units, identifiers/);
   assert.match(helper, /translationFailed/);
-  assert.match(helper, /translations = new Map\(tasks\.map\(\(task\) => \[task\.id, \{ title: task\.originalTitle/);
+  assert.match(helper, /language === 'ar' \? new Map\(\) : new Map\(tasks\.map/);
+  assert.match(helper, /تعذّر إعداد ترجمة هذه المهمة/);
 });
 
 test('management prompt and tool behavior remain separate from employee presentation', async () => {
@@ -223,16 +224,13 @@ test('employee profile localization does not weaken Brain Score or management au
   assert.match(brain, /const systemInstructions = actorContext\.role === 'employee'[\s\S]*employeeSystemInstructions[\s\S]*managementSystemInstructions/);
 });
 
-test('Tasks page validates HTTP and translation shape while preserving original tasks and retry', async () => {
+test('Tasks page validates the server localization projection and preserves UUID completion', async () => {
   const page = await readFile(new URL('../app/dashboard/tasks/page.tsx', import.meta.url), 'utf8');
-  assert.match(page, /response\.headers\.get\('content-type'\)/);
-  assert.match(page, /response\.status === 401 \|\| response\.status === 403/);
-  assert.match(page, /response\.status === 400 \|\| response\.status === 409/);
-  assert.match(page, /response\.status === 500 \|\| response\.status === 503/);
-  assert.match(page, /translationsFromPayload\(payload, new Set\(taskIds\)\)/);
-  assert.match(page, /entries\.length !== expectedIds\.size/);
-  assert.match(page, /onClick=\{\(\) => void loadTranslations\(tasks\)\}/);
-  assert.match(page, /setTasks\(visibleTasks\);[\s\S]*await loadTranslations/);
-  assert.match(page, /task\.title/);
-  assert.doesNotMatch(page, /t\.tasks\.translationPending/);
+  assert.match(page, /displayTitle: typeof value\.displayTitle === 'string'/);
+  assert.match(page, /translationState: \['not_required', 'ready', 'pending', 'failed'\]/);
+  assert.match(page, /setTasks\(visibleTasks\)/);
+  assert.match(page, /JSON\.stringify\(\{ taskId \}\)/);
+  assert.match(page, /title: stringField\(value, 'title'\)/);
+  assert.match(page, /t\.tasks\.translationPending/);
+  assert.doesNotMatch(page, /\/api\/tasks\/translations/);
 });

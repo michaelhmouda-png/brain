@@ -3,6 +3,7 @@ import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-author
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { loadCompanyTasks } from '@/lib/task-list';
 import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
+import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -64,6 +65,17 @@ export async function GET() {
       },
     }, authorization.companyId, visibility.kind === 'assigned' ? visibility.employeeId : null, companyTimezone);
 
+    const { data: languageProfile, error: languageError } = await supabase
+      .from('profiles').select('preferred_language').eq('id', authorization.profileId).maybeSingle();
+    if (languageError) throw new Error('TASK_LANGUAGE_QUERY_FAILED');
+    const language = languageProfile?.preferred_language === 'ar' ? 'ar' : 'en';
+    const localizations = await loadTaskDisplayLocalizations({
+      companyId: authorization.companyId,
+      language,
+      tasks: tasks.map((task) => ({ id: task.id, title: task.title, description: task.description })),
+    });
+    const localizedTasks = tasks.map((task) => ({ ...task, ...localizations.get(task.id) }));
+
     if (visibility.kind === 'assigned' && tasks.length === 0) {
       const { data: visibleAssignedHistory, error: visibleAssignedHistoryError } = await supabase
         .from('tasks')
@@ -115,10 +127,10 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        data: tasks,
-        total: tasks.length,
+        data: localizedTasks,
+        total: localizedTasks.length,
         scope: visibility.kind,
-        diagnostic: tasks.length === 0 && visibility.kind === 'assigned' ? 'NO_ASSIGNED_TASKS' : null,
+        diagnostic: localizedTasks.length === 0 && visibility.kind === 'assigned' ? 'NO_ASSIGNED_TASKS' : null,
       },
       { headers: NO_STORE_HEADERS },
     );
