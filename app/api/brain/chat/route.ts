@@ -71,6 +71,10 @@ import {
   loadTaskSnapshot,
   TASK_DEADLINE_RULE_VERSION,
 } from '@/lib/task-metrics.server';
+import {
+  isEmployeeProfileComplete,
+  loadActiveEmployeeProfileSnapshot,
+} from '@/lib/employee-profile-completeness';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -3813,12 +3817,8 @@ Status: ${previewStatus}`,
         .limit(100),
 
       // Active employees
-      this.supabase
-        .from('employees')
-        .select('id, first_name, last_name, role, status, phone, email, department')
-        .eq('company_id', this.userCompanyId)
-        .eq('status', 'active')
-        .limit(100),
+      loadActiveEmployeeProfileSnapshot(this.supabase, this.userCompanyId)
+        .then((data) => ({ data, error: null })),
 
       // VIP customers
       this.supabase
@@ -3864,7 +3864,9 @@ Status: ${previewStatus}`,
     const zeroStockItems = allInventory.filter((i: any) => i.current_quantity === 0);
 
     const activeEmployees = employeesRes.data || [];
-    const incompleteEmployees = activeEmployees.filter((e: any) => !e.phone && !e.email);
+    const incompleteEmployees = activeEmployees.filter(
+      (employee: any) => !isEmployeeProfileComplete(employee),
+    );
 
     const inactiveVIPs = (vipCustomersRes.data || []).filter(
       (c: any) => !c.last_visit_at || new Date(c.last_visit_at) < thirtyDaysAgo,
@@ -3929,7 +3931,7 @@ Status: ${previewStatus}`,
     }
 
     if (incompleteEmployees.length > 0) {
-      warnings.push(`${incompleteEmployees.length} employee(s) have incomplete profiles (missing phone and email)`);
+      warnings.push(`${incompleteEmployees.length} active employee(s) have incomplete profiles (missing required profile information)`);
     }
 
     // Staffing notes
@@ -5288,7 +5290,7 @@ Operations Score (25% weight):
 
 Employees Score (20% weight):
 - Active employee coverage, missing profile data
-- Example issue: "5 employees missing contact information"
+- Example issue: "5 active employees missing required profile information"
 - Recommended action: "Update 5 incomplete employee profiles"
 
 Inventory Score (20% weight):

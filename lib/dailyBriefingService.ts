@@ -1,6 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BrainScoreService } from './brainScoreService';
 import { isTaskOverdue, loadTaskSnapshot, type TaskMetricRow } from './task-metrics.server';
+import {
+  isEmployeeProfileComplete,
+  loadActiveEmployeeProfileSnapshot,
+  type EmployeeProfileCompletenessRow,
+} from './employee-profile-completeness';
 
 export interface Priority {
   type: 'task' | 'inventory' | 'customer' | 'employee' | 'data_quality';
@@ -55,14 +60,17 @@ export class DailyBriefingService {
       isTaskOverdue(task, new Date(taskSnapshot.evaluatedAt), taskSnapshot.companyTimezone));
     const criticalTasks = taskSnapshot.rows.filter((task) =>
       task.priority === 'critical' && task.status === 'pending');
-    const [lowStockItems, wasteData, inactiveVIPs, recentComplaints, activeEmployees, employeesWithMissingData] = await Promise.all([
+    const [lowStockItems, wasteData, inactiveVIPs, recentComplaints, employeeSnapshot] = await Promise.all([
       this.getLowStockItems(),
       this.getRecentWaste(),
       this.getInactiveVIPCustomers(),
       this.getRecentComplaints(),
-      this.getActiveEmployeeCount(),
-      this.getEmployeesWithMissingData(),
+      loadActiveEmployeeProfileSnapshot(this.supabase, this.userCompanyId),
     ]);
+    const activeEmployees = employeeSnapshot.length;
+    const employeesWithMissingData = employeeSnapshot.filter(
+      (employee) => !isEmployeeProfileComplete(employee),
+    );
 
     // 3. Build priorities array
     const priorities = this.buildPriorities(
@@ -190,30 +198,6 @@ export class DailyBriefingService {
     return data || [];
   }
 
-  private async getActiveEmployeeCount(): Promise<number> {
-    const { data } = await this.supabase
-      .from('employees')
-      .select('id')
-      .eq('company_id', this.userCompanyId)
-      .eq('status', 'active');
-
-    return (data || []).length;
-  }
-
-  private async getEmployeesWithMissingData(): Promise<any[]> {
-    const { data } = await this.supabase
-      .from('employees')
-      .select('id, first_name, last_name, email, phone')
-      .eq('company_id', this.userCompanyId)
-      .eq('status', 'active');
-
-    const incomplete = (data || []).filter(
-      (emp: any) => !emp.email || !emp.phone
-    );
-
-    return incomplete.slice(0, 10);
-  }
-
   private buildPriorities(
     overdueTasks: TaskMetricRow[],
     criticalTasks: TaskMetricRow[],
@@ -221,7 +205,7 @@ export class DailyBriefingService {
     wasteData: any[],
     inactiveVIPs: any[],
     recentComplaints: any[],
-    employeesWithMissingData: any[]
+    employeesWithMissingData: EmployeeProfileCompletenessRow[]
   ): Priority[] {
     const priorities: Priority[] = [];
 
@@ -316,7 +300,7 @@ export class DailyBriefingService {
         type: 'employee',
         severity: 'medium',
         title: `${employeesWithMissingData.length} employee profile${employeesWithMissingData.length > 1 ? 's' : ''} incomplete`,
-        description: `${employeesWithMissingData.length} employee${employeesWithMissingData.length > 1 ? 's' : ''} missing contact information.`,
+        description: `${employeesWithMissingData.length} active employee${employeesWithMissingData.length > 1 ? 's are' : ' is'} missing required profile information.`,
         related_record_id: null,
       });
     }
@@ -369,7 +353,7 @@ export class DailyBriefingService {
     criticalTasks: TaskMetricRow[],
     lowStockItems: any[],
     inactiveVIPs: any[],
-    employeesWithMissingData: any[]
+    employeesWithMissingData: EmployeeProfileCompletenessRow[]
   ): string[] {
     const actions: string[] = [];
 

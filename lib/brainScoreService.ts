@@ -1,5 +1,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { isTaskOverdue, loadTaskSnapshot, type TaskSnapshot } from './task-metrics.server';
+import {
+  ACTIVE_EMPLOYEE_STATUS,
+  isEmployeeProfileComplete,
+  loadActiveEmployeeProfileSnapshot,
+} from './employee-profile-completeness';
 
 export interface BrainScoreMetrics {
   tasks?: {
@@ -138,17 +143,19 @@ export class BrainScoreService {
   private async calculateEmployeesScore(metrics: BrainScoreMetrics): Promise<number> {
     const { data: employees } = await this.supabase
       .from('employees')
-      .select('id, status, email, phone, role')
+      .select('id, company_id, first_name, last_name, status, email, phone, role')
       .eq('company_id', this.userCompanyId);
 
     if (!employees || employees.length === 0) {
       return 100; // No employees tracked yet
     }
 
-    const active = employees.filter((e: any) => e.status === 'active').length;
+    const active = employees.filter((e: any) => e.status === ACTIVE_EMPLOYEE_STATUS).length;
     const inactive = employees.length - active;
     const missingData = employees.filter(
-      (e: any) => !e.email || !e.phone || !e.role
+      (employee: any) =>
+        employee.status === ACTIVE_EMPLOYEE_STATUS &&
+        !isEmployeeProfileComplete(employee),
     ).length;
 
     metrics.employees = {
@@ -264,12 +271,10 @@ export class BrainScoreService {
     let missingFields = 0;
 
     // Check employee data quality
-    const { data: employees } = await this.supabase
-      .from('employees')
-      .select('id, email, phone')
-      .eq('company_id', this.userCompanyId);
-
-    const employeeMissing = (employees || []).filter((e: any) => !e.email || !e.phone).length;
+    const employees = await loadActiveEmployeeProfileSnapshot(this.supabase, this.userCompanyId);
+    const employeeMissing = employees.filter(
+      (employee) => !isEmployeeProfileComplete(employee),
+    ).length;
     missingFields += employeeMissing;
 
     // Check inventory data quality
