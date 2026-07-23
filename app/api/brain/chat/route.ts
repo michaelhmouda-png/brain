@@ -46,6 +46,7 @@ import {
   shouldApplyModelTaskAssigneeFilter,
   taskRequestNeedsUnfilteredCompanyTasks,
   taskRequestReferencesCompanyEmployee,
+  taskRequestUsesOverdueCountIntent,
   taskRequestUsesTodayScope,
   type TaskRequestScopeIntent,
 } from '@/lib/task-visibility';
@@ -65,7 +66,11 @@ import {
   type EmployeeTaskLanguage,
 } from '@/lib/brain/employee-task-presentation.server';
 import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
-import { isTaskOverdue } from '@/lib/task-metrics.server';
+import {
+  isTaskOverdue,
+  loadTaskSnapshot,
+  TASK_DEADLINE_RULE_VERSION,
+} from '@/lib/task-metrics.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -4830,6 +4835,9 @@ export async function POST(request: NextRequest) {
     const unfilteredCompanyTaskRequest = latestUserMessage
       ? taskRequestNeedsUnfilteredCompanyTasks(latestUserMessage.content)
       : false;
+    const deterministicOverdueCountRequest = latestUserMessage
+      ? taskRequestUsesOverdueCountIntent(latestUserMessage.content)
+      : false;
     const deterministicEmployeeDailyTaskRequest = actorContext.role === 'employee' && taskRequestScopeIntent === 'self_daily';
     const deterministicEmployeeTaskReadRequest = actorContext.role === 'employee' &&
       (taskRequestScopeIntent === 'self_daily' || taskRequestScopeIntent === 'self');
@@ -4879,6 +4887,35 @@ export async function POST(request: NextRequest) {
         { error: 'AI request limit reached. Please try again after the quota resets.', code: 'BRAIN_CHAT_QUOTA_EXCEEDED', quota: admittedQuota },
         { status: 429 },
       );
+    }
+
+    if (deterministicOverdueCountRequest) {
+      const visibility = resolveTaskVisibilityScope(actorContext);
+      if (visibility.kind === 'missing_employee_link') {
+        return NextResponse.json(
+          { error: 'Your account is not linked to an employee record.', code: 'TASK_EMPLOYEE_LINK_MISSING', quota: admittedQuota },
+          { status: 409 },
+        );
+      }
+      const snapshot = await loadTaskSnapshot({
+        supabase,
+        companyId: actorContext.companyId,
+        assignedEmployeeId: visibility.kind === 'assigned' ? visibility.employeeId : null,
+      });
+      console.info('[Brain Chat] canonical overdue count', {
+        intent: 'overdue_count',
+        trustedScopeType: visibility.kind,
+        companyTimezone: snapshot.companyTimezone,
+        canonicalOverdueCount: snapshot.metrics.overdue,
+        returnedRowCount: snapshot.rows.length,
+        ruleVersion: TASK_DEADLINE_RULE_VERSION,
+      });
+      return NextResponse.json({
+        message: `You have ${snapshot.metrics.overdue} overdue ${snapshot.metrics.overdue === 1 ? 'task' : 'tasks'}.`,
+        role: 'assistant',
+        ...(actorContext.role === 'employee' ? {} : { context: conversationContext }),
+        quota: admittedQuota,
+      });
     }
 
     // 5. Initialize OpenAI client

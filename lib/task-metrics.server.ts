@@ -6,6 +6,7 @@ import {
   type TaskMetricRow, type TaskMetrics,
 } from './task-metrics';
 export { calculateTaskMetrics, isTaskOverdue } from './task-metrics';
+export { TASK_DEADLINE_RULE_VERSION } from './task-metrics';
 export type { TaskMetricRow, TaskMetrics } from './task-metrics';
 
 export type TaskSnapshot = {

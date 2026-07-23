@@ -104,6 +104,13 @@ export function taskRequestUsesTodayScope(message: string): boolean {
   return /(?:^|\s)(?:today|اليوم|هاليوم)(?:\s|$)/.test(normalized);
 }
 
+export function taskRequestUsesOverdueCountIntent(message: string): boolean {
+  const normalized = normalizeTaskIntentText(message);
+  const mentionsOverdueTasks = /\boverdue tasks?\b|\btasks? (?:are )?overdue\b/.test(normalized);
+  const asksForCount = /\bhow many\b|\bcount\b|\bnumber of\b/.test(normalized);
+  return mentionsOverdueTasks && asksForCount;
+}
+
 export function resolveEmployeeTaskCompletionIntent(message: string): EmployeeTaskCompletionIntent | null {
   const normalized = message.normalize('NFKC')
     .replace(/[\u0610-\u061a\u064b-\u065f\u0670\u06d6-\u06ed\u0640]/g, '')
