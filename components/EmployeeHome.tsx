@@ -13,10 +13,9 @@ export function EmployeeHome() {
     fetch('/api/tasks', { cache: 'no-store', credentials: 'same-origin', signal: controller.signal }).then((r) => r.ok ? r.json() : Promise.reject()),
     fetch('/api/notifications?state=true', { cache: 'no-store', credentials: 'same-origin', signal: controller.signal }).then((r) => r.ok ? r.json() : Promise.reject()),
   ]).then(([taskPayload, notificationPayload]: unknown[]) => {
-    const tasks = taskPayload && typeof taskPayload === 'object' && 'data' in taskPayload && Array.isArray((taskPayload as { data: unknown[] }).data) ? (taskPayload as { data: Array<Record<string, unknown>> }).data : [];
-    const activeTasks = tasks.filter((task) => task.status === 'pending' || task.status === 'in_progress');
-    const today = new Date().toISOString().slice(0, 10);
-    setSummary({ tasks: activeTasks.length, today: activeTasks.filter((task) => task.dueDate === today).length, overdue: activeTasks.filter((task) => typeof task.dueDate === 'string' && task.dueDate < today).length, notifications: notificationPayload && typeof notificationPayload === 'object' && 'unread_count' in notificationPayload ? Number((notificationPayload as { unread_count: unknown }).unread_count) || 0 : 0 });
+    const metrics = taskPayload && typeof taskPayload === 'object' && 'metrics' in taskPayload
+      ? (taskPayload as { metrics?: Record<string, unknown> }).metrics : null;
+    setSummary({ tasks: Number(metrics?.active) || 0, today: Number(metrics?.dueToday) || 0, overdue: Number(metrics?.overdue) || 0, notifications: notificationPayload && typeof notificationPayload === 'object' && 'unread_count' in notificationPayload ? Number((notificationPayload as { unread_count: unknown }).unread_count) || 0 : 0 });
   }).catch(() => { if (!controller.signal.aborted) setFailed(true); }); return () => controller.abort(); }, []);
   return <section className="space-y-6 rounded-[32px] border border-white/10 bg-white/5 p-5 sm:p-8">
     <header><p className="text-sm uppercase tracking-[.3em] text-cyan-300">{t.home.eyebrow}</p><h1 className="mt-3 text-3xl font-black">{t.home.title}</h1><p className="mt-2 text-slate-300">{t.home.description}</p></header>

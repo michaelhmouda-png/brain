@@ -4,6 +4,7 @@ import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { loadCompanyTasks } from '@/lib/task-list';
 import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
 import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
+import { calculateTaskMetrics } from '@/lib/task-metrics.server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -129,6 +130,14 @@ export async function GET() {
       {
         data: localizedTasks,
         total: localizedTasks.length,
+        metrics: calculateTaskMetrics(
+          localizedTasks.map((task) => ({
+            id: task.id, status: task.status, priority: task.priority,
+            due_date: task.dueDate, due_at: task.dueAt,
+          })),
+          new Date(),
+          companyTimezone ?? 'UTC',
+        ),
         scope: visibility.kind,
         diagnostic: localizedTasks.length === 0 && visibility.kind === 'assigned' ? 'NO_ASSIGNED_TASKS' : null,
       },

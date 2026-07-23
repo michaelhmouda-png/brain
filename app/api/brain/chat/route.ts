@@ -65,6 +65,7 @@ import {
   type EmployeeTaskLanguage,
 } from '@/lib/brain/employee-task-presentation.server';
 import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
+import { isTaskOverdue } from '@/lib/task-metrics.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -2666,14 +2667,15 @@ Status: ${previewStatus}`,
 
     const namedAssigneeRequest = requestedAssigneeId !== null;
     const trustedTodayRequest = taskRequestUsesTodayScope(this.latestUserMessage);
-    if (trustedTodayRequest) {
+    const ignoreImplicitModelFilters = this.unfilteredCompanyTaskRequest || namedAssigneeRequest || deterministicDailySelfRequest || activeSelfRequest;
+    const allowModelFilters = !ignoreImplicitModelFilters;
+    const canonicalOverdueRequest = allowModelFilters && params.due_date?.trim().toLowerCase() === 'overdue';
+    if (trustedTodayRequest || canonicalOverdueRequest) {
       try { await this.loadTrustedCompanyTimezone(); } catch {
         return { error: 'The company timezone is unavailable.', code: 'COMPANY_TIMEZONE_UNAVAILABLE' };
       }
     }
     const today = this.companyLocalDate();
-    const ignoreImplicitModelFilters = this.unfilteredCompanyTaskRequest || namedAssigneeRequest || deterministicDailySelfRequest || activeSelfRequest;
-    const allowModelFilters = !ignoreImplicitModelFilters;
     const explicitNamedStatus = namedAssigneeRequest
       ? resolveExplicitNamedTaskStatus(this.latestUserMessage)
       : null;
@@ -2682,7 +2684,7 @@ Status: ${previewStatus}`,
     // ── Step 1: Query tasks only (no join — avoids schema cache relationship errors) ──
     let query = this.supabase
       .from('tasks')
-      .select('id, title, description, priority, status, due_date, assigned_employee_id')
+      .select('id, title, description, priority, status, due_date, due_at, assigned_employee_id')
       .eq('company_id', this.userCompanyId)
       .order('due_date', { ascending: true });
 
@@ -2752,7 +2754,7 @@ Status: ${previewStatus}`,
         tomorrow.setDate(tomorrow.getDate() + 1);
         query = query.eq('due_date', tomorrow.toISOString().split('T')[0]);
       } else if (dueDateStr === 'overdue') {
-        query = query.lt('due_date', today).in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS]);
+        query = query.in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS]);
         console.log('[Brain Diagnostic] getTasks overdue filter:', {
           statuses: [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS],
         });
@@ -2801,7 +2803,9 @@ Status: ${previewStatus}`,
     });
 
     // ── Step 2: Collect unique employee IDs and fetch names in one query ──
-    const taskRows = data || [];
+    const taskRows = canonicalOverdueRequest
+      ? (data || []).filter((task: any) => isTaskOverdue(task, new Date(), this.companyTimezone!))
+      : data || [];
     if (visibility.kind === 'assigned' && taskRows.length === 0) {
       const { data: diagnosticData, error: diagnosticError } = await this.supabase.rpc('get_my_task_visibility_diagnostic');
       const diagnostic = Array.isArray(diagnosticData) ? diagnosticData[0] : diagnosticData;
@@ -2866,6 +2870,7 @@ Status: ${previewStatus}`,
       priority: task.priority,
       status: task.status,
       due_date: task.due_date,
+      due_at: task.due_at,
       assigned_to: employeeMap[task.assigned_employee_id] || 'Unassigned',
     }));
 
@@ -3760,7 +3765,9 @@ Status: ${previewStatus}`,
   async prepareForEvent(params: PrepareForEventInput): Promise<any> {
     if (!params.event_date) return { error: 'event_date is required.' };
 
-    const today = new Date().toISOString().split('T')[0];
+    try { await this.loadTrustedCompanyTimezone(); } catch {
+      return { error: 'The company timezone is unavailable.', code: 'COMPANY_TIMEZONE_UNAVAILABLE' };
+    }
     const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
 
     // Run all queries in parallel
@@ -3772,13 +3779,12 @@ Status: ${previewStatus}`,
       vipCustomersRes,
       complaintsRes,
     ] = await Promise.all([
-      // Overdue tasks (not completed, due before today)
+      // Canonical active task candidates; the shared deadline rule is applied below.
       this.supabase
         .from('tasks')
-        .select('id, title, priority, due_date, status, assigned_employee_id, employees:assigned_employee_id(first_name, last_name)')
+        .select('id, title, priority, due_date, due_at, status, assigned_employee_id, employees:assigned_employee_id(first_name, last_name)')
         .eq('company_id', this.userCompanyId)
-        .not('status', 'eq', 'Completed')
-        .lt('due_date', today)
+        .in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS])
         .order('due_date', { ascending: true })
         .limit(20),
 
@@ -3787,8 +3793,8 @@ Status: ${previewStatus}`,
         .from('tasks')
         .select('id, title, priority, due_date, status, assigned_employee_id, employees:assigned_employee_id(first_name, last_name)')
         .eq('company_id', this.userCompanyId)
-        .eq('priority', 'Critical')
-        .not('status', 'eq', 'Completed')
+        .eq('priority', TASK_PRIORITY.CRITICAL)
+        .in('status', [TASK_STATUS.PENDING, TASK_STATUS.IN_PROGRESS])
         .order('due_date', { ascending: true, nullsFirst: false })
         .limit(20),
 
@@ -3828,7 +3834,9 @@ Status: ${previewStatus}`,
     ]);
 
     // Process results
-    const overdueTasks = (overdueTasksRes.data || []).map((t: any) => ({
+    const overdueTasks = (overdueTasksRes.data || [])
+      .filter((task: any) => isTaskOverdue(task, new Date(), this.companyTimezone!))
+      .map((t: any) => ({
       id: t.id,
       title: t.title,
       priority: t.priority,

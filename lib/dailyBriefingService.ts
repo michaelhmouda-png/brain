@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BrainScoreService } from './brainScoreService';
+import { isTaskOverdue, loadTaskSnapshot, type TaskMetricRow } from './task-metrics.server';
 
 export interface Priority {
   type: 'task' | 'inventory' | 'customer' | 'employee' | 'data_quality';
@@ -49,9 +50,12 @@ export class DailyBriefingService {
     const scoreBreakdown = await scoreService.calculateBrainScore();
 
     // 2. Collect data for priorities
-    const [overdueTasks, criticalTasks, lowStockItems, wasteData, inactiveVIPs, recentComplaints, activeEmployees, employeesWithMissingData] = await Promise.all([
-      this.getOverdueTasks(),
-      this.getCriticalPendingTasks(),
+    const taskSnapshot = await loadTaskSnapshot({ supabase: this.supabase, companyId: this.userCompanyId });
+    const overdueTasks = taskSnapshot.rows.filter((task) =>
+      isTaskOverdue(task, new Date(taskSnapshot.evaluatedAt), taskSnapshot.companyTimezone));
+    const criticalTasks = taskSnapshot.rows.filter((task) =>
+      task.priority === 'critical' && task.status === 'pending');
+    const [lowStockItems, wasteData, inactiveVIPs, recentComplaints, activeEmployees, employeesWithMissingData] = await Promise.all([
       this.getLowStockItems(),
       this.getRecentWaste(),
       this.getInactiveVIPCustomers(),
@@ -127,31 +131,6 @@ export class DailyBriefingService {
     return `${timeOfDay}.`;
   }
 
-  private async getOverdueTasks(): Promise<any[]> {
-    const today = new Date().toISOString().split('T')[0];
-
-    const { data } = await this.supabase
-      .from('tasks')
-      .select('id, title, priority, due_date')
-      .eq('company_id', this.userCompanyId)
-      .neq('status', 'completed')
-      .lt('due_date', today)
-      .order('due_date', { ascending: true });
-
-    return data || [];
-  }
-
-  private async getCriticalPendingTasks(): Promise<any[]> {
-    const { data } = await this.supabase
-      .from('tasks')
-      .select('id, title, priority, due_date, status')
-      .eq('company_id', this.userCompanyId)
-      .eq('priority', 'critical')
-      .eq('status', 'pending')
-      .limit(10);
-
-    return data || [];
-  }
 
   private async getLowStockItems(): Promise<any[]> {
     const { data } = await this.supabase
@@ -236,8 +215,8 @@ export class DailyBriefingService {
   }
 
   private buildPriorities(
-    overdueTasks: any[],
-    criticalTasks: any[],
+    overdueTasks: TaskMetricRow[],
+    criticalTasks: TaskMetricRow[],
     lowStockItems: any[],
     wasteData: any[],
     inactiveVIPs: any[],
@@ -248,12 +227,10 @@ export class DailyBriefingService {
 
     // CRITICAL: Overdue critical tasks
     if (criticalTasks.some((t: any) => {
-      const today = new Date().toISOString().split('T')[0];
-      return t.due_date < today;
+      return overdueTasks.some((overdue) => overdue.id === t.id);
     })) {
       const overdueCount = criticalTasks.filter((t: any) => {
-        const today = new Date().toISOString().split('T')[0];
-        return t.due_date < today;
+        return overdueTasks.some((overdue) => overdue.id === t.id);
       }).length;
       priorities.push({
         type: 'task',
@@ -353,7 +330,7 @@ export class DailyBriefingService {
 
   private buildPositiveUpdates(
     scoreBreakdown: any,
-    overdueTasks: any[],
+    overdueTasks: TaskMetricRow[],
     activeEmployees: number,
     inactiveVIPs: any[]
   ): string[] {
@@ -388,8 +365,8 @@ export class DailyBriefingService {
   }
 
   private buildRecommendedActions(
-    overdueTasks: any[],
-    criticalTasks: any[],
+    overdueTasks: TaskMetricRow[],
+    criticalTasks: TaskMetricRow[],
     lowStockItems: any[],
     inactiveVIPs: any[],
     employeesWithMissingData: any[]
@@ -398,8 +375,7 @@ export class DailyBriefingService {
 
     // Critical tasks
     const overdueCC = criticalTasks.filter((t: any) => {
-      const today = new Date().toISOString().split('T')[0];
-      return t.due_date < today;
+      return overdueTasks.some((overdue) => overdue.id === t.id);
     }).length;
 
     if (overdueCC > 0) {

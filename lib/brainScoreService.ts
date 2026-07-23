@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { isTaskOverdue, loadTaskSnapshot, type TaskSnapshot } from './task-metrics.server';
 
 export interface BrainScoreMetrics {
   tasks?: {
@@ -47,6 +48,7 @@ export interface BrainScoreBreakdown {
 }
 
 export class BrainScoreService {
+  private taskSnapshot: TaskSnapshot | null = null;
   constructor(
     private supabase: SupabaseClient,
     private userCompanyId: string
@@ -99,25 +101,24 @@ export class BrainScoreService {
   }
 
   private async calculateOperationsScore(metrics: BrainScoreMetrics): Promise<number> {
-    const { data: tasks } = await this.supabase
-      .from('tasks')
-      .select('id, status, priority, due_date')
-      .eq('company_id', this.userCompanyId);
+    const snapshot = this.taskSnapshot ?? await loadTaskSnapshot({
+      supabase: this.supabase, companyId: this.userCompanyId,
+    });
+    this.taskSnapshot = snapshot;
+    const tasks = snapshot.rows;
 
     if (!tasks || tasks.length === 0) {
       return 100; // No tasks = no operational issues
     }
 
-    const today = new Date().toISOString().split('T')[0];
     const completed = tasks.filter((task) => task.status === 'completed').length;
     const completionRate = (completed / tasks.length) * 100;
 
-    const overdue = tasks.filter(
-      (task) => task.status !== 'completed' && task.due_date && task.due_date < today
-    ).length;
+    const now = new Date(snapshot.evaluatedAt);
+    const overdue = snapshot.metrics.overdue;
 
     const criticalOverdue = tasks.filter(
-      (task) => task.priority === 'critical' && task.status !== 'completed' && task.due_date && task.due_date < today
+      (task) => task.priority === 'critical' && isTaskOverdue(task, now, snapshot.companyTimezone)
     ).length;
 
     metrics.tasks = {

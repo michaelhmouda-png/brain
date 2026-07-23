@@ -291,8 +291,10 @@ test('employee UI and home metrics exclude task history before rendering or tran
   assert.match(page, /const visibleTasks[\s\S]*setTasks\(visibleTasks\)/);
   assert.doesNotMatch(page, /loadTranslations\(visibleTasks/);
   assert.match(page, /role === 'employee'[\s\S]*current\.filter\(\(task\) => task\.id !== taskId\)/);
-  assert.match(home, /activeTasks = tasks\.filter\(\(task\) => task\.status === 'pending' \|\| task\.status === 'in_progress'\)/);
-  assert.match(home, /tasks: activeTasks\.length[\s\S]*today: activeTasks\.filter[\s\S]*overdue: activeTasks\.filter/);
+  assert.match(home, /metrics\?\.active/);
+  assert.match(home, /metrics\?\.dueToday/);
+  assert.match(home, /metrics\?\.overdue/);
+  assert.doesNotMatch(home, /new Date\(\)\.toISOString/);
 });
 
 test('employee daily routing forces one trusted task read and filters today plus overdue work', () => {
