@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { request as httpRequest } from 'node:http';
+import { inspectJpeg } from '../../lib/brain-agent/jpeg.ts';
 import { resolvePrivateNvrAddress } from './network-safety.ts';
 
 export type DahuaCredential = { username: string; password: string };
@@ -10,6 +11,30 @@ export type DahuaChannel = {
   enabled: boolean;
   status: 'online' | 'offline' | 'disabled' | 'error';
 };
+export type DahuaChannelDiagnostic = {
+  httpStatus: number;
+  contentType: 'text/plain' | 'application/json' | 'text/html' | 'application/octet-stream' | 'unknown';
+  responseByteLength: number;
+  responseLineCount: number;
+  responseFormat: 'key_value_lines' | 'json' | 'xml' | 'html' | 'unknown_text' | 'binary';
+  sanitizedKeys: string[];
+  sections: string[];
+  repeatedChannelLikeRecords: number;
+  knownFields: {
+    uniqueChannel: boolean;
+    deviceName: boolean;
+    channelName: boolean;
+    name: boolean;
+    enabled: boolean;
+    connectionState: boolean;
+    state: boolean;
+    resolution: boolean;
+    codec: boolean;
+  };
+  parserBranch: 'result_records_v1' | 'camera_records_v1' | 'no_supported_records' | 'unknown_response';
+  safeParseFailureCode: 'NO_SUPPORTED_CHANNEL_RECORDS' | 'UNKNOWN_CHANNEL_RESPONSE_FORMAT' | null;
+  responseTimeMs: number;
+};
 export type DahuaResponse = { status: number; headers: Record<string, string>; body: Uint8Array };
 export type DahuaTransport = (request: {
   host: string;
@@ -19,11 +44,63 @@ export type DahuaTransport = (request: {
   timeoutMs: number;
   maximumBytes: number;
 }) => Promise<DahuaResponse>;
+export type DahuaOperation = 'system_info' | 'current_time' | 'camera_inventory' | 'snapshot';
+export type DahuaSafeErrorCode =
+  | 'NETWORK_UNREACHABLE'
+  | 'CONNECTION_REFUSED'
+  | 'CONNECTION_TIMEOUT'
+  | 'TLS_OR_PROTOCOL_MISMATCH'
+  | 'HTTP_UNAUTHORIZED'
+  | 'HTTP_FORBIDDEN'
+  | 'HTTP_NOT_FOUND'
+  | 'DIGEST_AUTH_FAILED'
+  | 'MALFORMED_DAHUA_RESPONSE'
+  | 'RESPONSE_LIMIT_EXCEEDED'
+  | 'NVR_REQUEST_FAILED';
+
+export class DahuaSafeError extends Error {
+  readonly safeCode: DahuaSafeErrorCode;
+  readonly httpStatus: number | null;
+  readonly operation: DahuaOperation;
+  readonly responseTimeMs: number;
+  readonly retryable: boolean;
+
+  constructor(
+    safeCode: DahuaSafeErrorCode,
+    httpStatus: number | null,
+    operation: DahuaOperation,
+    responseTimeMs: number,
+    retryable: boolean,
+  ) {
+    super(safeCode);
+    this.safeCode = safeCode;
+    this.httpStatus = httpStatus;
+    this.operation = operation;
+    this.responseTimeMs = responseTimeMs;
+    this.retryable = retryable;
+  }
+}
+
+class DahuaRequestSignal extends Error {
+  readonly status: number | null;
+
+  constructor(code: string, status: number | null = null) {
+    super(code);
+    this.status = status;
+  }
+}
 
 const SYSTEM_INFO_PATH = '/cgi-bin/magicBox.cgi?action=getSystemInfo';
 const CAMERA_ALL_PATH = '/cgi-bin/LogicDeviceManager.cgi?action=getCameraAll';
 const CURRENT_TIME_PATH = '/cgi-bin/global.cgi?action=getCurrentTime';
 const SNAPSHOT_PATH = /^\/cgi-bin\/snapshot\.cgi\?channel=(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6])$/;
+const READ_ONLY_CAPABILITIES = [
+  'dahua.cgi.v1',
+  'nvr.health_diagnostics',
+  'nvr.channel_discovery',
+  'nvr.camera_inventory_sync',
+  'nvr.snapshot',
+] as const;
 
 function allowedPath(path: string): boolean {
   return path === SYSTEM_INFO_PATH || path === CAMERA_ALL_PATH || path === CURRENT_TIME_PATH || SNAPSHOT_PATH.test(path);
@@ -187,11 +264,13 @@ async function authenticatedGet(
     throw new Error('DAHUA_TARGET_INVALID');
   }
   const initial = await transport({ host: target.localHost, port, path, headers: {}, timeoutMs: 10_000, maximumBytes });
-  if (initial.status >= 300 && initial.status < 400) throw new Error('DAHUA_REDIRECT_REJECTED');
+  if (initial.status >= 300 && initial.status < 400) throw new DahuaRequestSignal('DAHUA_PROTOCOL_MISMATCH', initial.status);
   if (initial.status === 200) return initial;
-  if (initial.status !== 401) throw new Error('DAHUA_REQUEST_FAILED');
+  if (initial.status === 403) throw new DahuaRequestSignal('DAHUA_HTTP_FORBIDDEN', initial.status);
+  if (initial.status === 404) throw new DahuaRequestSignal('DAHUA_HTTP_NOT_FOUND', initial.status);
+  if (initial.status !== 401) throw new DahuaRequestSignal('DAHUA_REQUEST_FAILED', initial.status);
   const challenge = parseDigestChallenge(initial.headers['www-authenticate']);
-  if (!challenge) throw new Error('DAHUA_DIGEST_REQUIRED');
+  if (!challenge) throw new DahuaRequestSignal('DAHUA_HTTP_UNAUTHORIZED', initial.status);
   const authorization = createDigestAuthorization(challenge, credential, path);
   const response = await transport({
     host: target.localHost,
@@ -201,10 +280,62 @@ async function authenticatedGet(
     timeoutMs: 10_000,
     maximumBytes,
   });
-  if (response.status >= 300 && response.status < 400) throw new Error('DAHUA_REDIRECT_REJECTED');
-  if (response.status === 401 || response.status === 403) throw new Error('DAHUA_AUTHENTICATION_FAILED');
-  if (response.status !== 200) throw new Error('DAHUA_REQUEST_FAILED');
+  if (response.status >= 300 && response.status < 400) throw new DahuaRequestSignal('DAHUA_PROTOCOL_MISMATCH', response.status);
+  if (response.status === 401) throw new DahuaRequestSignal('DAHUA_DIGEST_AUTH_FAILED', response.status);
+  if (response.status === 403) throw new DahuaRequestSignal('DAHUA_HTTP_FORBIDDEN', response.status);
+  if (response.status === 404) throw new DahuaRequestSignal('DAHUA_HTTP_NOT_FOUND', response.status);
+  if (response.status !== 200) throw new DahuaRequestSignal('DAHUA_REQUEST_FAILED', response.status);
   return response;
+}
+
+function elapsedMs(started: number): number {
+  return Math.min(60_000, Math.max(0, Math.round(performance.now() - started)));
+}
+
+function nodeErrorCode(error: unknown): string {
+  return error && typeof error === 'object' && 'code' in error && typeof error.code === 'string'
+    ? error.code.toUpperCase()
+    : '';
+}
+
+function safeDahuaError(error: unknown, operation: DahuaOperation, started: number): DahuaSafeError {
+  if (error instanceof DahuaSafeError) return error;
+  const message = error instanceof Error ? error.message : '';
+  const status = error instanceof DahuaRequestSignal ? error.status : null;
+  const code = nodeErrorCode(error);
+  let safeCode: DahuaSafeErrorCode = 'NVR_REQUEST_FAILED';
+  let retryable = true;
+  if (['ENETUNREACH', 'EHOSTUNREACH', 'ENOTFOUND', 'EAI_AGAIN'].includes(code)
+      || message === 'NVR_DNS_LOOKUP_FAILED') {
+    safeCode = 'NETWORK_UNREACHABLE';
+  } else if (code === 'ECONNREFUSED') {
+    safeCode = 'CONNECTION_REFUSED';
+  } else if (code === 'ETIMEDOUT' || message === 'DAHUA_REQUEST_TIMEOUT') {
+    safeCode = 'CONNECTION_TIMEOUT';
+  } else if (code === 'EPROTO' || code.startsWith('ERR_SSL_') || code.startsWith('HPE_')
+      || message === 'DAHUA_PROTOCOL_MISMATCH') {
+    safeCode = 'TLS_OR_PROTOCOL_MISMATCH';
+    retryable = false;
+  } else if (message === 'DAHUA_HTTP_UNAUTHORIZED') {
+    safeCode = 'HTTP_UNAUTHORIZED';
+    retryable = false;
+  } else if (message === 'DAHUA_HTTP_FORBIDDEN') {
+    safeCode = 'HTTP_FORBIDDEN';
+    retryable = false;
+  } else if (message === 'DAHUA_HTTP_NOT_FOUND') {
+    safeCode = 'HTTP_NOT_FOUND';
+    retryable = false;
+  } else if (message === 'DAHUA_DIGEST_AUTH_FAILED') {
+    safeCode = 'DIGEST_AUTH_FAILED';
+    retryable = false;
+  } else if (['DAHUA_RESPONSE_INVALID', 'DAHUA_SNAPSHOT_INVALID'].includes(message)) {
+    safeCode = 'MALFORMED_DAHUA_RESPONSE';
+    retryable = false;
+  } else if (['DAHUA_RESPONSE_TOO_LARGE', 'DAHUA_CHANNEL_LIMIT_EXCEEDED'].includes(message)) {
+    safeCode = 'RESPONSE_LIMIT_EXCEEDED';
+    retryable = false;
+  }
+  return new DahuaSafeError(safeCode, status, operation, elapsedMs(started), retryable);
 }
 
 export function parseDahuaKeyValues(body: Uint8Array): Map<string, string> {
@@ -227,7 +358,7 @@ export function parseDahuaKeyValues(body: Uint8Array): Map<string, string> {
 export function parseDahuaChannels(values: Map<string, string>): DahuaChannel[] {
   const records = new Map<number, Record<string, string>>();
   for (const [key, value] of values) {
-    const match = key.match(/^result\[(\d{1,3})\]\.([A-Za-z][A-Za-z0-9]{0,63})$/);
+    const match = key.match(/^(?:result|camera)\[(\d{1,3})\]\.([A-Za-z][A-Za-z0-9]{0,63})$/);
     if (!match) continue;
     const index = Number(match[1]);
     if (index > 255) continue;
@@ -258,6 +389,107 @@ export function parseDahuaChannels(values: Map<string, string>): DahuaChannel[] 
   return channels;
 }
 
+const SENSITIVE_FIELD_NAME = /(?:password|username|address|ip|mac|serial|url|uri|token|credential)/i;
+const CHANNEL_KEY = /^(result|camera|table\.All|table\.Channel)\[(\d{1,3})\]\.([A-Za-z][A-Za-z0-9]{0,63})$/;
+
+function safeContentType(value: string | undefined): DahuaChannelDiagnostic['contentType'] {
+  const normalized = value?.split(';')[0].trim().toLowerCase();
+  return normalized === 'text/plain'
+    || normalized === 'application/json'
+    || normalized === 'text/html'
+    || normalized === 'application/octet-stream'
+    ? normalized
+    : 'unknown';
+}
+
+function channelResponseStructure(response: DahuaResponse, started: number): {
+  values: Map<string, string> | null;
+  diagnostic: DahuaChannelDiagnostic;
+} {
+  let text: string | null = null;
+  try {
+    text = new TextDecoder('utf-8', { fatal: true }).decode(response.body);
+  } catch {
+    text = null;
+  }
+  const trimmed = text?.trimStart() ?? '';
+  const responseFormat: DahuaChannelDiagnostic['responseFormat'] = text === null
+    ? 'binary'
+    : trimmed.startsWith('{') || trimmed.startsWith('[')
+      ? 'json'
+      : trimmed.startsWith('<!DOCTYPE html') || trimmed.startsWith('<html')
+        ? 'html'
+        : trimmed.startsWith('<')
+          ? 'xml'
+          : trimmed.split(/\r?\n/).every((line) => !line || line.includes('='))
+            ? 'key_value_lines'
+            : 'unknown_text';
+  let values: Map<string, string> | null = null;
+  if (responseFormat === 'key_value_lines') {
+    try {
+      values = parseDahuaKeyValues(response.body);
+    } catch {
+      values = null;
+    }
+  }
+  const fields = new Set<string>();
+  const sections = new Set<string>();
+  const records = new Set<string>();
+  const known = new Set<string>();
+  if (values) {
+    for (const key of values.keys()) {
+      const match = key.match(CHANNEL_KEY);
+      if (!match) continue;
+      const field = match[3];
+      sections.add(`${match[1]}[*]`);
+      records.add(`${match[1]}:${match[2]}`);
+      known.add(field.toLowerCase());
+      if (!SENSITIVE_FIELD_NAME.test(field)) fields.add(field);
+    }
+  }
+  const resultRecords = [...records].filter((record) => record.startsWith('result:')).length;
+  const cameraRecords = [...records].filter((record) => record.startsWith('camera:')).length;
+  const parserBranch: DahuaChannelDiagnostic['parserBranch'] = values === null
+    ? 'unknown_response'
+    : resultRecords > 0
+      ? 'result_records_v1'
+      : cameraRecords > 0
+        ? 'camera_records_v1'
+        : 'no_supported_records';
+  const safeParseFailureCode = parserBranch === 'result_records_v1' || parserBranch === 'camera_records_v1'
+    ? null
+    : parserBranch === 'no_supported_records'
+      ? 'NO_SUPPORTED_CHANNEL_RECORDS'
+      : 'UNKNOWN_CHANNEL_RESPONSE_FORMAT';
+  return {
+    values,
+    diagnostic: {
+      httpStatus: response.status,
+      contentType: safeContentType(response.headers['content-type']),
+      responseByteLength: response.body.byteLength,
+      responseLineCount: text === null || text.length === 0 ? 0 : text.split(/\r?\n/).length,
+      responseFormat,
+      sanitizedKeys: [...fields].sort().slice(0, 64),
+      sections: [...sections].sort().slice(0, 16),
+      repeatedChannelLikeRecords: Math.min(256, records.size),
+      knownFields: {
+        uniqueChannel: known.has('uniquechannel'),
+        deviceName: known.has('devicename'),
+        channelName: known.has('channelname'),
+        name: known.has('name'),
+        enabled: known.has('enable'),
+        connectionState: known.has('connectionstate'),
+        state: known.has('state'),
+        resolution: known.has('resolution') || known.has('videoresolution'),
+        codec: known.has('codec') || known.has('compression') || known.has('videocompression'),
+      },
+      parserBranch,
+      safeParseFailureCode,
+      responseTimeMs: elapsedMs(started),
+    },
+  };
+}
+
 export class DahuaAdapter {
   private readonly target: DahuaTarget;
   private readonly credential: DahuaCredential;
@@ -269,42 +501,64 @@ export class DahuaAdapter {
     this.transport = transport;
   }
 
-  private async keyValues(path: string) {
-    const response = await authenticatedGet(this.target, this.credential, path, 1_048_576, this.transport);
-    return parseDahuaKeyValues(response.body);
+  private async keyValues(path: string, operation: DahuaOperation) {
+    const started = performance.now();
+    try {
+      const response = await authenticatedGet(this.target, this.credential, path, 1_048_576, this.transport);
+      return parseDahuaKeyValues(response.body);
+    } catch (error) {
+      throw safeDahuaError(error, operation, started);
+    }
   }
 
   async detectCapabilities() {
-    const info = await this.keyValues(SYSTEM_INFO_PATH);
-    const model = (info.get('deviceType') ?? info.get('DeviceType') ?? 'Dahua NVR').slice(0, 80);
+    const started = performance.now();
+    const info = await this.keyValues(SYSTEM_INFO_PATH, 'system_info');
     return {
       vendor: 'Dahua',
-      model,
-      capabilities: [
-        'dahua.cgi.v1',
-        'nvr.health_diagnostics',
-        'nvr.channel_discovery',
-        'nvr.camera_inventory_sync',
-        'nvr.snapshot',
-      ],
+      model: (info.get('deviceType') ?? info.get('DeviceType') ?? 'Dahua NVR').slice(0, 80),
+      firmwareVersion: (info.get('softwareVersion') ?? info.get('SoftwareVersion') ?? 'unknown').slice(0, 120),
+      capabilities: [...READ_ONLY_CAPABILITIES],
+      healthy: true,
+      responseTimeMs: Math.min(60_000, Math.max(0, Math.round(performance.now() - started))),
     };
   }
 
-  async discoverChannels() {
-    return parseDahuaChannels(await this.keyValues(CAMERA_ALL_PATH));
+  async discoverChannels(diagnosticOnly = false) {
+    const started = performance.now();
+    try {
+      const response = await authenticatedGet(
+        this.target,
+        this.credential,
+        CAMERA_ALL_PATH,
+        1_048_576,
+        this.transport,
+      );
+      const structured = channelResponseStructure(response, started);
+      if (diagnosticOnly) return { channels: [] as DahuaChannel[], diagnostic: structured.diagnostic };
+      if (!structured.values || structured.diagnostic.safeParseFailureCode) {
+        throw new Error('DAHUA_RESPONSE_INVALID');
+      }
+      return {
+        channels: parseDahuaChannels(structured.values),
+        diagnostic: structured.diagnostic,
+      };
+    } catch (error) {
+      throw safeDahuaError(error, 'camera_inventory', started);
+    }
   }
 
   async healthDiagnostics() {
     const started = performance.now();
-    const info = await this.keyValues(SYSTEM_INFO_PATH);
-    const time = await this.keyValues(CURRENT_TIME_PATH);
+    const info = await this.keyValues(SYSTEM_INFO_PATH, 'system_info');
+    await this.keyValues(CURRENT_TIME_PATH, 'current_time');
     return {
-      healthy: true,
       vendor: 'Dahua',
       model: (info.get('deviceType') ?? info.get('DeviceType') ?? 'Dahua NVR').slice(0, 80),
-      softwareVersion: (info.get('softwareVersion') ?? info.get('SoftwareVersion') ?? 'unknown').slice(0, 120),
-      deviceTime: (time.get('result') ?? time.get('time') ?? 'unknown').slice(0, 40),
-      latencyMs: Math.min(60_000, Math.max(0, Math.round(performance.now() - started))),
+      firmwareVersion: (info.get('softwareVersion') ?? info.get('SoftwareVersion') ?? 'unknown').slice(0, 120),
+      capabilities: [...READ_ONLY_CAPABILITIES],
+      healthy: true,
+      responseTimeMs: Math.min(60_000, Math.max(0, Math.round(performance.now() - started))),
     };
   }
 
@@ -312,18 +566,29 @@ export class DahuaAdapter {
     if (!/^(?:[1-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-6])$/.test(channelId)) {
       throw new Error('DAHUA_CHANNEL_INVALID');
     }
-    const response = await authenticatedGet(
-      this.target,
-      this.credential,
-      `/cgi-bin/snapshot.cgi?channel=${channelId}`,
-      5_242_880,
-      this.transport,
-    );
-    const contentType = response.headers['content-type']?.split(';')[0].trim().toLowerCase();
-    if (contentType !== 'image/jpeg' || response.body.byteLength < 4 || response.body.byteLength > 5_242_880
-       || response.body[0] !== 0xff || response.body[1] !== 0xd8 || response.body[2] !== 0xff) {
-      throw new Error('DAHUA_SNAPSHOT_INVALID');
+    const started = performance.now();
+    try {
+      const response = await authenticatedGet(
+        this.target,
+        this.credential,
+        `/cgi-bin/snapshot.cgi?channel=${channelId}`,
+        5_242_880,
+        this.transport,
+      );
+      const contentType = response.headers['content-type']?.split(';')[0].trim().toLowerCase();
+      const jpeg = inspectJpeg(response.body);
+      if (contentType !== 'image/jpeg' || response.body.byteLength > 5_242_880 || !jpeg) {
+        throw new Error('DAHUA_SNAPSHOT_INVALID');
+      }
+      return {
+        bytes: response.body,
+        contentType: 'image/jpeg' as const,
+        capturedAt: new Date().toISOString(),
+        width: jpeg.width,
+        height: jpeg.height,
+      };
+    } catch (error) {
+      throw safeDahuaError(error, 'snapshot', started);
     }
-    return { bytes: response.body, contentType: 'image/jpeg' as const, capturedAt: new Date().toISOString() };
   }
 }

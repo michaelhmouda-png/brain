@@ -8,6 +8,7 @@ const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
 const migration = read('supabase/migration_audit/pre_baseline_20260724/202607220014_camera_manager_foundation.sql');
 const tenantTriggerRepair = read('supabase/migration_audit/pre_baseline_20260724/202607220015_fix_camera_manager_tenant_trigger.sql');
+const forwardColumnGrants = read('supabase/migrations/202607240003_restore_camera_manager_column_grants.sql');
 const nvrRoute = read('app/api/devices/nvrs/route.ts');
 const cameraRoute = read('app/api/devices/cameras/route.ts');
 const page = read('app/dashboard/cameras/page.tsx');
@@ -165,6 +166,19 @@ test('camera reads use an explicit safe column grant and helpers are private RLS
     assert.match(migration, new RegExp(`GRANT EXECUTE ON FUNCTION private\\.${helper}\\(uuid\\) TO authenticated`));
     assert.doesNotMatch(migration, new RegExp(`CREATE FUNCTION public\\.${helper}`));
   }
+});
+
+test('forward chain restores only the RLS-governed Camera Manager column privileges', () => {
+  assert.match(forwardColumnGrants, /^--[\s\S]*\bBEGIN;/);
+  assert.match(forwardColumnGrants, /COMMIT;\s*$/);
+  assert.match(forwardColumnGrants, /nvr_connections_owner_insert/);
+  assert.match(forwardColumnGrants, /cameras_management_update/);
+  assert.match(forwardColumnGrants, /GRANT SELECT\([\s\S]*?\) ON public\.nvr_connections TO authenticated/);
+  assert.match(forwardColumnGrants, /GRANT INSERT\([\s\S]*?\) ON public\.nvr_connections TO authenticated/);
+  assert.match(forwardColumnGrants, /GRANT UPDATE\([\s\S]*?\) ON public\.nvr_connections TO authenticated/);
+  assert.match(forwardColumnGrants, /GRANT SELECT\([\s\S]*?\) ON public\.cameras TO authenticated/);
+  assert.match(forwardColumnGrants, /GRANT UPDATE\([\s\S]*?\) ON public\.cameras TO authenticated/);
+  assert.doesNotMatch(forwardColumnGrants, /GRANT\s+(?:ALL|TRUNCATE|TRIGGER|REFERENCES)|service_role|anon/);
 });
 
 test('APIs derive trusted scope, apply explicit company filters, and return no secrets', () => {

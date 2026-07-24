@@ -11,6 +11,7 @@ import {
 } from '../agent/src/dahua-adapter.ts';
 import { executeDeviceCommand } from '../agent/src/commands.ts';
 import { validDeviceCommandResult } from '../lib/brain-agent/command-contracts.ts';
+import { inspectJpeg } from '../lib/brain-agent/jpeg.ts';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -22,10 +23,19 @@ const storageSource = read('agent/src/storage.ts');
 const cliSource = read('agent/src/cli.ts');
 const uploadRoute = read('app/api/agent/commands/snapshot/route.ts');
 const browserSnapshotRoute = read('app/api/devices/commands/snapshots/route.ts');
+const snapshotControl = read('components/camera-manager/CameraSnapshotControl.tsx');
+const cameraPage = read('app/dashboard/cameras/page.tsx');
 const claimRoute = read('app/api/agent/commands/claim/route.ts');
 const id = () => crypto.randomUUID();
 const encode = (value) => new TextEncoder().encode(value);
 const digestChallenge = 'Digest realm="Dahua NVR", nonce="abcdef0123456789", qop="auth", algorithm=MD5, opaque="opaque-value"';
+const jpegFixture = Uint8Array.from([
+  0xff, 0xd8,
+  0xff, 0xc0, 0x00, 0x0b, 0x08, 0x00, 0x02, 0x00, 0x03, 0x01, 0x01, 0x11, 0x00,
+  0xff, 0xda, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00, 0x3f, 0x00,
+  0x11, 0x22,
+  0xff, 0xd9,
+]);
 
 function mockTransport() {
   const calls = [];
@@ -67,7 +77,7 @@ function mockTransport() {
       return {
         status: 200,
         headers: { 'content-type': 'image/jpeg' },
-        body: Uint8Array.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0xff, 0xd9]),
+        body: jpegFixture,
       };
     }
     throw new Error(`unexpected mock path: ${request.path}`);
@@ -117,6 +127,9 @@ test('capability detection uses only mocked Dahua system information', async () 
   const result = await adapter.detectCapabilities();
   assert.equal(result.vendor, 'Dahua');
   assert.equal(result.model, 'NVR5216-4KS2');
+  assert.equal(result.firmwareVersion, 'V4.001.0000000.0');
+  assert.equal(result.healthy, true);
+  assert.equal(Number.isInteger(result.responseTimeMs), true);
   assert.deepEqual(result.capabilities, [
     'dahua.cgi.v1',
     'nvr.health_diagnostics',
@@ -131,13 +144,80 @@ test('capability detection uses only mocked Dahua system information', async () 
 test('channel discovery parses a safe inventory projection and drops address and password fields', async () => {
   const mock = mockTransport();
   const adapter = new DahuaAdapter(target(), { username: 'operator', password: 'secret' }, mock.transport);
-  const channels = await adapter.discoverChannels();
+  const discovered = await adapter.discoverChannels();
+  const channels = discovered.channels;
   assert.deepEqual(channels, [
     { externalChannelId: '1', name: 'Entrance', enabled: true, status: 'online' },
     { externalChannelId: '2', name: 'Kitchen', enabled: true, status: 'error' },
   ]);
   assert.doesNotMatch(JSON.stringify(channels), /MUST_BE_IGNORED|192\.168\.1\.50|Password|IPAddress/);
-  assert.equal(validDeviceCommandResult('channel_discovery', { channels }), true);
+  const completion = await executeDeviceCommand(command('channel_discovery'), {
+    credential: { username: 'operator', password: 'secret' },
+    dahuaTransport: mockTransport().transport,
+  });
+  assert.equal(validDeviceCommandResult('channel_discovery', completion.result), true);
+});
+
+test('diagnostic-only discovery returns bounded structure without channel values', async () => {
+  const mock = mockTransport();
+  const completion = await executeDeviceCommand(command('channel_discovery', {
+    request: { diagnostic: true },
+  }), {
+    credential: { username: 'operator', password: 'secret' },
+    dahuaTransport: mock.transport,
+  });
+  assert.equal(completion.outcome, 'succeeded');
+  assert.deepEqual(completion.result.channels, []);
+  assert.equal(completion.result.diagnostic.httpStatus, 200);
+  assert.equal(completion.result.diagnostic.contentType, 'text/plain');
+  assert.equal(completion.result.diagnostic.responseFormat, 'key_value_lines');
+  assert.deepEqual(completion.result.diagnostic.sections, ['result[*]']);
+  assert.equal(completion.result.diagnostic.repeatedChannelLikeRecords, 2);
+  assert.equal(completion.result.diagnostic.parserBranch, 'result_records_v1');
+  assert.equal(completion.result.diagnostic.safeParseFailureCode, null);
+  assert.equal(completion.result.diagnostic.requestId, completion.commandId);
+  assert.doesNotMatch(JSON.stringify(completion.result.diagnostic), /Entrance|Kitchen|MUST_BE_IGNORED|192\.168|Password|IPAddress/);
+});
+
+test('documented Dahua camera[] response variant is fixed-allowlisted and sanitized', async () => {
+  const transport = async (request) => request.headers.Authorization
+    ? {
+        status: 200,
+        headers: { 'content-type': 'text/plain; charset=utf-8' },
+        body: encode([
+          'camera[0].UniqueChannel=0',
+          'camera[0].Name=Front Entrance',
+          'camera[0].Enable=true',
+          'camera[0].ConnectionState=Connected',
+          'camera[0].IPAddress=192.168.10.201',
+          'camera[0].Password=must-not-leave-agent',
+          'camera[1].UniqueChannel=1',
+          'camera[1].DeviceName=Kitchen',
+          'camera[1].Enable=true',
+          'camera[1].ConnectionState=Disconnected',
+          '',
+        ].join('\n')),
+      }
+    : { status: 401, headers: { 'www-authenticate': digestChallenge }, body: new Uint8Array() };
+  const completion = await executeDeviceCommand(command('channel_discovery'), {
+    credential: { username: 'operator', password: 'secret' },
+    dahuaTransport: transport,
+  });
+  assert.equal(completion.outcome, 'succeeded');
+  assert.deepEqual(completion.result.channels, [
+    { externalChannelId: '1', name: 'Front Entrance', enabled: true, status: 'online' },
+    { externalChannelId: '2', name: 'Kitchen', enabled: true, status: 'offline' },
+  ]);
+  assert.equal(completion.result.diagnostic.parserBranch, 'camera_records_v1');
+  assert.deepEqual(completion.result.diagnostic.sections, ['camera[*]']);
+  assert.equal(completion.result.diagnostic.repeatedChannelLikeRecords, 2);
+  assert.equal(completion.result.diagnostic.knownFields.uniqueChannel, true);
+  assert.equal(completion.result.diagnostic.knownFields.name, true);
+  assert.doesNotMatch(
+    JSON.stringify(completion.result.diagnostic),
+    /Front Entrance|Kitchen|192\.168|must-not-leave-agent|IPAddress|Password/,
+  );
+  assert.equal(validDeviceCommandResult('channel_discovery', completion.result), true);
 });
 
 test('health diagnostics return a bounded safe projection without serial number', async () => {
@@ -147,8 +227,9 @@ test('health diagnostics return a bounded safe projection without serial number'
   assert.equal(result.healthy, true);
   assert.equal(result.vendor, 'Dahua');
   assert.equal(result.model, 'NVR5216-4KS2');
-  assert.equal(result.softwareVersion, 'V4.001.0000000.0');
-  assert.equal(result.deviceTime, '2026-07-24 12:00:00');
+  assert.equal(result.firmwareVersion, 'V4.001.0000000.0');
+  assert.equal(Number.isInteger(result.responseTimeMs), true);
+  assert.equal(Array.isArray(result.capabilities), true);
   assert.doesNotMatch(JSON.stringify(result), /SHOULD_NOT_LEAVE_AGENT|serial/i);
   assert.equal(validDeviceCommandResult('nvr_health_diagnostics', result), true);
 });
@@ -168,7 +249,19 @@ test('snapshot retrieval validates JPEG bytes and uses the lease-bound upload ca
   assert.equal(completion.result.artifactId, '11111111-1111-4111-8111-111111111111');
   assert.equal(uploaded.contentType, 'image/jpeg');
   assert.equal(uploaded.channelId, '1');
+  assert.equal(uploaded.width, 3);
+  assert.equal(uploaded.height, 2);
   assert.deepEqual([...uploaded.bytes.slice(0, 3)], [0xff, 0xd8, 0xff]);
+});
+
+test('JPEG inspection requires bounded dimensions, a scan, and a terminal EOI marker', () => {
+  assert.deepEqual(inspectJpeg(jpegFixture), { width: 3, height: 2, byteSize: jpegFixture.byteLength });
+  assert.equal(inspectJpeg(Uint8Array.from([0xff, 0xd8, 0xff, 0xd9])), null);
+  assert.equal(inspectJpeg(jpegFixture.slice(0, -2)), null);
+  const corruptDimensions = new Uint8Array(jpegFixture);
+  corruptDimensions[9] = 0;
+  corruptDimensions[10] = 0;
+  assert.equal(inspectJpeg(corruptDimensions), null);
 });
 
 test('all adapter-backed command handlers execute through mocked transport', async () => {
@@ -189,8 +282,15 @@ test('authentication, redirect, malformed data, and invalid snapshot responses f
     credential: { username: 'operator', password: 'wrong' },
     dahuaTransport: unauthorized,
   });
-  assert.equal(authFailure.errorCode, 'NVR_AUTHENTICATION_FAILED');
+  assert.equal(authFailure.errorCode, 'DIGEST_AUTH_FAILED');
   assert.equal(authFailure.retryable, false);
+  assert.deepEqual(authFailure.diagnostic, {
+    safeErrorCode: 'DIGEST_AUTH_FAILED',
+    httpStatus: 401,
+    operation: 'system_info',
+    responseTimeMs: authFailure.diagnostic.responseTimeMs,
+    requestId: authFailure.commandId,
+  });
 
   const redirect = async () => ({ status: 302, headers: { location: 'http://example.com/' }, body: new Uint8Array() });
   const redirectFailure = await executeDeviceCommand(command('nvr_capability_probe'), {
@@ -212,8 +312,66 @@ test('authentication, redirect, malformed data, and invalid snapshot responses f
     dahuaTransport: invalidSnapshot.transport,
     uploadSnapshot: async () => ({ artifactId: id() }),
   });
-  assert.equal(snapshotFailure.errorCode, 'NVR_RESPONSE_INVALID');
+  assert.equal(snapshotFailure.errorCode, 'MALFORMED_DAHUA_RESPONSE');
   assert.equal(snapshotFailure.retryable, false);
+});
+
+test('mocked Dahua failures map to the complete safe diagnostic taxonomy', async () => {
+  const run = async (transport) => executeDeviceCommand(command('nvr_capability_probe'), {
+    credential: { username: 'operator', password: 'secret' },
+    dahuaTransport: transport,
+  });
+  const codedError = (code) => {
+    const error = new Error('sensitive transport detail');
+    error.code = code;
+    return error;
+  };
+  const cases = [
+    ['NETWORK_UNREACHABLE', async () => { throw codedError('EHOSTUNREACH'); }, null, true],
+    ['CONNECTION_REFUSED', async () => { throw codedError('ECONNREFUSED'); }, null, true],
+    ['CONNECTION_TIMEOUT', async () => { throw codedError('ETIMEDOUT'); }, null, true],
+    ['TLS_OR_PROTOCOL_MISMATCH', async () => { throw codedError('EPROTO'); }, null, false],
+    ['HTTP_UNAUTHORIZED', async () => ({ status: 401, headers: {}, body: new Uint8Array() }), 401, false],
+    ['HTTP_FORBIDDEN', async () => ({ status: 403, headers: {}, body: new Uint8Array() }), 403, false],
+    ['HTTP_NOT_FOUND', async () => ({ status: 404, headers: {}, body: new Uint8Array() }), 404, false],
+    ['DIGEST_AUTH_FAILED', async () => ({ status: 401, headers: { 'www-authenticate': digestChallenge }, body: new Uint8Array() }), 401, false],
+    ['NVR_REQUEST_FAILED', async () => ({ status: 500, headers: {}, body: encode('private body') }), 500, true],
+  ];
+  for (const [safeCode, transport, httpStatus, retryable] of cases) {
+    const completion = await run(transport);
+    assert.equal(completion.errorCode, safeCode);
+    assert.equal(completion.retryable, retryable);
+    assert.equal(completion.diagnostic.safeErrorCode, safeCode);
+    assert.equal(completion.diagnostic.httpStatus, httpStatus);
+    assert.equal(completion.diagnostic.operation, 'system_info');
+    assert.equal(completion.diagnostic.requestId, completion.commandId);
+    assert.deepEqual(
+      Object.keys(completion.diagnostic).sort(),
+      ['httpStatus', 'operation', 'requestId', 'responseTimeMs', 'safeErrorCode'],
+    );
+    assert.doesNotMatch(JSON.stringify(completion), /sensitive transport detail|private body|www-authenticate|nonce/i);
+  }
+
+  const malformed = mockTransport();
+  malformed.transport = async (request) => request.headers.Authorization
+    ? { status: 200, headers: {}, body: encode('not-a-key-value') }
+    : { status: 401, headers: { 'www-authenticate': digestChallenge }, body: new Uint8Array() };
+  assert.equal((await run(malformed.transport)).errorCode, 'MALFORMED_DAHUA_RESPONSE');
+
+  const oversized = async () => { throw new Error('DAHUA_RESPONSE_TOO_LARGE'); };
+  assert.equal((await run(oversized)).errorCode, 'RESPONSE_LIMIT_EXCEEDED');
+});
+
+test('safe diagnostic migration persists only bounded fields without changing lease and retry logic', () => {
+  const diagnosticMigration = read('supabase/migrations/202607240007_safe_device_diagnostics.sql');
+  assert.match(diagnosticMigration, /CREATE FUNCTION private\.valid_device_safe_diagnostic/);
+  assert.match(diagnosticMigration, /CREATE FUNCTION public\.complete_device_command_v2/);
+  assert.match(diagnosticMigration, /private\.resolve_device_command_agent/);
+  assert.match(diagnosticMigration, /attempt\.lease_token = p_lease_token/);
+  assert.match(diagnosticMigration, /command\.company_id = v_agent\.company_id/);
+  assert.match(diagnosticMigration, /command\.location_id = v_agent\.location_id/);
+  assert.match(diagnosticMigration, /p_diagnostic - ARRAY\[\s*'safeErrorCode','httpStatus','operation','responseTimeMs','requestId'/);
+  assert.doesNotMatch(diagnosticMigration, /Authorization|www-authenticate|nonce|raw_headers|raw_body|serial_number|password|secret_reference/i);
 });
 
 test('production transport fixes DNS to a private address and has a closed read-only path allowlist', () => {
@@ -261,6 +419,34 @@ test('snapshot artifacts are lease-bound, private, expiring, and company-authori
   assert.match(uploadRoute, /finalize_device_snapshot_upload/);
   assert.match(browserSnapshotRoute, /resolveActorContext/);
   assert.match(browserSnapshotRoute, /createSignedUrl\(artifact\.storage_path, 60\)/);
+  assert.match(uploadRoute, /inspectJpeg\(body\)/);
+  assert.match(uploadRoute, /reserve_device_snapshot_upload_v2/);
+  assert.match(browserSnapshotRoute, /get_device_snapshot_artifact_v2/);
+  assert.match(browserSnapshotRoute, /signedUrlExpiresInSeconds = 60/);
+});
+
+test('authenticated Camera Manager snapshot control enqueues one fixed channel request and displays only signed access', () => {
+  assert.match(snapshotControl, /commandType: 'snapshot_request'/);
+  assert.match(snapshotControl, /request: \{ channelId \}/);
+  assert.match(snapshotControl, /disabled=\{submitting \|\| command !== null\}/);
+  assert.match(snapshotControl, /\/api\/devices\/commands\/snapshots\?id=/);
+  assert.match(snapshotControl, /src=\{access\.signedUrl\}/);
+  assert.match(snapshotControl, /signedUrlExpiresAt/);
+  assert.match(cameraPage, /CameraSnapshotControl/);
+  assert.doesNotMatch(snapshotControl, /localHost|local_host|cgi-bin|Authorization|Digest|password|credential/i);
+  assert.doesNotMatch(browserSnapshotRoute, /localHost|local_host|cgi-bin|Digest|password|credential/i);
+});
+
+test('dimension migration preserves private lease authorization and adds no public storage access', () => {
+  const dimensions = read('supabase/migrations/202607240010_validated_snapshot_dimensions.sql');
+  assert.match(dimensions, /ADD COLUMN width integer/);
+  assert.match(dimensions, /ADD COLUMN height integer/);
+  assert.match(dimensions, /width BETWEEN 1 AND 16384 AND height BETWEEN 1 AND 16384/);
+  assert.match(dimensions, /public\.reserve_device_snapshot_upload\(/);
+  assert.match(dimensions, /public\.get_device_snapshot_artifact\(/);
+  assert.match(dimensions, /TO service_role/);
+  assert.match(dimensions, /TO authenticated/);
+  assert.doesNotMatch(dimensions, /CREATE POLICY|GRANT .*storage\.objects|GRANT .*camera_snapshot_artifacts TO authenticated/i);
 });
 
 test('snapshot upload and completion remain outbound agent operations', () => {
@@ -274,7 +460,7 @@ test('snapshot upload and completion remain outbound agent operations', () => {
 test('forbidden Dahua operations and arbitrary request surfaces are absent', () => {
   const executableMigration = migration.replace(/--.*$/gm, '');
   const sources = [executableMigration, adapterSource, executorSource, runtimeSource, uploadRoute, browserSnapshotRoute].join('\n');
-  assert.doesNotMatch(sources, /\b(?:PTZ|reboot|firmware|user management|credential export|video streaming|remote shell)\b/i);
+  assert.doesNotMatch(sources, /\b(?:PTZ|reboot|firmware update|user management|credential export|video streaming|remote shell)\b/i);
   assert.doesNotMatch(sources, /action=(?:set|delete|reboot|update|modify|add)/i);
   assert.doesNotMatch(sources, /configManager\.cgi/);
   assert.doesNotMatch(sources, /rtsp:\/\//i);

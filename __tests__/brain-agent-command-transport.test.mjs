@@ -9,7 +9,7 @@ import {
   parseDeviceCommandEnqueue,
   validDeviceCommandResult,
 } from '../lib/brain-agent/command-contracts.ts';
-import { executeDeviceCommand, isPrivateNvrAddress } from '../agent/src/commands.ts';
+import { classifyNetworkError, executeDeviceCommand, isPrivateNvrAddress } from '../agent/src/commands.ts';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
@@ -82,12 +82,71 @@ test('enqueue contracts are bounded, target-shaped, and discard client authority
 test('completion results use exact allowlists and reject credential-bearing fields', () => {
   assert.equal(validDeviceCommandResult('agent_health', { agentVersion: '0.1.0', platform: 'win32', uptimeSeconds: 12 }), true);
   assert.equal(validDeviceCommandResult('agent_health', { agentVersion: '0.1.0', platform: 'win32', uptimeSeconds: 12, token: 'secret' }), false);
-  assert.equal(validDeviceCommandResult('network_reachability', { reachable: true, portKind: 'rtsp', latencyMs: 5 }), true);
-  assert.equal(validDeviceCommandResult('network_reachability', { reachable: true, portKind: 'rtsp', latencyMs: 5, localHost: '192.168.1.2' }), false);
+  const reachable = {
+    reachable: true,
+    portKind: 'rtsp',
+    latencyMs: 5,
+    resolution: 'literal_private_ipv4',
+    safeFailureCode: null,
+  };
+  assert.equal(validDeviceCommandResult('network_reachability', reachable), true);
+  assert.equal(validDeviceCommandResult('network_reachability', { ...reachable, localHost: '192.168.1.2' }), false);
+  assert.equal(validDeviceCommandResult('network_reachability', {
+    ...reachable,
+    reachable: false,
+    safeFailureCode: 'CONNECTION_REFUSED',
+  }), true);
+  assert.equal(validDeviceCommandResult('network_reachability', {
+    ...reachable,
+    reachable: false,
+    safeFailureCode: null,
+  }), false);
   assert.equal(parseAgentCommandCompletion({
     commandId: id(), commandType: 'snapshot_request', leaseToken: id(), outcome: 'succeeded',
     result: { artifactId: id(), contentType: 'image/jpeg', capturedAt: new Date().toISOString(), password: 'x' },
     errorCode: null, retryable: false,
+  }), null);
+});
+
+test('network failure classification is bounded to safe refusal, timeout, and unreachable codes', () => {
+  assert.equal(classifyNetworkError(Object.assign(new Error('private detail'), { code: 'ECONNREFUSED' })), 'CONNECTION_REFUSED');
+  assert.equal(classifyNetworkError(Object.assign(new Error('private detail'), { code: 'ETIMEDOUT' })), 'CONNECTION_TIMEOUT');
+  assert.equal(classifyNetworkError(Object.assign(new Error('private detail'), { code: 'EHOSTUNREACH' })), 'NETWORK_UNREACHABLE');
+  assert.equal(classifyNetworkError(new Error('unclassified private detail')), 'NETWORK_UNREACHABLE');
+});
+
+test('completion diagnostics accept only the sanitized exact envelope', () => {
+  const commandId = id();
+  const base = {
+    commandId,
+    commandType: 'nvr_capability_probe',
+    leaseToken: id(),
+    outcome: 'failed',
+    result: {},
+    errorCode: 'HTTP_UNAUTHORIZED',
+    retryable: false,
+    diagnostic: {
+      safeErrorCode: 'HTTP_UNAUTHORIZED',
+      httpStatus: 401,
+      operation: 'system_info',
+      responseTimeMs: 15,
+      requestId: commandId,
+    },
+  };
+  assert.ok(parseAgentCommandCompletion(base));
+  for (const forbidden of ['authorization', 'headers', 'body', 'url', 'serialNumber', 'nonce', 'credential']) {
+    assert.equal(parseAgentCommandCompletion({
+      ...base,
+      diagnostic: { ...base.diagnostic, [forbidden]: 'secret' },
+    }), null, forbidden);
+  }
+  assert.equal(parseAgentCommandCompletion({
+    ...base,
+    diagnostic: { ...base.diagnostic, requestId: id() },
+  }), null);
+  assert.equal(parseAgentCommandCompletion({
+    ...base,
+    diagnostic: { ...base.diagnostic, safeErrorCode: 'HTTP_FORBIDDEN' },
   }), null);
 });
 
@@ -131,6 +190,8 @@ test('agent health executes locally while adapter-backed commands require local 
 });
 
 test('migration is one forward transaction with durable private command state', () => {
+  assert.match(migration, /VALUES \('brain\.command\.transport\.v1', 1, 'read', true\)/);
+  assert.doesNotMatch(migration, /'read_only'/);
   assert.match(migration, /^--[\s\S]*\bBEGIN;/);
   assert.match(migration, /COMMIT;\s*$/);
   for (const table of ['device_commands', 'device_command_attempts', 'device_command_audit']) {

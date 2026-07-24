@@ -4,7 +4,15 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-
 const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$/;
 const CAPABILITY = /^[a-z][a-z0-9_.-]{2,79}$/;
 
-type AgentMetadata = { publicAgentId?: string; agentVersion: string; platform: string; osVersion: string | null; hostnameLabel: string | null; declaredCapabilities: string[] };
+type AgentMetadata = {
+  publicAgentId?: string;
+  agentVersion: string;
+  platform: string;
+  osVersion: string | null;
+  hostnameLabel: string | null;
+  declaredCapabilities: string[];
+  credentialedNvrIds: string[];
+};
 
 export function parseAgentMetadata(value: unknown, requirePublicId: boolean): AgentMetadata | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -17,8 +25,15 @@ export function parseAgentMetadata(value: unknown, requirePublicId: boolean): Ag
   const hostnameLabel = body.hostnameLabel == null || body.hostnameLabel === '' ? null : typeof body.hostnameLabel === 'string' && LABEL.test(body.hostnameLabel) ? body.hostnameLabel : undefined;
   const declared = Array.isArray(body.declaredCapabilities) && body.declaredCapabilities.length <= 16 && body.declaredCapabilities.every((item) => typeof item === 'string' && CAPABILITY.test(item))
     ? [...new Set(body.declaredCapabilities as string[])] : null;
-  if ((requirePublicId && !publicAgentId) || !agentVersion || !platform || osVersion === undefined || hostnameLabel === undefined || !declared) return null;
-  return { publicAgentId, agentVersion, platform, osVersion, hostnameLabel, declaredCapabilities: declared };
+  const credentialedNvrIds = body.credentialedNvrIds === undefined
+    ? []
+    : Array.isArray(body.credentialedNvrIds)
+      && body.credentialedNvrIds.length <= 256
+      && body.credentialedNvrIds.every((item) => typeof item === 'string' && UUID.test(item))
+      ? [...new Set(body.credentialedNvrIds as string[])].map((item) => item.toLowerCase()).sort()
+      : null;
+  if ((requirePublicId && !publicAgentId) || !agentVersion || !platform || osVersion === undefined || hostnameLabel === undefined || !declared || !credentialedNvrIds) return null;
+  return { publicAgentId, agentVersion, platform, osVersion, hostnameLabel, declaredCapabilities: declared, credentialedNvrIds };
 }
 
 export const isUuid = (value: unknown): value is string => typeof value === 'string' && UUID.test(value);

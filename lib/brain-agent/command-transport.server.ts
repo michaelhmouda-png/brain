@@ -1,7 +1,7 @@
 import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
-import type { DeviceCommandEnqueue } from './command-contracts';
+import type { DeviceCommandEnqueue, NvrProbeEnqueue } from './command-contracts';
 
 export type EnqueuedDeviceCommand = {
   commandId: string;
@@ -20,6 +20,15 @@ export type DeviceCommandView = {
   createdAt: string;
   expiresAt: string;
   completedAt: string | null;
+};
+
+export type NvrProbeEnqueueResult = EnqueuedDeviceCommand & {
+  duplicateActive: boolean;
+};
+
+export type NvrProbeControlStateResult = {
+  unavailable: boolean;
+  state: unknown;
 };
 
 export async function enqueueDeviceCommand(
@@ -66,4 +75,53 @@ export async function readDeviceCommand(
       completedAt: row.completed_at,
     },
   };
+}
+
+export async function enqueueNvrProbeCommand(
+  client: SupabaseClient,
+  input: NvrProbeEnqueue,
+): Promise<{ errorCode: string | null; command: NvrProbeEnqueueResult | null }> {
+  const { data, error } = await client.rpc('enqueue_nvr_probe_command', {
+    p_nvr_connection_id: input.nvrConnectionId,
+    p_command_type: input.commandType,
+    p_idempotency_key: input.idempotencyKey,
+    p_ttl_seconds: input.ttlSeconds,
+  });
+  const safeCodes = [
+    'NVR_PROBE_FORBIDDEN',
+    'NVR_PROBE_INVALID',
+    'NVR_PROBE_NOT_FOUND',
+    'NVR_PROBE_ASSIGNMENT_INCOMPATIBLE',
+    'NVR_PROBE_GATEWAY_OFFLINE',
+    'NVR_PROBE_CREDENTIALS_NOT_REPORTED',
+    'DEVICE_COMMAND_GATEWAY_UNAVAILABLE',
+  ];
+  if (error) {
+    const errorCode = safeCodes.find((code) => error.message.includes(code)) ?? 'NVR_PROBE_NOT_ENQUEUED';
+    return { errorCode, command: null };
+  }
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return { errorCode: 'NVR_PROBE_NOT_ENQUEUED', command: null };
+  return {
+    errorCode: null,
+    command: {
+      commandId: row.command_id,
+      status: row.command_status,
+      expiresAt: row.command_expires_at,
+      duplicateRequest: row.duplicate_request === true,
+      duplicateActive: row.duplicate_active === true,
+    },
+  };
+}
+
+export async function readNvrProbeControlState(
+  client: SupabaseClient,
+  nvrConnectionId: string,
+): Promise<NvrProbeControlStateResult> {
+  const { data, error } = await client.rpc('get_nvr_probe_control_state', {
+    p_nvr_connection_id: nvrConnectionId,
+  });
+  return error
+    ? { unavailable: true, state: null }
+    : { unavailable: false, state: data };
 }

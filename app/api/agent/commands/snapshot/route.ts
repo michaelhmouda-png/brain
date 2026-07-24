@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { authenticateAgentCommandRequest } from '@/lib/brain-agent/agent-request-auth.server';
 import { isUuid } from '@/lib/brain-agent/contracts';
+import { inspectJpeg } from '@/lib/brain-agent/jpeg';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 
 const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0' };
@@ -42,14 +43,22 @@ export async function POST(request: Request) {
     const commandId = request.headers.get('x-command-id');
     const leaseToken = request.headers.get('x-lease-token');
     const channelId = request.headers.get('x-channel-id');
+    const declaredWidth = Number(request.headers.get('x-image-width'));
+    const declaredHeight = Number(request.headers.get('x-image-height'));
     const contentType = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
-    if (!isUuid(commandId) || !isUuid(leaseToken) || !channelId || !CHANNEL_ID.test(channelId) || contentType !== 'image/jpeg') {
+    if (!isUuid(commandId) || !isUuid(leaseToken) || !channelId || !CHANNEL_ID.test(channelId)
+        || contentType !== 'image/jpeg'
+        || !Number.isInteger(declaredWidth) || !Number.isInteger(declaredHeight)
+        || declaredWidth < 1 || declaredWidth > 16_384
+        || declaredHeight < 1 || declaredHeight > 16_384) {
       return unavailable(400);
     }
     const body = await boundedBody(request);
     if (!body) return unavailable(400);
+    const jpeg = inspectJpeg(body);
+    if (!jpeg || jpeg.width !== declaredWidth || jpeg.height !== declaredHeight) return unavailable(400);
     const sha256 = createHash('sha256').update(body).digest('hex');
-    const { data, error } = await service.rpc('reserve_device_snapshot_upload', {
+    const { data, error } = await service.rpc('reserve_device_snapshot_upload_v2', {
       p_public_agent_id: authenticated.agent.publicAgentId,
       p_credential_hash: authenticated.agent.credentialHash,
       p_command_id: commandId,
@@ -58,6 +67,8 @@ export async function POST(request: Request) {
       p_content_type: contentType,
       p_byte_size: body.length,
       p_sha256: sha256,
+      p_width: jpeg.width,
+      p_height: jpeg.height,
     });
     const artifact = Array.isArray(data) ? data[0] : data;
     if (error || !artifact) return unavailable(409);

@@ -1,6 +1,6 @@
 import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
-import { clearState, loadState, pairAgent, startAgent } from './runtime.ts';
+import { clearState, loadState, PairingApiError, pairAgent, startAgent } from './runtime.ts';
 import { removeNvrCredential, saveNvrCredential } from './storage.ts';
 
 async function hiddenInput(prompt: string, maximumLength: number, allowed: (character: string) => boolean): Promise<string> {
@@ -60,4 +60,21 @@ async function main() {
   if (command === 'unpair-local') { await clearState(); console.log('Local pairing removed.'); return; }
   throw new Error('Usage: pair | start | status | set-nvr-credentials <nvr-id> | remove-nvr-credentials <nvr-id> | unpair-local');
 }
-main().catch(error => { console.error(error instanceof Error ? error.message : 'Agent failed'); process.exitCode = 1; });
+main().catch(error => {
+  if (error instanceof PairingApiError) {
+    console.error(`Pairing API HTTP status: ${error.httpStatus}`);
+    console.error(`Pairing API safe error code: ${error.safeCode}`);
+    console.error(`Pairing API request correlation ID: ${error.requestId ?? 'unavailable'}`);
+    console.error(`Pairing API full response: ${JSON.stringify(error.responseBody)}`);
+    console.error(`Pairing code not found: ${error.failure?.notFound === true}`);
+    console.error(`Pairing code expired: ${error.failure?.expired === true}`);
+    console.error(`Pairing code already used: ${error.failure?.alreadyUsed === true}`);
+    console.error(`Pairing gateway mismatch: ${error.failure?.gatewayMismatch === true}`);
+    console.error(`Pairing company mismatch: ${error.failure?.companyMismatch === true}`);
+    console.error(`Pairing validation failure: ${error.failure?.validationFailure === true}`);
+    console.error(`Pairing authentication failure: ${error.failure?.authenticationFailure === true}`);
+  } else {
+    console.error(error instanceof Error ? error.message : 'Agent failed');
+  }
+  process.exitCode = 1;
+});

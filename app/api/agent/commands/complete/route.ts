@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     if (!authenticated.agent) return unavailable(401);
     const completion = parseAgentCommandCompletion(await request.json().catch(() => null));
     if (!completion) return unavailable(400);
-    const { data, error } = await service.rpc('complete_device_command', {
+    const { data, error } = await service.rpc('complete_device_command_v2', {
       p_public_agent_id: authenticated.agent.publicAgentId,
       p_credential_hash: authenticated.agent.credentialHash,
       p_command_id: completion.commandId,
@@ -27,6 +27,7 @@ export async function POST(request: Request) {
       p_result_payload: completion.result,
       p_error_code: completion.errorCode,
       p_retryable: completion.retryable,
+      p_diagnostic_payload: completion.diagnostic ?? null,
     });
     const row = Array.isArray(data) ? data[0] : data;
     if (error || !row) return unavailable(409);

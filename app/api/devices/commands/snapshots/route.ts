@@ -17,7 +17,7 @@ export async function GET(request: Request) {
     if (!canViewCameraManager(actor.role)) return failure('SNAPSHOT_FORBIDDEN', 403);
     const id = new URL(request.url).searchParams.get('id');
     if (!isUuid(id)) return failure('SNAPSHOT_INVALID', 400);
-    const { data, error } = await authClient.rpc('get_device_snapshot_artifact', { p_artifact_id: id });
+    const { data, error } = await authClient.rpc('get_device_snapshot_artifact_v2', { p_artifact_id: id });
     const artifact = Array.isArray(data) ? data[0] : data;
     if (error) return failure('SNAPSHOT_UNAVAILABLE', 503);
     if (!artifact) return failure('SNAPSHOT_NOT_FOUND', 404);
@@ -26,13 +26,19 @@ export async function GET(request: Request) {
       .from(artifact.bucket_id)
       .createSignedUrl(artifact.storage_path, 60);
     if (signedError || !signed?.signedUrl) return failure('SNAPSHOT_UNAVAILABLE', 503);
+    const signedUrlExpiresInSeconds = 60;
+    const signedUrlExpiresAt = new Date(Date.now() + signedUrlExpiresInSeconds * 1_000).toISOString();
     return NextResponse.json({
       data: {
         artifactId: artifact.artifact_id,
         contentType: artifact.content_type,
         expiresAt: artifact.expires_at,
+        byteSize: artifact.byte_size,
+        width: artifact.width,
+        height: artifact.height,
         signedUrl: signed.signedUrl,
-        signedUrlExpiresInSeconds: 60,
+        signedUrlExpiresInSeconds,
+        signedUrlExpiresAt,
       },
     }, { headers: HEADERS });
   } catch (error) {

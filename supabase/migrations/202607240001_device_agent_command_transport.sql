@@ -23,7 +23,7 @@ END
 $preflight$;
 
 INSERT INTO public.device_capability_catalog(capability_code, protocol_version, risk_class, enabled)
-VALUES ('brain.command.transport.v1', 1, 'read_only', true);
+VALUES ('brain.command.transport.v1', 1, 'read', true);
 
 CREATE TABLE public.device_commands (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
