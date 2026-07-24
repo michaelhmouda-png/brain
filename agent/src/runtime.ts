@@ -5,7 +5,7 @@ import {
   type AgentCommandCompletion,
 } from '../../lib/brain-agent/command-contracts.ts';
 import { AGENT_VERSION, CAPABILITIES } from './constants.ts';
-import { clearState, loadState, protectCredential, saveState, unprotectCredential, type AgentState } from './storage.ts';
+import { clearState, loadNvrCredential, loadState, protectCredential, saveState, unprotectCredential, type AgentState } from './storage.ts';
 
 export { AGENT_VERSION, CAPABILITIES };
 const DEVELOPMENT_PORTS = new Set(['3000', '3100']);
@@ -26,11 +26,11 @@ export async function pairAgent(baseUrl: string, pairingCode: string, requestedP
   const origin = validateBrainCloudOrigin(baseUrl);
   const url = new URL('/api/agent/pair', origin);
   const prior = await loadState(); const publicAgentId = requestedPublicAgentId ?? prior?.publicAgentId ?? randomUUID();
-  await saveState({ publicAgentId, baseUrl: origin });
+  await saveState({ publicAgentId, baseUrl: origin, nvrCredentials: prior?.nvrCredentials });
   const response = await fetch(url, { method: 'POST', redirect: 'error', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pairingCode, publicAgentId, ...metadata() }) });
   const payload = await response.json().catch(() => null) as { data?: { credential?: string; gatewayId?: string; locationId?: string } } | null;
   if (!response.ok || !payload?.data?.credential || !payload.data.gatewayId || !payload.data.locationId) throw new Error('PAIRING_FAILED');
-  await saveState({ publicAgentId, baseUrl: origin, encryptedCredential: protectCredential(payload.data.credential), gatewayId: payload.data.gatewayId, locationId: payload.data.locationId });
+  await saveState({ publicAgentId, baseUrl: origin, encryptedCredential: protectCredential(payload.data.credential), gatewayId: payload.data.gatewayId, locationId: payload.data.locationId, nvrCredentials: prior?.nvrCredentials });
   return { gatewayId: payload.data.gatewayId, locationId: payload.data.locationId };
 }
 
@@ -62,6 +62,34 @@ async function completeCommand(origin: string, authorization: string, completion
   if (!response.ok) throw new Error('COMMAND_COMPLETION_FAILED');
 }
 
+async function uploadSnapshot(
+  origin: string,
+  authorization: string,
+  command: { commandId: string; leaseToken: string },
+  snapshot: { bytes: Uint8Array; contentType: 'image/jpeg'; channelId: string },
+): Promise<{ artifactId: string }> {
+  const uploadBody = new Uint8Array(snapshot.bytes).buffer;
+  const response = await fetch(new URL('/api/agent/commands/snapshot', origin), {
+    method: 'POST',
+    redirect: 'error',
+    headers: {
+      Authorization: authorization,
+      'Content-Type': snapshot.contentType,
+      'Content-Length': String(snapshot.bytes.byteLength),
+      'X-Command-Id': command.commandId,
+      'X-Lease-Token': command.leaseToken,
+      'X-Channel-Id': snapshot.channelId,
+    },
+    body: uploadBody,
+  });
+  if (response.status === 401) throw new Error('REPAIR_REQUIRED');
+  if (!response.ok) throw new Error('SNAPSHOT_UPLOAD_FAILED');
+  const payload = await response.json().catch(() => null) as { data?: { artifactId?: unknown } } | null;
+  const artifactId = payload?.data?.artifactId;
+  if (typeof artifactId !== 'string' || !/^[0-9a-f-]{36}$/i.test(artifactId)) throw new Error('SNAPSHOT_UPLOAD_FAILED');
+  return { artifactId };
+}
+
 export async function pollDeviceCommands(state: AgentState): Promise<number> {
   const origin = validateBrainCloudOrigin(state.baseUrl);
   const authorization = agentAuthorization(state);
@@ -81,7 +109,15 @@ export async function pollDeviceCommands(state: AgentState): Promise<number> {
   if (!commands) throw new Error('COMMAND_POLL_FAILED');
   if (commands.length > 0) {
     const { executeDeviceCommand } = await import('./commands.ts');
-    const completion = await executeDeviceCommand(commands[0]);
+    const command = commands[0];
+    const credential = command.nvrConnectionId
+      && ['nvr_capability_probe', 'nvr_health_diagnostics', 'channel_discovery', 'snapshot_request'].includes(command.commandType)
+      ? await loadNvrCredential(command.nvrConnectionId)
+      : null;
+    const completion = await executeDeviceCommand(command, {
+      credential,
+      uploadSnapshot: (snapshot) => uploadSnapshot(origin, authorization, command, snapshot),
+    });
     try {
       await completeCommand(origin, authorization, completion);
     } catch (error) {

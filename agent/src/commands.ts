@@ -1,11 +1,11 @@
-import { lookup } from 'node:dns/promises';
-import { isIP } from 'node:net';
 import net from 'node:net';
 import {
   type AgentCommandCompletion,
   type ClaimedDeviceCommand,
 } from '../../lib/brain-agent/command-contracts.ts';
 import { AGENT_VERSION } from './constants.ts';
+import { DahuaAdapter, type DahuaCredential, type DahuaTransport } from './dahua-adapter.ts';
+import { isPrivateNvrAddress, resolvePrivateNvrAddress } from './network-safety.ts';
 
 class CommandExecutionError extends Error {
   readonly code: string;
@@ -18,45 +18,20 @@ class CommandExecutionError extends Error {
   }
 }
 
-function privateIpv4(address: string): boolean {
-  const octets = address.split('.').map(Number);
-  if (octets.length !== 4 || octets.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
-  return octets[0] === 10
-    || (octets[0] === 172 && octets[1] >= 16 && octets[1] <= 31)
-    || (octets[0] === 192 && octets[1] === 168);
-}
-
-export function isPrivateNvrAddress(address: string): boolean {
-  const normalized = address.toLowerCase().split('%')[0];
-  if (isIP(normalized) === 4) return privateIpv4(normalized);
-  if (isIP(normalized) !== 6) return false;
-  if (normalized.startsWith('::ffff:')) return privateIpv4(normalized.slice('::ffff:'.length));
-  const first = Number.parseInt(normalized.split(':')[0] || '0', 16);
-  return first >= 0xfc00 && first <= 0xfdff;
-}
-
-async function resolvePrivateNvrAddress(host: string): Promise<{ address: string; family: 4 | 6 }> {
-  if (isIP(host)) {
-    if (!isPrivateNvrAddress(host)) throw new CommandExecutionError('UNSAFE_NVR_ADDRESS', false);
-    return { address: host, family: isIP(host) as 4 | 6 };
-  }
-  let addresses;
-  try {
-    addresses = await lookup(host, { all: true, verbatim: true });
-  } catch {
-    throw new CommandExecutionError('NVR_DNS_LOOKUP_FAILED', true);
-  }
-  const safe = addresses.find((candidate) => isPrivateNvrAddress(candidate.address));
-  if (!safe) throw new CommandExecutionError('UNSAFE_NVR_ADDRESS', false);
-  return { address: safe.address, family: safe.family as 4 | 6 };
-}
+export { isPrivateNvrAddress };
 
 export async function checkNetworkReachability(
   host: string,
   port: number,
   timeoutMs: number,
 ): Promise<{ reachable: boolean; latencyMs: number }> {
-  const target = await resolvePrivateNvrAddress(host);
+  let target: { address: string; family: 4 | 6 };
+  try {
+    target = await resolvePrivateNvrAddress(host);
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'NVR_DNS_LOOKUP_FAILED';
+    throw new CommandExecutionError(code, code !== 'UNSAFE_NVR_ADDRESS');
+  }
   const started = performance.now();
   return await new Promise((resolve) => {
     const socket = net.createConnection({ host: target.address, port, family: target.family });
@@ -86,7 +61,35 @@ function failed(command: ClaimedDeviceCommand, code: string, retryable: boolean)
   };
 }
 
-export async function executeDeviceCommand(command: ClaimedDeviceCommand): Promise<AgentCommandCompletion> {
+export type DeviceCommandExecutionDependencies = {
+  credential?: DahuaCredential | null;
+  dahuaTransport?: DahuaTransport;
+  uploadSnapshot?: (snapshot: {
+    bytes: Uint8Array;
+    contentType: 'image/jpeg';
+    capturedAt: string;
+    channelId: string;
+  }) => Promise<{ artifactId: string }>;
+};
+
+function dahuaFailure(error: unknown): { code: string; retryable: boolean } {
+  const message = error instanceof Error ? error.message : '';
+  if (['DAHUA_AUTHENTICATION_FAILED', 'DAHUA_DIGEST_REQUIRED', 'DAHUA_CREDENTIAL_INVALID'].includes(message)) {
+    return { code: 'NVR_AUTHENTICATION_FAILED', retryable: false };
+  }
+  if (['DAHUA_TARGET_INVALID', 'DAHUA_REQUEST_NOT_ALLOWED', 'UNSAFE_NVR_ADDRESS', 'DAHUA_CHANNEL_INVALID'].includes(message)) {
+    return { code: 'NVR_TARGET_REJECTED', retryable: false };
+  }
+  if (['DAHUA_RESPONSE_INVALID', 'DAHUA_SNAPSHOT_INVALID', 'DAHUA_RESPONSE_TOO_LARGE'].includes(message)) {
+    return { code: 'NVR_RESPONSE_INVALID', retryable: false };
+  }
+  return { code: 'NVR_REQUEST_FAILED', retryable: true };
+}
+
+export async function executeDeviceCommand(
+  command: ClaimedDeviceCommand,
+  dependencies: DeviceCommandExecutionDependencies = {},
+): Promise<AgentCommandCompletion> {
   if (Date.parse(command.leaseExpiresAt) <= Date.now() + 500 || Date.parse(command.commandExpiresAt) <= Date.now() + 500) {
     return failed(command, 'COMMAND_WINDOW_EXPIRED', true);
   }
@@ -135,5 +138,68 @@ export async function executeDeviceCommand(command: ClaimedDeviceCommand): Promi
         : failed(command, 'NETWORK_CHECK_FAILED', true);
     }
   }
-  return failed(command, 'NVR_ADAPTER_NOT_AVAILABLE', false);
+  if (!command.target || command.target.vendor.trim().toLowerCase() !== 'dahua') {
+    return failed(command, 'NVR_ADAPTER_UNSUPPORTED', false);
+  }
+  if (!dependencies.credential) return failed(command, 'NVR_CREDENTIALS_NOT_CONFIGURED', false);
+  const adapter = new DahuaAdapter(command.target, dependencies.credential, dependencies.dahuaTransport);
+  try {
+    if (command.commandType === 'nvr_capability_probe') {
+      const result = await adapter.detectCapabilities();
+      return {
+        commandId: command.commandId,
+        commandType: command.commandType,
+        leaseToken: command.leaseToken,
+        outcome: 'succeeded',
+        result: { vendor: result.vendor, capabilities: result.capabilities },
+        errorCode: null,
+        retryable: false,
+      };
+    }
+    if (command.commandType === 'nvr_health_diagnostics') {
+      return {
+        commandId: command.commandId,
+        commandType: command.commandType,
+        leaseToken: command.leaseToken,
+        outcome: 'succeeded',
+        result: await adapter.healthDiagnostics(),
+        errorCode: null,
+        retryable: false,
+      };
+    }
+    if (command.commandType === 'channel_discovery') {
+      return {
+        commandId: command.commandId,
+        commandType: command.commandType,
+        leaseToken: command.leaseToken,
+        outcome: 'succeeded',
+        result: { channels: await adapter.discoverChannels() },
+        errorCode: null,
+        retryable: false,
+      };
+    }
+    if (command.commandType === 'snapshot_request') {
+      if (!dependencies.uploadSnapshot) return failed(command, 'SNAPSHOT_UPLOAD_UNAVAILABLE', true);
+      const channelId = command.request.channelId as string;
+      const snapshot = await adapter.snapshot(channelId);
+      const uploaded = await dependencies.uploadSnapshot({ ...snapshot, channelId });
+      return {
+        commandId: command.commandId,
+        commandType: command.commandType,
+        leaseToken: command.leaseToken,
+        outcome: 'succeeded',
+        result: {
+          artifactId: uploaded.artifactId,
+          contentType: snapshot.contentType,
+          capturedAt: snapshot.capturedAt,
+        },
+        errorCode: null,
+        retryable: false,
+      };
+    }
+    return failed(command, 'NVR_COMMAND_UNSUPPORTED', false);
+  } catch (error) {
+    const mapped = dahuaFailure(error);
+    return failed(command, mapped.code, mapped.retryable);
+  }
 }

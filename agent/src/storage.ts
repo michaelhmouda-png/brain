@@ -3,7 +3,17 @@ import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
-export type AgentState = { publicAgentId: string; baseUrl: string; encryptedCredential?: string; gatewayId?: string; locationId?: string; lastHeartbeatAt?: string; needsRepair?: boolean };
+export type StoredNvrCredential = { encryptedUsername: string; encryptedPassword: string };
+export type AgentState = {
+  publicAgentId: string;
+  baseUrl: string;
+  encryptedCredential?: string;
+  gatewayId?: string;
+  locationId?: string;
+  lastHeartbeatAt?: string;
+  needsRepair?: boolean;
+  nvrCredentials?: Record<string, StoredNvrCredential>;
+};
 const directory = process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'HospiBrain') : path.join(homedir(), '.hospibrain');
 export const statePath = path.join(directory, 'brain-agent.json');
 const PROTECT = `$plain = ($input | Out-String).TrimEnd(); $secure = ConvertTo-SecureString $plain -AsPlainText -Force; ConvertFrom-SecureString $secure`;
@@ -28,3 +38,35 @@ export async function saveState(state: AgentState) {
   if (process.platform === 'win32') { try { hardenAcl(statePath, false); } catch (error) { await rm(statePath, { force: true }); throw error; } }
 }
 export async function clearState() { await rm(statePath, { force: true }); }
+
+export async function saveNvrCredential(nvrConnectionId: string, username: string, password: string) {
+  const state = await loadState();
+  if (!state?.encryptedCredential || state.needsRepair) throw new Error('REPAIR_REQUIRED');
+  const nextCredentials = {
+    ...(state.nvrCredentials ?? {}),
+    [nvrConnectionId]: {
+      encryptedUsername: protectCredential(username),
+      encryptedPassword: protectCredential(password),
+    },
+  };
+  await saveState({ ...state, nvrCredentials: nextCredentials });
+}
+
+export async function loadNvrCredential(nvrConnectionId: string): Promise<{ username: string; password: string } | null> {
+  const state = await loadState();
+  const stored = state?.nvrCredentials?.[nvrConnectionId];
+  if (!stored) return null;
+  return {
+    username: unprotectCredential(stored.encryptedUsername),
+    password: unprotectCredential(stored.encryptedPassword),
+  };
+}
+
+export async function removeNvrCredential(nvrConnectionId: string) {
+  const state = await loadState();
+  if (!state?.nvrCredentials?.[nvrConnectionId]) return false;
+  const nextCredentials = { ...state.nvrCredentials };
+  delete nextCredentials[nvrConnectionId];
+  await saveState({ ...state, nvrCredentials: nextCredentials });
+  return true;
+}

@@ -37,11 +37,12 @@ function command(overrides = {}) {
   };
 }
 
-test('only the five approved read-only command types exist', () => {
+test('only approved read-only command types exist', () => {
   assert.deepEqual(DEVICE_COMMAND_TYPES, [
     'agent_health',
     'network_reachability',
     'nvr_capability_probe',
+    'nvr_health_diagnostics',
     'channel_discovery',
     'snapshot_request',
   ]);
@@ -112,11 +113,11 @@ test('the local reachability boundary permits only RFC1918 IPv4 and IPv6 ULA add
   }
 });
 
-test('agent health executes locally while adapter-backed commands stop safely before Dahua', async () => {
+test('agent health executes locally while adapter-backed commands require local credentials', async () => {
   const health = await executeDeviceCommand(command());
   assert.equal(health.outcome, 'succeeded');
   assert.deepEqual(Object.keys(health.result).sort(), ['agentVersion', 'platform', 'uptimeSeconds']);
-  for (const commandType of ['nvr_capability_probe', 'channel_discovery', 'snapshot_request']) {
+  for (const commandType of ['nvr_capability_probe', 'nvr_health_diagnostics', 'channel_discovery', 'snapshot_request']) {
     const completion = await executeDeviceCommand(command({
       commandType,
       nvrConnectionId: id(),
@@ -124,7 +125,7 @@ test('agent health executes locally while adapter-backed commands stop safely be
       target: { vendor: 'Dahua', localHost: '192.168.1.10', httpPort: 80, rtspPort: 554, onvifPort: 80 },
     }));
     assert.equal(completion.outcome, 'failed');
-    assert.equal(completion.errorCode, 'NVR_ADAPTER_NOT_AVAILABLE');
+    assert.equal(completion.errorCode, 'NVR_CREDENTIALS_NOT_CONFIGURED');
     assert.equal(completion.retryable, false);
   }
 });

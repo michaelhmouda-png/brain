@@ -2,6 +2,7 @@ export const DEVICE_COMMAND_TYPES = [
   'agent_health',
   'network_reachability',
   'nvr_capability_probe',
+  'nvr_health_diagnostics',
   'channel_discovery',
   'snapshot_request',
 ] as const;
@@ -137,6 +138,15 @@ export function validDeviceCommandResult(commandType: DeviceCommandType, value: 
       && result.capabilities.length <= 64
       && result.capabilities.every((item) => boundedString(item, 80) && /^[a-z][a-z0-9_.-]{1,79}$/.test(item));
   }
+  if (commandType === 'nvr_health_diagnostics') {
+    return exactKeys(result, ['deviceTime', 'healthy', 'latencyMs', 'model', 'softwareVersion', 'vendor'])
+      && typeof result.healthy === 'boolean'
+      && boundedString(result.vendor, 80)
+      && boundedString(result.model, 80)
+      && boundedString(result.softwareVersion, 120)
+      && boundedString(result.deviceTime, 40)
+      && integer(result.latencyMs, 0, 60_000);
+  }
   if (commandType === 'channel_discovery') {
     return exactKeys(result, ['channels'])
       && Array.isArray(result.channels)
@@ -144,11 +154,13 @@ export function validDeviceCommandResult(commandType: DeviceCommandType, value: 
       && result.channels.every((item) => {
         const channel = object(item);
         return Boolean(channel)
-          && exactKeys(channel!, ['enabled', 'externalChannelId', 'name'])
+          && exactKeys(channel!, ['enabled', 'externalChannelId', 'name', 'status'])
           && typeof channel!.enabled === 'boolean'
           && typeof channel!.externalChannelId === 'string'
           && CHANNEL_ID.test(channel!.externalChannelId)
-          && boundedString(channel!.name, 120);
+          && boundedString(channel!.name, 120)
+          && typeof channel!.status === 'string'
+          && ['online', 'offline', 'disabled', 'error'].includes(channel!.status);
       });
   }
   return exactKeys(result, ['artifactId', 'capturedAt', 'contentType'])
