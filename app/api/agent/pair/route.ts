@@ -17,6 +17,29 @@ type PairingFailureReason =
   | 'rate_limited'
   | 'server_failure';
 
+type PairingStage =
+  | 'server_configuration'
+  | 'rate_identity'
+  | 'rate_limit'
+  | 'request_validation'
+  | 'credential_generation'
+  | 'consume_pairing_rpc'
+  | 'failure_diagnosis';
+
+type PairingInternalErrorCode =
+  | 'PAIRING_SERVER_CONFIGURATION_MISSING'
+  | 'PAIRING_SECURITY_CONFIGURATION_MISSING'
+  | 'PAIRING_SECURITY_CONFIGURATION_INVALID'
+  | 'PAIRING_TRUSTED_CLIENT_ADDRESS_UNAVAILABLE'
+  | 'PAIRING_RATE_LIMIT_UNAVAILABLE'
+  | 'PAIRING_RATE_LIMIT_REJECTED'
+  | 'PAIRING_REQUEST_VALIDATION_FAILED'
+  | 'PAIRING_CREDENTIAL_GENERATION_FAILED'
+  | 'PAIRING_CONSUME_RPC_FAILED'
+  | 'PAIRING_CONSUME_RPC_EMPTY'
+  | 'PAIRING_FAILURE_DIAGNOSIS_FAILED'
+  | 'PAIRING_UNCLASSIFIED_FAILURE';
+
 const pairingErrorCode: Record<PairingFailureReason, string> = {
   not_found: 'PAIRING_CODE_NOT_FOUND',
   expired: 'PAIRING_CODE_EXPIRED',
@@ -40,6 +63,36 @@ const pairingFailure = (reason: PairingFailureReason) => ({
   authenticationFailure: reason === 'authentication_failure',
 });
 
+function pairingInternalErrorCode(stage: PairingStage, error?: unknown): PairingInternalErrorCode {
+  const message = error instanceof Error ? error.message : '';
+  if (stage === 'server_configuration' && message.includes('Missing SUPABASE_SERVICE_ROLE_KEY')) {
+    return 'PAIRING_SERVER_CONFIGURATION_MISSING';
+  }
+  if (message === 'BRAIN_AGENT_SECURITY_CONFIGURATION_MISSING') {
+    return 'PAIRING_SECURITY_CONFIGURATION_MISSING';
+  }
+  if (message === 'BRAIN_AGENT_SECURITY_CONFIGURATION_INVALID') {
+    return 'PAIRING_SECURITY_CONFIGURATION_INVALID';
+  }
+  if (message === 'BRAIN_AGENT_TRUSTED_CLIENT_ADDRESS_UNAVAILABLE') {
+    return 'PAIRING_TRUSTED_CLIENT_ADDRESS_UNAVAILABLE';
+  }
+  if (message === 'BRAIN_AGENT_RATE_LIMIT_UNAVAILABLE') {
+    return 'PAIRING_RATE_LIMIT_UNAVAILABLE';
+  }
+  if (stage === 'credential_generation') return 'PAIRING_CREDENTIAL_GENERATION_FAILED';
+  if (stage === 'failure_diagnosis') return 'PAIRING_FAILURE_DIAGNOSIS_FAILED';
+  return 'PAIRING_UNCLASSIFIED_FAILURE';
+}
+
+function logPairingFailure(
+  stage: PairingStage,
+  requestId: string,
+  internalErrorCode: PairingInternalErrorCode,
+) {
+  console.warn('[Brain Agent Pairing] Request rejected', { stage, requestId, internalErrorCode });
+}
+
 function pairingFailureResponse(
   requestId: string,
   reason: PairingFailureReason,
@@ -47,7 +100,6 @@ function pairingFailureResponse(
   retryAfter?: number,
 ) {
   const body = { error: pairingErrorCode[reason], requestId, pairingFailure: pairingFailure(reason) };
-  console.warn('[Brain Agent Pairing] Request rejected', { httpStatus: status, ...body });
   return NextResponse.json(body, {
     status,
     headers: {
@@ -96,21 +148,34 @@ async function diagnosePairingFailure(
 
 export async function POST(request: Request) {
   const requestId = randomUUID();
+  let stage: PairingStage = 'server_configuration';
   try {
     const service = createSupabaseServer();
-    const rate = await admitAgentRequest(service, 'pairing', requestAddressRateKey(request));
-    if (!rate.admitted) return pairingFailureResponse(requestId, 'rate_limited', 429, rate.retryAfter);
+    stage = 'rate_identity';
+    const rateKey = requestAddressRateKey(request);
+    stage = 'rate_limit';
+    const rate = await admitAgentRequest(service, 'pairing', rateKey);
+    if (!rate.admitted) {
+      logPairingFailure(stage, requestId, 'PAIRING_RATE_LIMIT_REJECTED');
+      return pairingFailureResponse(requestId, 'rate_limited', 429, rate.retryAfter);
+    }
+    stage = 'request_validation';
     const body: unknown = await request.json().catch(() => null);
     const metadata = parseAgentMetadata(body, true);
     const code = body && typeof body === 'object' && !Array.isArray(body) ? (body as Record<string, unknown>).pairingCode : null;
     if (!metadata?.publicAgentId || typeof code !== 'string' || !/^[0-9a-f]{32}$/i.test(code)) {
+      logPairingFailure(stage, requestId, 'PAIRING_REQUEST_VALIDATION_FAILED');
       return pairingFailureResponse(requestId, 'validation_failure', 400);
     }
     const codeHash = pairingCodeHash(code.toLowerCase());
+    stage = 'credential_generation';
     const credential = createAgentCredential(metadata.publicAgentId);
+    stage = 'consume_pairing_rpc';
     const { data, error } = await service.rpc('consume_device_pairing_request', { p_code_hash: codeHash, p_public_agent_id: metadata.publicAgentId, p_credential_hash: credential.hash, p_agent_version: metadata.agentVersion, p_platform: metadata.platform, p_os_version: metadata.osVersion, p_hostname_label: metadata.hostnameLabel, p_declared_capabilities: metadata.declaredCapabilities });
     const row = Array.isArray(data) ? data[0] : data;
     if (error || !row) {
+      logPairingFailure(stage, requestId, error ? 'PAIRING_CONSUME_RPC_FAILED' : 'PAIRING_CONSUME_RPC_EMPTY');
+      stage = 'failure_diagnosis';
       const reason = await diagnosePairingFailure(service, codeHash);
       const status = reason === 'expired' ? 410 : reason === 'already_used' || reason === 'gateway_mismatch' || reason === 'company_mismatch' ? 409 : reason === 'server_failure' ? 503 : 401;
       return pairingFailureResponse(requestId, reason, status);
@@ -119,7 +184,8 @@ export async function POST(request: Request) {
       { data: { credential: credential.token, gatewayId: row.gateway_id, locationId: row.location_id, pollingIntervalSeconds: 60, approvedCapabilities: row.approved_capabilities } },
       { status: 201, headers: { ...headers, 'X-Request-ID': requestId } },
     );
-  } catch {
+  } catch (error) {
+    logPairingFailure(stage, requestId, pairingInternalErrorCode(stage, error));
     return pairingFailureResponse(requestId, 'server_failure', 503);
   }
 }
