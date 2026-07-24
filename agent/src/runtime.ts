@@ -1,9 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import os from 'node:os';
+import {
+  parseClaimedDeviceCommands,
+  type AgentCommandCompletion,
+} from '../../lib/brain-agent/command-contracts.ts';
+import { AGENT_VERSION, CAPABILITIES } from './constants.ts';
 import { clearState, loadState, protectCredential, saveState, unprotectCredential, type AgentState } from './storage.ts';
 
-export const AGENT_VERSION = '0.1.0';
-export const CAPABILITIES = ['brain.heartbeat.v1'] as const;
+export { AGENT_VERSION, CAPABILITIES };
 const DEVELOPMENT_PORTS = new Set(['3000', '3100']);
 
 export function backoffDelay(attempt: number, random = Math.random) { const base = Math.min(60_000, 1000 * 2 ** Math.min(attempt, 6)); return Math.round(base * (0.75 + random() * 0.5)); }
@@ -42,5 +46,77 @@ export async function heartbeat(state: AgentState) {
   await saveState(next); return { state: next, interval: Math.max(30, payload.data.pollingIntervalSeconds ?? 60) };
 }
 
-export async function startAgent() { let state = await loadState(); if (!state?.encryptedCredential || state.needsRepair) throw new Error('REPAIR_REQUIRED'); let failures = 0; for (;;) { try { const result = await heartbeat(state); state = result.state; failures = 0; await new Promise(r => setTimeout(r, result.interval * 1000)); } catch (error) { if (error instanceof Error && error.message === 'REPAIR_REQUIRED') throw error; await new Promise(r => setTimeout(r, backoffDelay(failures++))); } } }
+function agentAuthorization(state: AgentState): string {
+  if (!state.encryptedCredential || state.needsRepair) throw new Error('REPAIR_REQUIRED');
+  return `Bearer ${unprotectCredential(state.encryptedCredential)}`;
+}
+
+async function completeCommand(origin: string, authorization: string, completion: AgentCommandCompletion) {
+  const response = await fetch(new URL('/api/agent/commands/complete', origin), {
+    method: 'POST',
+    redirect: 'error',
+    headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+    body: JSON.stringify(completion),
+  });
+  if (response.status === 401) throw new Error('REPAIR_REQUIRED');
+  if (!response.ok) throw new Error('COMMAND_COMPLETION_FAILED');
+}
+
+export async function pollDeviceCommands(state: AgentState): Promise<number> {
+  const origin = validateBrainCloudOrigin(state.baseUrl);
+  const authorization = agentAuthorization(state);
+  const response = await fetch(new URL('/api/agent/commands/claim', origin), {
+    method: 'POST',
+    redirect: 'error',
+    headers: { Authorization: authorization, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ limit: 1 }),
+  });
+  if (response.status === 401) {
+    await saveState({ ...state, encryptedCredential: undefined, needsRepair: true });
+    throw new Error('REPAIR_REQUIRED');
+  }
+  if (!response.ok) throw new Error('COMMAND_POLL_FAILED');
+  const payload = await response.json().catch(() => null) as { data?: { commands?: unknown; pollingIntervalSeconds?: unknown } } | null;
+  const commands = parseClaimedDeviceCommands(payload?.data?.commands);
+  if (!commands) throw new Error('COMMAND_POLL_FAILED');
+  if (commands.length > 0) {
+    const { executeDeviceCommand } = await import('./commands.ts');
+    const completion = await executeDeviceCommand(commands[0]);
+    try {
+      await completeCommand(origin, authorization, completion);
+    } catch (error) {
+      if (error instanceof Error && error.message === 'REPAIR_REQUIRED') {
+        await saveState({ ...state, encryptedCredential: undefined, needsRepair: true });
+      }
+      throw error;
+    }
+  }
+  const interval = payload?.data?.pollingIntervalSeconds;
+  return typeof interval === 'number' && Number.isInteger(interval) && interval >= 2 && interval <= 60 ? interval : 5;
+}
+
+export async function startAgent() {
+  let state = await loadState();
+  if (!state?.encryptedCredential || state.needsRepair) throw new Error('REPAIR_REQUIRED');
+  let failures = 0;
+  let nextHeartbeatAt = 0;
+  let heartbeatIntervalMs = 60_000;
+  for (;;) {
+    try {
+      if (Date.now() >= nextHeartbeatAt) {
+        const result = await heartbeat(state);
+        state = result.state;
+        heartbeatIntervalMs = result.interval * 1000;
+        nextHeartbeatAt = Date.now() + heartbeatIntervalMs;
+      }
+      const pollingIntervalSeconds = await pollDeviceCommands(state);
+      failures = 0;
+      await new Promise((resolve) => setTimeout(resolve, pollingIntervalSeconds * 1000));
+    } catch (error) {
+      if (error instanceof Error && error.message === 'REPAIR_REQUIRED') throw error;
+      nextHeartbeatAt = Math.min(nextHeartbeatAt, Date.now() + heartbeatIntervalMs);
+      await new Promise((resolve) => setTimeout(resolve, backoffDelay(failures++)));
+    }
+  }
+}
 export { loadState, clearState };
