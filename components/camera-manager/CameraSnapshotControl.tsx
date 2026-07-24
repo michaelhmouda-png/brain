@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { CameraInspectionControl } from '@/components/camera-manager/CameraInspectionControl';
 
 type CommandState = {
   commandId: string;
@@ -151,20 +152,23 @@ export function CameraSnapshotControl({
       ) : null}
       {error ? <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p> : null}
       {access ? (
-        <figure className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={access.signedUrl}
-            alt={`Dahua channel ${channelId} snapshot`}
-            width={access.width}
-            height={access.height}
-            className="h-auto w-full"
-          />
-          <figcaption className="space-y-1 p-3 text-xs text-slate-400">
-            <p>{access.width}×{access.height} · {access.byteSize} bytes · JPEG</p>
-            <p>Signed access expires {access.signedUrlExpiresAt}</p>
-          </figcaption>
-        </figure>
+        <>
+          <figure className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={access.signedUrl}
+              alt={`Dahua channel ${channelId} snapshot`}
+              width={access.width}
+              height={access.height}
+              className="h-auto w-full"
+            />
+            <figcaption className="space-y-1 p-3 text-xs text-slate-400">
+              <p>{access.width}×{access.height} · {access.byteSize} bytes · JPEG</p>
+              <p>Signed access expires {access.signedUrlExpiresAt}</p>
+            </figcaption>
+          </figure>
+          <CameraInspectionControl snapshotId={access.artifactId} />
+        </>
       ) : null}
     </div>
   );
