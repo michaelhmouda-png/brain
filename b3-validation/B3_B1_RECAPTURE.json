@@ -1,0 +1,1229 @@
+[
+  {
+    "b1_function_environment_evidence": {
+      "application_function_definitions": [
+        {
+          "definition_redacted": false,
+          "definition_sha256": "76399c7500dbbddfa8959d28379ca44c14e87040902912366845516ff7466d18",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.audit_device_configuration()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_company_id uuid; v_entity_id uuid; v_fields text[] := '{}';\r\nBEGIN\r\n  IF TG_OP='DELETE' THEN v_company_id:=OLD.company_id; v_entity_id:=OLD.id;\r\n  ELSE v_company_id:=NEW.company_id; v_entity_id:=NEW.id; END IF;\r\n  IF TG_OP='UPDATE' AND TG_TABLE_NAME='cameras' THEN\r\n    IF OLD.name IS DISTINCT FROM NEW.name THEN v_fields:=array_append(v_fields,'name'); END IF;\r\n    IF OLD.area IS DISTINCT FROM NEW.area THEN v_fields:=array_append(v_fields,'area'); END IF;\r\n    IF OLD.department IS DISTINCT FROM NEW.department THEN v_fields:=array_append(v_fields,'department'); END IF;\r\n    IF OLD.ai_enabled IS DISTINCT FROM NEW.ai_enabled THEN v_fields:=array_append(v_fields,'ai_enabled'); END IF;\r\n    IF OLD.task_verification_enabled IS DISTINCT FROM NEW.task_verification_enabled THEN v_fields:=array_append(v_fields,'task_verification_enabled'); END IF;\r\n  END IF;\r\n  INSERT INTO public.device_configuration_audit(company_id,actor_profile_id,entity_type,entity_id,action,changed_fields)\r\n  VALUES(v_company_id,auth.uid(),CASE WHEN TG_TABLE_NAME='cameras' THEN 'camera' ELSE 'nvr_connection' END,v_entity_id,\r\n    CASE TG_OP WHEN 'INSERT' THEN 'created' WHEN 'UPDATE' THEN 'updated' ELSE 'deleted' END,v_fields);\r\n  IF TG_OP='DELETE' THEN RETURN OLD; END IF;\r\n  RETURN NEW;\r\nEND $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "audit_device_configuration",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "f560d81c92fc00246f5b0a8b0b54f9539994531f474d6321c25725880688055c",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.can_administer_camera_manager(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1 FROM public.profiles AS profile\r\n    WHERE profile.id = auth.uid() AND profile.status = 'active'\r\n      AND profile.company_id = p_company_id\r\n      AND profile.role IN ('owner','super_admin')\r\n  )\r\n$function$\n",
+          "identity_arguments": "p_company_id uuid",
+          "language": "sql",
+          "name": "can_administer_camera_manager",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "5c35c5ea5c25f1c29bc5499a71bc0975a284ce033eddf452c66b2c02f15e04f5",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.can_manage_company(target_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1\r\n    FROM public.profiles\r\n    WHERE id = auth.uid()\r\n      AND company_id = target_company_id\r\n      AND role IN ('admin', 'super_admin')\r\n      AND status = 'active'\r\n  );\r\n$function$\n",
+          "identity_arguments": "target_company_id uuid",
+          "language": "sql",
+          "name": "can_manage_company",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "2e065ec95515ddc3f3f34985bd3f0268738a180feb70a871da5dd64264caf51d",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.can_read_task_evidence_object(p_name text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1 FROM public.task_evidence AS ev\r\n    JOIN public.tasks AS t ON t.id = ev.task_id AND t.company_id = ev.company_id\r\n    JOIN public.profiles AS pr ON pr.id = auth.uid() AND pr.status = 'active' AND pr.company_id = ev.company_id\r\n    WHERE ev.original_storage_path = p_name\r\n      AND (pr.role IN ('manager', 'owner', 'super_admin')\r\n        OR (pr.role = 'employee' AND pr.employee_id IS NOT NULL\r\n          AND (ev.submitted_by_profile_id = pr.id OR t.assigned_employee_id = pr.employee_id)))\r\n  );\r\n$function$\n",
+          "identity_arguments": "p_name text",
+          "language": "sql",
+          "name": "can_read_task_evidence_object",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "f0b5da07b0404cda7fe0e914c49956962166a05cdb59687eef28f641f667a437",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.can_upload_task_evidence_object(p_name text)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1 FROM public.task_evidence AS ev\r\n    JOIN public.profiles AS pr ON pr.id = auth.uid()\r\n    WHERE ev.original_storage_path = p_name AND ev.submitted_by_profile_id = auth.uid()\r\n      AND ev.status IN ('pending_upload', 'upload_failed')\r\n      AND pr.status = 'active' AND pr.company_id = ev.company_id\r\n  );\r\n$function$\n",
+          "identity_arguments": "p_name text",
+          "language": "sql",
+          "name": "can_upload_task_evidence_object",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "a4b317b270072ef45a32b5a8cd11e457fbbd846aa252242d1b271a102742e260",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.can_view_camera_manager(p_company_id uuid)\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1 FROM public.profiles AS profile\r\n    WHERE profile.id = auth.uid() AND profile.status = 'active'\r\n      AND profile.company_id = p_company_id\r\n      AND profile.role IN ('manager','owner','super_admin')\r\n  )\r\n$function$\n",
+          "identity_arguments": "p_company_id uuid",
+          "language": "sql",
+          "name": "can_view_camera_manager",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "eec4bf400c0064d551157297eb41c2bb7398074f01821c8aabcc05ce52310593",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.current_user_company_id()\n RETURNS uuid\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT company_id\r\n  FROM public.profiles\r\n  WHERE id = auth.uid()\r\n    AND status = 'active'\r\n  LIMIT 1;\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "current_user_company_id",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c1d356a2da010fa119fec2c5292b72fa85c2f8ac0e1f61f3bb4d820f0011d300",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.current_user_role()\n RETURNS text\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  select role from public.profiles where id = auth.uid();\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "current_user_role",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "cdf400f9abb81233d8a28f5cb62ee8681ce85977b4ab135c14e1c520d5d6165b",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.is_active_user()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1\r\n    FROM public.profiles\r\n    WHERE id = auth.uid()\r\n      AND status = 'active'\r\n  );\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "is_active_user",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "1043a23717349740e04961ea793ad115aa6e15a908a6f8e6c68b35e1a629db5e",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.is_super_admin()\n RETURNS boolean\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT EXISTS (\r\n    SELECT 1\r\n    FROM public.profiles\r\n    WHERE id = auth.uid()\r\n      AND role = 'super_admin'\r\n      AND status = 'active'\r\n  );\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "is_super_admin",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "d5ac62be117f7d45b77f8a30552a0855468ddfb3098702348634dc60801bbe37",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.is_valid_camera_local_host(p_value text)\n RETURNS boolean\n LANGUAGE plpgsql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_host text;\r\n  v_labels text[];\r\n  v_label text;\r\n  v_parts text[];\r\n  v_part text;\r\n  v_octets integer[] := '{}';\r\nBEGIN\r\n  IF p_value = '' OR length(p_value) \u003e 253 OR p_value IS DISTINCT FROM btrim(p_value)\r\n     OR p_value ~ '[[:space:]]'\r\n     OR position(':' IN p_value) \u003e 0 OR position('/' IN p_value) \u003e 0\r\n     OR position('@' IN p_value) \u003e 0 OR position('?' IN p_value) \u003e 0\r\n     OR position('#' IN p_value) \u003e 0 OR position(E'\\\\' IN p_value) \u003e 0 THEN\r\n    RETURN false;\r\n  END IF;\r\n\r\n  v_host := lower(p_value);\r\n  IF v_host ~ '^[0-9]{1,3}(\\.[0-9]{1,3}){3}$' THEN\r\n    v_parts := string_to_array(v_host, '.');\r\n    FOREACH v_part IN ARRAY v_parts LOOP\r\n      IF (length(v_part) \u003e 1 AND left(v_part, 1) = '0') OR v_part::integer \u003e 255 THEN\r\n        RETURN false;\r\n      END IF;\r\n      v_octets := array_append(v_octets, v_part::integer);\r\n    END LOOP;\r\n    IF v_octets[1] IN (0, 127)\r\n       OR (v_octets[1] = 169 AND v_octets[2] = 254)\r\n       OR v_octets[1] \u003e= 224\r\n       OR v_octets = ARRAY[255,255,255,255] THEN\r\n      RETURN false;\r\n    END IF;\r\n    RETURN true;\r\n  END IF;\r\n\r\n  -- Numeric dotted input that is not one canonical IPv4 address must never be\r\n  -- reinterpreted as a DNS hostname.\r\n  IF v_host ~ '^[0-9.]+$' THEN RETURN false; END IF;\r\n  IF right(v_host, 1) = '.' THEN v_host := left(v_host, length(v_host) - 1); END IF;\r\n  IF v_host = '' THEN RETURN false; END IF;\r\n\r\n  v_labels := string_to_array(v_host, '.');\r\n  FOREACH v_label IN ARRAY v_labels LOOP\r\n    IF v_label = 'localhost' OR length(v_label) NOT BETWEEN 1 AND 63\r\n       OR v_label !~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?$' THEN\r\n      RETURN false;\r\n    END IF;\r\n  END LOOP;\r\n  RETURN true;\r\nEND $function$\n",
+          "identity_arguments": "p_value text",
+          "language": "plpgsql",
+          "name": "is_valid_camera_local_host",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "invoker",
+          "security_definer": false,
+          "volatility": "immutable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "f6e7235d5be53f915f397389a66ade09702221cb88342f88497fbb22533508ec",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.queue_notification_event()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_type text;v_key text;v_actor uuid;v_company uuid;v_id uuid;\r\nBEGIN\r\n v_company:=NEW.company_id;v_id:=NEW.id;\r\n IF TG_TABLE_NAME='tasks' THEN\r\n  IF TG_OP='INSERT' AND NEW.assigned_employee_id IS NOT NULL THEN v_type:='task.assigned';\r\n  ELSIF TG_OP='UPDATE' AND NEW.assigned_employee_id IS DISTINCT FROM OLD.assigned_employee_id THEN v_type:='task.reassigned';\r\n  ELSIF TG_OP='UPDATE' AND NEW.status='completed' AND OLD.status IS DISTINCT FROM NEW.status THEN v_type:='task.completed';\r\n  ELSIF TG_OP='UPDATE' AND (NEW.title,NEW.description,NEW.priority,NEW.due_date,NEW.status) IS DISTINCT FROM (OLD.title,OLD.description,OLD.priority,OLD.due_date,OLD.status) THEN v_type:='task.updated'; END IF;\r\n  v_actor:=NEW.created_by;\r\n ELSIF TG_TABLE_NAME='announcements' AND TG_OP='INSERT' THEN v_type:='announcement.published';v_actor:=NEW.created_by_id;\r\n ELSIF TG_TABLE_NAME='maintenance_tickets' THEN\r\n  IF TG_OP='INSERT' AND NEW.priority IN('high','critical') THEN v_type:='maintenance.urgent_created';\r\n  ELSIF TG_OP='UPDATE' AND NEW.assigned_to_id IS DISTINCT FROM OLD.assigned_to_id THEN v_type:='maintenance.assigned';\r\n  ELSIF TG_OP='UPDATE' AND (NEW.priority,NEW.status) IS DISTINCT FROM (OLD.priority,OLD.status) THEN v_type:='maintenance.updated'; END IF;v_actor:=NEW.created_by_id;\r\n ELSIF TG_TABLE_NAME='incident_reports' THEN\r\n  IF TG_OP='INSERT' THEN v_type:='incident.reported';\r\n  ELSIF (NEW.severity,NEW.status) IS DISTINCT FROM (OLD.severity,OLD.status) THEN v_type:='incident.updated'; END IF;v_actor:=NEW.reported_by_id;\r\n ELSIF TG_TABLE_NAME='task_evidence' AND TG_OP='UPDATE' AND NEW.status IS DISTINCT FROM OLD.status THEN\r\n  IF NEW.status='pending_review' THEN v_type:='evidence.submitted';\r\n  ELSIF NEW.status='needs_human_review' THEN v_type:='evidence.needs_human_review';\r\n  ELSIF NEW.status='verification_failed' THEN v_type:='evidence.verification_failed';\r\n  ELSIF NEW.status='human_approved' THEN v_type:='evidence.human_approved';\r\n  ELSIF NEW.status='human_rejected' THEN v_type:='evidence.human_rejected'; END IF;v_actor:=NEW.submitted_by_profile_id;\r\n ELSIF TG_TABLE_NAME='profiles' AND NEW.company_id IS NOT NULL AND NEW.status='active' AND TG_OP='INSERT' THEN\r\n  v_type:='system.account_ready';v_actor:=NEW.id;\r\n ELSIF TG_TABLE_NAME='profiles' AND NEW.company_id IS NOT NULL AND NEW.status='active' AND TG_OP='UPDATE' AND OLD.status IS DISTINCT FROM NEW.status THEN\r\n  v_type:='system.account_ready';v_actor:=NEW.id;\r\n END IF;\r\n IF v_type IS NULL THEN RETURN NEW;END IF;\r\n IF TG_TABLE_NAME='task_evidence' THEN v_key:=v_type||':'||v_id::text||':'||NEW.status;\r\n ELSIF TG_TABLE_NAME='profiles' THEN v_key:=v_type||':'||v_id::text||':'||NEW.status;\r\n ELSE v_key:=v_type||':'||v_id::text||':'||coalesce(NEW.updated_at::text,NEW.created_at::text);END IF;\r\n INSERT INTO public.notification_outbox(company_id,event_key,event_type,aggregate_type,aggregate_id,actor_profile_id)\r\n VALUES(v_company,v_key,v_type,TG_TABLE_NAME,v_id,v_actor) ON CONFLICT(company_id,event_key) DO NOTHING;\r\n INSERT INTO public.notification_audit(company_id,event_type,safe_details) VALUES(v_company,'obligation.created',jsonb_build_object('eventType',v_type));\r\n RETURN NEW;\r\nEND $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "queue_notification_event",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "faa5f3393bcb07dfd286197ace83504b1561de486f418461ac228c70aef1a99c",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.touch_device_updated_at()\n RETURNS trigger\n LANGUAGE plpgsql\n SET search_path TO ''\nAS $function$ BEGIN NEW.updated_at := clock_timestamp(); RETURN NEW; END $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "touch_device_updated_at",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "invoker",
+          "security_definer": false,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "91986c5e2866abd1f499acc336c5b64660d4ca27100e9146de959276700031ee",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.valid_agent_capability_declarations(p_value jsonb)\n RETURNS boolean\n LANGUAGE sql\n IMMUTABLE STRICT\n SET search_path TO ''\nAS $function$\r\n  SELECT CASE\r\n    WHEN jsonb_typeof(p_value) \u003c\u003e 'array' THEN false\r\n    WHEN jsonb_array_length(p_value) \u003e 16 OR pg_column_size(p_value) \u003e 2048 THEN false\r\n    ELSE NOT EXISTS (\r\n      SELECT 1\r\n      FROM jsonb_array_elements(p_value) AS item(value)\r\n      WHERE jsonb_typeof(item.value) \u003c\u003e 'string'\r\n         OR (item.value #\u003e\u003e '{}') !~ '^[a-z][a-z0-9_.-]{2,79}$'\r\n    )\r\n  END\r\n$function$\n",
+          "identity_arguments": "p_value jsonb",
+          "language": "sql",
+          "name": "valid_agent_capability_declarations",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "invoker",
+          "security_definer": false,
+          "volatility": "immutable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "cb8c1a48f42aa204c7cf183a52e27c177236ff2cdaea2136aa85631c20832327",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION private.validate_device_tenant_relationships()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nBEGIN\r\n  IF TG_TABLE_NAME = 'device_gateways' THEN\r\n    IF NEW.location_id IS NOT NULL AND NOT EXISTS (\r\n      SELECT 1 FROM public.locations AS location\r\n      WHERE location.id = NEW.location_id AND location.company_id = NEW.company_id\r\n    ) THEN\r\n      RAISE EXCEPTION 'DEVICE_LOCATION_TENANT_MISMATCH';\r\n    END IF;\r\n  ELSIF TG_TABLE_NAME = 'nvr_connections' THEN\r\n    IF NOT EXISTS (\r\n      SELECT 1 FROM public.locations AS location\r\n      WHERE location.id = NEW.location_id AND location.company_id = NEW.company_id\r\n    ) THEN\r\n      RAISE EXCEPTION 'DEVICE_LOCATION_TENANT_MISMATCH';\r\n    END IF;\r\n    IF NEW.gateway_id IS NOT NULL AND NOT EXISTS (\r\n      SELECT 1 FROM public.device_gateways AS gateway\r\n      WHERE gateway.id = NEW.gateway_id\r\n        AND gateway.company_id = NEW.company_id\r\n        AND (gateway.location_id IS NULL OR gateway.location_id = NEW.location_id)\r\n    ) THEN\r\n      RAISE EXCEPTION 'NVR_GATEWAY_TENANT_MISMATCH';\r\n    END IF;\r\n  ELSIF TG_TABLE_NAME = 'cameras' THEN\r\n    IF NOT EXISTS (\r\n      SELECT 1 FROM public.locations AS location\r\n      WHERE location.id = NEW.location_id AND location.company_id = NEW.company_id\r\n    ) THEN\r\n      RAISE EXCEPTION 'DEVICE_LOCATION_TENANT_MISMATCH';\r\n    END IF;\r\n    IF NOT EXISTS (\r\n      SELECT 1 FROM public.nvr_connections AS nvr\r\n      WHERE nvr.id = NEW.nvr_connection_id\r\n        AND nvr.company_id = NEW.company_id\r\n        AND nvr.location_id = NEW.location_id\r\n    ) THEN\r\n      RAISE EXCEPTION 'CAMERA_NVR_TENANT_MISMATCH';\r\n    END IF;\r\n  ELSE\r\n    RAISE EXCEPTION 'UNSUPPORTED_DEVICE_TENANT_TRIGGER_TABLE: %', TG_TABLE_NAME;\r\n  END IF;\r\n\r\n  RETURN NEW;\r\nEND\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "validate_device_tenant_relationships",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "private",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "b05fb1f9b4dceb8b8d758ae94be538bb6b0e1c9a5b269bf6f65c97dd5601157a",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.admit_brain_chat_request()\n RETURNS TABLE(admitted boolean, quota_limit integer, remaining integer, reset_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_user_id uuid := auth.uid();\r\n  v_now timestamptz;\r\n  v_row public.brain_chat_user_quotas%ROWTYPE;\r\nBEGIN\r\n  IF v_user_id IS NULL THEN\r\n    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  LOOP\r\n    SELECT q.*\r\n      INTO v_row\r\n      FROM public.brain_chat_user_quotas AS q\r\n     WHERE q.user_id = v_user_id\r\n     FOR UPDATE;\r\n\r\n    v_now := clock_timestamp();\r\n\r\n    IF NOT FOUND THEN\r\n      BEGIN\r\n        INSERT INTO public.brain_chat_user_quotas AS q (\r\n          user_id, request_count, window_started_at, window_resets_at, updated_at\r\n        ) VALUES (\r\n          v_user_id, 1, v_now, v_now + interval '60 minutes', v_now\r\n        )\r\n        RETURNING q.* INTO v_row;\r\n\r\n        RETURN QUERY SELECT true, 100, 99, v_row.window_resets_at;\r\n        RETURN;\r\n      EXCEPTION WHEN unique_violation THEN\r\n        -- A parallel first request created the row. Retry and lock it.\r\n      END;\r\n    ELSIF v_row.window_resets_at \u003c= v_now THEN\r\n      UPDATE public.brain_chat_user_quotas AS q\r\n         SET request_count = 1,\r\n             window_started_at = v_now,\r\n             window_resets_at = v_now + interval '60 minutes',\r\n             updated_at = v_now\r\n       WHERE q.user_id = v_user_id\r\n       RETURNING q.* INTO v_row;\r\n\r\n      RETURN QUERY SELECT true, 100, 99, v_row.window_resets_at;\r\n      RETURN;\r\n    ELSIF v_row.request_count \u003e= 100 THEN\r\n      RETURN QUERY SELECT false, 100, 0, v_row.window_resets_at;\r\n      RETURN;\r\n    ELSE\r\n      UPDATE public.brain_chat_user_quotas AS q\r\n         SET request_count = q.request_count + 1,\r\n             updated_at = v_now\r\n       WHERE q.user_id = v_user_id\r\n       RETURNING q.* INTO v_row;\r\n\r\n      RETURN QUERY SELECT true, 100, 100 - v_row.request_count, v_row.window_resets_at;\r\n      RETURN;\r\n    END IF;\r\n  END LOOP;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "admit_brain_chat_request",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "d1c55955b786c781a6983470d284f8dfe783e4a45a9fc7c16b992b88b4c4b453",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.admit_device_agent_request(p_scope text, p_identifier_hash text, p_limit integer, p_window_seconds integer)\n RETURNS TABLE(admitted boolean, retry_after_seconds integer, resulting_count integer, window_resets_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_row public.device_agent_rate_limits%ROWTYPE; v_now timestamptz:=clock_timestamp();\r\nBEGIN\r\n  IF p_scope NOT IN ('pairing','credential','heartbeat') OR p_identifier_hash !~ '^[0-9a-f]{64}$'\r\n     OR p_limit NOT BETWEEN 1 AND 1000 OR p_window_seconds NOT BETWEEN 1 AND 3600 THEN RAISE EXCEPTION 'RATE_LIMIT_INVALID'; END IF;\r\n  INSERT INTO public.device_agent_rate_limits AS limits(scope,identifier_hash,window_started_at,window_resets_at,request_count)\r\n  VALUES(p_scope,p_identifier_hash,v_now,v_now+make_interval(secs=\u003ep_window_seconds),1)\r\n  ON CONFLICT(scope,identifier_hash) DO UPDATE SET\r\n    window_started_at=CASE WHEN limits.window_resets_at\u003c=v_now THEN v_now ELSE limits.window_started_at END,\r\n    window_resets_at=CASE WHEN limits.window_resets_at\u003c=v_now THEN v_now+make_interval(secs=\u003ep_window_seconds) ELSE limits.window_resets_at END,\r\n    request_count=CASE WHEN limits.window_resets_at\u003c=v_now THEN 1 ELSE limits.request_count+1 END\r\n  RETURNING limits.* INTO v_row;\r\n  IF substr(p_identifier_hash,1,2)='00' THEN\r\n    DELETE FROM public.device_agent_rate_limits stale\r\n    WHERE stale.ctid IN (\r\n      SELECT candidate.ctid FROM public.device_agent_rate_limits candidate\r\n      WHERE candidate.window_resets_at \u003c v_now-interval '1 hour' ORDER BY candidate.window_resets_at LIMIT 100\r\n    );\r\n  END IF;\r\n  RETURN QUERY SELECT v_row.request_count\u003c=p_limit,\r\n    CASE WHEN v_row.request_count\u003c=p_limit THEN 0 ELSE greatest(1,ceil(extract(epoch FROM v_row.window_resets_at-v_now))::integer) END,\r\n    v_row.request_count,v_row.window_resets_at;\r\nEND $function$\n",
+          "identity_arguments": "p_scope text, p_identifier_hash text, p_limit integer, p_window_seconds integer",
+          "language": "plpgsql",
+          "name": "admit_device_agent_request",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "1d95c65d03060557c9ff58aec69087e8894d27f45765f7e16e910be23d629b59",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.authenticate_device_agent_heartbeat(p_public_agent_id uuid, p_credential_hash text, p_agent_version text, p_platform text, p_os_version text, p_hostname_label text, p_declared_capabilities jsonb)\n RETURNS TABLE(gateway_id uuid, company_id uuid, location_id uuid, polling_interval_seconds integer, approved_capabilities jsonb)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_credential public.device_agent_credentials%ROWTYPE; v_gateway public.device_gateways%ROWTYPE; v_cap text; v_event_bucket timestamptz;\r\nBEGIN\r\n  IF p_credential_hash !~ '^[0-9a-f]{64}$' OR p_agent_version IS NULL OR p_platform IS NULL\r\n     OR private.valid_agent_capability_declarations(p_declared_capabilities) IS NOT TRUE THEN RAISE EXCEPTION 'AGENT_AUTHENTICATION_FAILED'; END IF;\r\n  SELECT credential_row.* INTO v_credential FROM public.device_agent_credentials AS credential_row\r\n  WHERE credential_row.public_agent_id=p_public_agent_id AND credential_row.revoked_at IS NULL FOR UPDATE;\r\n  IF NOT FOUND OR v_credential.revoked_at IS NOT NULL OR v_credential.credential_hash\u003c\u003ep_credential_hash THEN RAISE EXCEPTION 'AGENT_AUTHENTICATION_FAILED'; END IF;\r\n  SELECT gateway_row.* INTO v_gateway FROM public.device_gateways AS gateway_row\r\n  WHERE gateway_row.id=v_credential.gateway_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.status='disabled' OR v_gateway.location_id IS NULL THEN RAISE EXCEPTION 'AGENT_AUTHENTICATION_FAILED'; END IF;\r\n  IF char_length(btrim(p_agent_version)) NOT BETWEEN 1 AND 80 OR char_length(btrim(p_platform)) NOT BETWEEN 1 AND 40\r\n     OR p_os_version IS NOT NULL AND char_length(btrim(p_os_version)) NOT BETWEEN 1 AND 80\r\n     OR p_hostname_label IS NOT NULL AND p_hostname_label !~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$' THEN RAISE EXCEPTION 'AGENT_AUTHENTICATION_FAILED'; END IF;\r\n  FOR v_cap IN SELECT DISTINCT jsonb_array_elements_text(p_declared_capabilities) LOOP\r\n    IF v_cap='brain.heartbeat.v1' THEN\r\n      UPDATE public.device_gateway_capabilities AS capability_row\r\n      SET last_declared_at=clock_timestamp()\r\n      WHERE capability_row.gateway_id=v_gateway.id AND capability_row.capability_code=v_cap;\r\n    ELSE\r\n      v_event_bucket := date_trunc('hour',clock_timestamp());\r\n      BEGIN\r\n        INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,event_type,outcome_code,event_bucket)\r\n        SELECT v_gateway.company_id,v_gateway.location_id,v_gateway.id,\r\n          'capability.unknown_declared','UNKNOWN_CAPABILITIES_IGNORED',v_event_bucket\r\n        WHERE NOT EXISTS (\r\n          SELECT 1 FROM public.device_agent_audit AS audit_row\r\n          WHERE audit_row.gateway_id=v_gateway.id\r\n            AND audit_row.event_type='capability.unknown_declared'\r\n            AND audit_row.event_bucket=v_event_bucket\r\n        );\r\n      EXCEPTION WHEN unique_violation THEN NULL;\r\n      END;\r\n    END IF;\r\n  END LOOP;\r\n  UPDATE public.device_agent_credentials AS credential_row SET last_authenticated_at=clock_timestamp()\r\n  WHERE credential_row.id=v_credential.id;\r\n  UPDATE public.device_gateways AS gateway_row\r\n  SET last_seen_at=clock_timestamp(),status='online',agent_version=btrim(p_agent_version),\r\n    platform=btrim(p_platform),os_version=nullif(btrim(p_os_version),''),hostname_label=nullif(btrim(p_hostname_label),'')\r\n  WHERE gateway_row.id=v_gateway.id;\r\n  RETURN QUERY SELECT v_gateway.id,v_gateway.company_id,v_gateway.location_id,60,\r\n    coalesce((SELECT jsonb_agg(jsonb_build_object('code',capability_row.capability_code,'version',capability_row.declared_version) ORDER BY capability_row.capability_code)\r\n      FROM public.device_gateway_capabilities AS capability_row\r\n      JOIN public.device_capability_catalog AS catalog_row ON catalog_row.capability_code=capability_row.capability_code\r\n      WHERE capability_row.gateway_id=v_gateway.id AND capability_row.approved AND capability_row.revoked_at IS NULL AND catalog_row.enabled),'[]'::jsonb);\r\nEND $function$\n",
+          "identity_arguments": "p_public_agent_id uuid, p_credential_hash text, p_agent_version text, p_platform text, p_os_version text, p_hostname_label text, p_declared_capabilities jsonb",
+          "language": "plpgsql",
+          "name": "authenticate_device_agent_heartbeat",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "0cb3fa358b4ac497c7cbe6c3dabb132c5ac6b580276a452d3d086222b554cf29",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.claim_brain_action_proposal(p_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_now timestamp with time zone)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\ndeclare p public.brain_action_proposals;\r\nbegin\r\n  update public.brain_action_proposals\r\n     set status = case when expires_at \u003c= p_now then 'expired' else 'executing' end,\r\n         execution_started_at = case when expires_at \u003e p_now then p_now else execution_started_at end\r\n   where id=p_id and actor_id=p_actor_id and profile_id=p_profile_id and tenant_id=p_tenant_id and status='pending'\r\n   returning * into p;\r\n  if found then\r\n    if p.status='expired' then return jsonb_build_object('outcome','expired'); end if;\r\n    return jsonb_build_object('outcome','claimed','proposal',to_jsonb(p));\r\n  end if;\r\n  select * into p from public.brain_action_proposals where id=p_id and actor_id=p_actor_id and profile_id=p_profile_id and tenant_id=p_tenant_id;\r\n  if not found then return jsonb_build_object('outcome','not_found'); end if;\r\n  if p.status='executed' then return jsonb_build_object('outcome','executed','safe_result',p.safe_result); end if;\r\n  if p.status='pending' and p.expires_at \u003c= p_now then\r\n    update public.brain_action_proposals set status='expired' where id=p.id and status='pending';\r\n    return jsonb_build_object('outcome','expired');\r\n  end if;\r\n  return jsonb_build_object('outcome','invalid_status');\r\nend $function$\n",
+          "identity_arguments": "p_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_now timestamp with time zone",
+          "language": "plpgsql",
+          "name": "claim_brain_action_proposal",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "d8200775ae0d14b0e50b42067526435196d6a4e29157bf548620041381755718",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.claim_notification_delivery(p_lease_seconds integer DEFAULT 120)\n RETURNS TABLE(job_id uuid, lease_token uuid, endpoint text, p256dh text, auth_key text, notification_id uuid, title text, summary text, route text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_job public.notification_delivery_jobs%ROWTYPE;\r\n  v_stale record;\r\n  v_token uuid := gen_random_uuid();\r\nBEGIN\r\n  IF p_lease_seconds \u003c 30 OR p_lease_seconds \u003e 300 THEN\r\n    RAISE EXCEPTION 'INVALID_LEASE';\r\n  END IF;\r\n\r\n  -- Recheck N2 eligibility before Web Push claim. Stale jobs are terminally\r\n  -- suppressed and their already-created in-app record is archived.\r\n  FOR v_stale IN\r\n    SELECT\r\n      delivery.id AS job_id,\r\n      notification.id AS notification_id,\r\n      notification.company_id\r\n    FROM public.notification_delivery_jobs AS delivery\r\n    JOIN public.notifications AS notification\r\n      ON notification.id = delivery.notification_id\r\n    LEFT JOIN public.tasks AS task\r\n      ON task.id = notification.related_entity_id\r\n      AND task.company_id = notification.company_id\r\n    WHERE notification.notification_type = 'task.due_30m'\r\n      AND (\r\n        delivery.status = 'pending'\r\n        OR (\r\n          delivery.status = 'processing'\r\n          AND delivery.lease_expires_at \u003c clock_timestamp()\r\n        )\r\n      )\r\n      AND (\r\n        task.id IS NULL\r\n        OR task.status NOT IN ('pending', 'in_progress')\r\n        OR task.due_at IS NULL\r\n        OR clock_timestamp() \u003e= task.due_at\r\n        OR notification.event_key IS DISTINCT FROM\r\n          'task.due_30m:' || task.id::text || ':' ||\r\n          to_char(\r\n            task.due_at AT TIME ZONE 'UTC',\r\n            'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\r\n          )\r\n      )\r\n    ORDER BY delivery.created_at\r\n    FOR UPDATE OF delivery SKIP LOCKED\r\n    LIMIT 50\r\n  LOOP\r\n    UPDATE public.notification_delivery_jobs AS delivery\r\n    SET\r\n      status = 'failed',\r\n      lease_token = NULL,\r\n      lease_expires_at = NULL,\r\n      last_failure_code = 'REMINDER_NO_LONGER_ELIGIBLE'\r\n    WHERE delivery.id = v_stale.job_id;\r\n\r\n    UPDATE public.notifications AS notification\r\n    SET\r\n      status = 'archived',\r\n      is_read = true,\r\n      archived_at = coalesce(notification.archived_at, clock_timestamp()),\r\n      updated_at = clock_timestamp()\r\n    WHERE notification.id = v_stale.notification_id;\r\n\r\n    INSERT INTO public.notification_audit (\r\n      company_id,\r\n      notification_id,\r\n      event_type,\r\n      safe_details\r\n    ) VALUES (\r\n      v_stale.company_id,\r\n      v_stale.notification_id,\r\n      'reminder.suppressed',\r\n      jsonb_build_object('reason', 'no_longer_eligible')\r\n    );\r\n  END LOOP;\r\n\r\n  SELECT delivery.*\r\n  INTO v_job\r\n  FROM public.notification_delivery_jobs AS delivery\r\n  JOIN public.push_subscriptions AS subscription\r\n    ON subscription.id = delivery.subscription_id\r\n    AND subscription.revoked_at IS NULL\r\n  JOIN public.notifications AS notification\r\n    ON notification.id = delivery.notification_id\r\n  WHERE (\r\n      (\r\n        delivery.status = 'pending'\r\n        AND delivery.available_at \u003c= clock_timestamp()\r\n      )\r\n      OR (\r\n        delivery.status = 'processing'\r\n        AND delivery.lease_expires_at \u003c clock_timestamp()\r\n      )\r\n    )\r\n    AND delivery.attempt_count \u003c 5\r\n    AND (\r\n      notification.notification_type \u003c\u003e 'task.due_30m'\r\n      OR EXISTS (\r\n        SELECT 1\r\n        FROM public.tasks AS task\r\n        WHERE task.id = notification.related_entity_id\r\n          AND task.company_id = notification.company_id\r\n          AND task.status IN ('pending', 'in_progress')\r\n          AND task.due_at IS NOT NULL\r\n          AND clock_timestamp() \u003c task.due_at\r\n          AND notification.event_key =\r\n            'task.due_30m:' || task.id::text || ':' ||\r\n            to_char(\r\n              task.due_at AT TIME ZONE 'UTC',\r\n              'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\r\n            )\r\n      )\r\n    )\r\n  ORDER BY delivery.available_at, delivery.created_at\r\n  FOR UPDATE OF delivery SKIP LOCKED\r\n  LIMIT 1;\r\n\r\n  IF NOT FOUND THEN\r\n    RETURN;\r\n  END IF;\r\n\r\n  UPDATE public.notification_delivery_jobs AS delivery\r\n  SET\r\n    status = 'processing',\r\n    attempt_count = delivery.attempt_count + 1,\r\n    lease_token = v_token,\r\n    lease_expires_at = clock_timestamp() + make_interval(secs =\u003e p_lease_seconds)\r\n  WHERE delivery.id = v_job.id;\r\n\r\n  RETURN QUERY\r\n  SELECT\r\n    v_job.id,\r\n    v_token,\r\n    subscription.endpoint,\r\n    subscription.p256dh,\r\n    subscription.auth_key,\r\n    notification.id,\r\n    notification.title,\r\n    'Open HospiBrain to view this notification.'::text,\r\n    notification.route\r\n  FROM public.push_subscriptions AS subscription\r\n  JOIN public.notifications AS notification\r\n    ON notification.id = v_job.notification_id\r\n  WHERE subscription.id = v_job.subscription_id;\r\nEND\r\n$function$\n",
+          "identity_arguments": "p_lease_seconds integer",
+          "language": "plpgsql",
+          "name": "claim_notification_delivery",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "17529b2aea442b201579f3cab998b3d69471043807a765733c993b704c36e9e6",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.claim_notification_outbox(p_lease_seconds integer DEFAULT 120)\n RETURNS TABLE(outbox_id uuid, lease_token uuid)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE o public.notification_outbox%ROWTYPE;v_token uuid:=gen_random_uuid();BEGIN IF p_lease_seconds\u003c30 OR p_lease_seconds\u003e300 THEN RAISE EXCEPTION 'INVALID_LEASE';END IF;\r\n SELECT x.* INTO o FROM public.notification_outbox x WHERE ((x.status='pending' AND x.available_at\u003c=clock_timestamp()) OR (x.status='processing' AND x.lease_expires_at\u003cclock_timestamp())) AND x.attempt_count\u003c5 ORDER BY x.available_at,x.created_at FOR UPDATE SKIP LOCKED LIMIT 1;\r\n IF NOT FOUND THEN RETURN;END IF;UPDATE public.notification_outbox x SET status='processing',attempt_count=x.attempt_count+1,lease_token=v_token,lease_expires_at=clock_timestamp()+make_interval(secs=\u003ep_lease_seconds) WHERE x.id=o.id;RETURN QUERY SELECT o.id,v_token;END $function$\n",
+          "identity_arguments": "p_lease_seconds integer",
+          "language": "plpgsql",
+          "name": "claim_notification_outbox",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "874c993e01b25090f3d173e264fcde5bee8060dd1649787a9cc83620de3961a6",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.claim_task_evidence_verification_job(p_lease_seconds integer DEFAULT 120)\n RETURNS TABLE(job_id uuid, lease_token uuid, evidence_id uuid, company_id uuid, task_id uuid, storage_path text, mime_type text, original_sha256 text, task_title text, task_description text, task_priority text, attempt_number integer)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_job public.task_evidence_verification_jobs%ROWTYPE; v_token uuid:=gen_random_uuid();\r\nBEGIN\r\n  IF p_lease_seconds \u003c 30 OR p_lease_seconds \u003e 300 THEN RAISE EXCEPTION 'INVALID_LEASE'; END IF;\r\n  SELECT j.* INTO v_job FROM public.task_evidence_verification_jobs j\r\n   WHERE ((j.status='queued' AND j.available_at\u003c=clock_timestamp()) OR (j.status='processing' AND j.lease_expires_at\u003cclock_timestamp()))\r\n     AND j.attempt_count\u003cj.max_attempts ORDER BY j.available_at,j.created_at FOR UPDATE SKIP LOCKED LIMIT 1;\r\n  IF NOT FOUND THEN RETURN; END IF;\r\n  UPDATE public.task_evidence_verification_jobs j SET status='processing',attempt_count=j.attempt_count+1,\r\n    lease_token=v_token,lease_expires_at=clock_timestamp()+make_interval(secs=\u003ep_lease_seconds),updated_at=clock_timestamp() WHERE j.id=v_job.id;\r\n  UPDATE public.task_evidence ev SET status='processing' WHERE ev.id=v_job.evidence_id;\r\n  INSERT INTO public.task_evidence_verification_attempts(job_id,evidence_id,company_id,attempt_number,model_name,status)\r\n    VALUES(v_job.id,v_job.evidence_id,v_job.company_id,v_job.attempt_count+1,'pending-worker-config','processing');\r\n  INSERT INTO public.task_evidence_audit(evidence_id,company_id,actor_profile_id,actor_type,event_type)\r\n    VALUES(v_job.evidence_id,v_job.company_id,NULL,'system','verification.started');\r\n  RETURN QUERY SELECT v_job.id,v_token,ev.id,ev.company_id,ev.task_id,ev.original_storage_path,ev.original_mime_type,ev.original_sha256,\r\n    t.title,t.description,t.priority,v_job.attempt_count+1 FROM public.task_evidence ev JOIN public.tasks t ON t.id=ev.task_id WHERE ev.id=v_job.evidence_id;\r\nEND $function$\n",
+          "identity_arguments": "p_lease_seconds integer",
+          "language": "plpgsql",
+          "name": "claim_task_evidence_verification_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "3510780148d4c7980402fecb1247097674c3d40e585c5df6a93906bd05c47d8b",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.claim_task_localization_job(p_lease_seconds integer DEFAULT 120)\n RETURNS TABLE(task_id uuid, company_id uuid, language text, source_hash text, title text, description text, lease_token uuid)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE v_job public.task_localization_jobs%ROWTYPE; v_token uuid := gen_random_uuid();\r\nBEGIN\r\n  IF p_lease_seconds \u003c 30 OR p_lease_seconds \u003e 300 THEN RAISE EXCEPTION 'INVALID_LEASE'; END IF;\r\n  SELECT job.* INTO v_job FROM public.task_localization_jobs AS job\r\n  WHERE ((job.status = 'pending' AND job.available_at \u003c= clock_timestamp()) OR\r\n         (job.status = 'processing' AND job.lease_expires_at \u003c clock_timestamp()))\r\n    AND job.attempt_count \u003c 5 ORDER BY job.available_at, job.created_at\r\n  FOR UPDATE SKIP LOCKED LIMIT 1;\r\n  IF NOT FOUND THEN RETURN; END IF;\r\n  UPDATE public.task_localization_jobs AS job SET status='processing', attempt_count=job.attempt_count+1,\r\n    lease_token=v_token, lease_expires_at=clock_timestamp()+make_interval(secs=\u003ep_lease_seconds), updated_at=clock_timestamp()\r\n  WHERE job.task_id=v_job.task_id AND job.language=v_job.language;\r\n  RETURN QUERY SELECT task.id, task.company_id, v_job.language, v_job.source_hash,\r\n    task.title, task.description, v_token FROM public.tasks AS task\r\n    WHERE task.id=v_job.task_id AND task.company_id=v_job.company_id;\r\nEND $function$\n",
+          "identity_arguments": "p_lease_seconds integer",
+          "language": "plpgsql",
+          "name": "claim_task_localization_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "683bd0db2ded71c1799055d351be3bb3439d8c41c63ec3d540efb7debb76357b",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_brain_action_proposal(p_id uuid, p_payload_hash text, p_safe_result text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nbegin\r\n  update public.brain_action_proposals set status='executed', executed_at=now(), safe_result=left(p_safe_result,500)\r\n   where id=p_id and payload_hash=p_payload_hash and status='executing';\r\n  return found;\r\nend $function$\n",
+          "identity_arguments": "p_id uuid, p_payload_hash text, p_safe_result text",
+          "language": "plpgsql",
+          "name": "complete_brain_action_proposal",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "0cc23cc6579ee50ca499f669eb66f9833c059fb4cb51ac925e80b2a43d14d352",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_my_assigned_task(p_task_id uuid)\n RETURNS TABLE(task_id uuid, task_status text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE;\r\nBEGIN\r\n  SELECT p.* INTO v_profile FROM public.profiles AS p\r\n  WHERE p.id=auth.uid() AND p.status='active' FOR UPDATE;\r\n  IF NOT FOUND OR v_profile.role\u003c\u003e'employee' OR v_profile.employee_id IS NULL THEN\r\n    RAISE EXCEPTION 'EMPLOYEE_ACCESS_REQUIRED' USING ERRCODE='42501';\r\n  END IF;\r\n  UPDATE public.tasks AS t SET status='completed',updated_at=clock_timestamp()\r\n  WHERE t.id=p_task_id AND t.company_id=v_profile.company_id\r\n    AND t.assigned_employee_id=v_profile.employee_id\r\n    AND t.status IN ('pending','in_progress');\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'TASK_NOT_COMPLETABLE' USING ERRCODE='42501'; END IF;\r\n  RETURN QUERY SELECT p_task_id,'completed'::text;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_task_id uuid",
+          "language": "plpgsql",
+          "name": "complete_my_assigned_task",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "27b6dba265076710b9b0f86f81c486a91bc07fd9e2e818d4b4d760fdebf3fd6a",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_notification_delivery(p_job_id uuid, p_lease_token uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE j public.notification_delivery_jobs%ROWTYPE;BEGIN SELECT x.* INTO j FROM public.notification_delivery_jobs x WHERE x.id=p_job_id AND x.status='processing' AND x.lease_token=p_lease_token FOR UPDATE;IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED';END IF;UPDATE public.notification_delivery_jobs x SET status='delivered',lease_token=NULL,lease_expires_at=NULL,delivered_at=clock_timestamp() WHERE x.id=j.id;INSERT INTO public.notification_audit(company_id,notification_id,event_type) VALUES(j.company_id,j.notification_id,'push.delivered');END $function$\n",
+          "identity_arguments": "p_job_id uuid, p_lease_token uuid",
+          "language": "plpgsql",
+          "name": "complete_notification_delivery",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "504a9ae1a15df861e2952bdd60ed5d833a57c984af9b00ff056613c9389c4ca6",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_task_evidence_upload(p_evidence_id uuid, p_verified_sha256 text)\n RETURNS TABLE(evidence_id uuid, task_id uuid, evidence_status text)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_evidence public.task_evidence%ROWTYPE;\r\nBEGIN\r\n  IF NOT EXISTS (SELECT 1 FROM public.profiles AS pr WHERE pr.id = auth.uid() AND pr.status = 'active') THEN\r\n    RAISE EXCEPTION 'ACCOUNT_NOT_PROVISIONED';\r\n  END IF;\r\n  SELECT ev.* INTO v_evidence FROM public.task_evidence AS ev\r\n   WHERE ev.id = p_evidence_id AND ev.submitted_by_profile_id = auth.uid() FOR UPDATE;\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'EVIDENCE_NOT_AVAILABLE'; END IF;\r\n  IF v_evidence.status = 'pending_review' THEN\r\n    RETURN QUERY SELECT v_evidence.id, v_evidence.task_id, v_evidence.status; RETURN;\r\n  END IF;\r\n  IF lower(p_verified_sha256) \u003c\u003e v_evidence.original_sha256 THEN RAISE EXCEPTION 'EVIDENCE_HASH_MISMATCH'; END IF;\r\n  IF NOT EXISTS (\r\n    SELECT 1 FROM storage.objects AS obj\r\n     WHERE obj.bucket_id = 'task-evidence' AND obj.name = v_evidence.original_storage_path\r\n  ) THEN RAISE EXCEPTION 'EVIDENCE_OBJECT_MISSING'; END IF;\r\n\r\n  UPDATE public.task_evidence AS ev SET status = 'pending_review', uploaded_at = clock_timestamp()\r\n   WHERE ev.id = v_evidence.id;\r\n  INSERT INTO public.task_evidence_audit (evidence_id, company_id, actor_profile_id, event_type)\r\n  VALUES (v_evidence.id, v_evidence.company_id, auth.uid(), 'upload.completed');\r\n  RETURN QUERY SELECT v_evidence.id, v_evidence.task_id, 'pending_review'::text;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_evidence_id uuid, p_verified_sha256 text",
+          "language": "plpgsql",
+          "name": "complete_task_evidence_upload",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "ab21161e08e8dc663b2df96ea5f6ccf30525552c211db62bda305747e39b974a",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_task_evidence_verification_job(p_job_id uuid, p_lease_token uuid, p_model_name text, p_model_version text, p_verdict text, p_confidence numeric, p_explanation text, p_reason_codes jsonb, p_visible_observations jsonb, p_uncertainty_flags jsonb, p_usage_metadata jsonb)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_job public.task_evidence_verification_jobs%ROWTYPE; v_status text;\r\nBEGIN\r\n SELECT j.* INTO v_job FROM public.task_evidence_verification_jobs j WHERE j.id=p_job_id AND j.status='processing' AND j.lease_token=p_lease_token AND j.lease_expires_at\u003e=clock_timestamp() FOR UPDATE;\r\n IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED'; END IF;\r\n IF p_verdict NOT IN ('verified','rejected','needs_human_review') OR p_confidence\u003c0 OR p_confidence\u003e1 OR jsonb_typeof(p_reason_codes)\u003c\u003e'array' OR jsonb_typeof(p_visible_observations)\u003c\u003e'array' OR jsonb_typeof(p_uncertainty_flags)\u003c\u003e'array' THEN RAISE EXCEPTION 'INVALID_VERIFICATION_RESULT'; END IF;\r\n v_status:=CASE p_verdict WHEN 'verified' THEN 'ai_verified' WHEN 'rejected' THEN 'ai_rejected' ELSE 'needs_human_review' END;\r\n UPDATE public.task_evidence_verification_attempts a SET model_name=p_model_name,model_version=p_model_version,status='succeeded',verdict=p_verdict,confidence=p_confidence,\r\n explanation=left(p_explanation,600),reason_codes=p_reason_codes,visible_observations=p_visible_observations,uncertainty_flags=p_uncertainty_flags,usage_metadata=p_usage_metadata,completed_at=clock_timestamp()\r\n WHERE a.job_id=v_job.id AND a.attempt_number=v_job.attempt_count;\r\n UPDATE public.task_evidence_verification_jobs j SET status='completed',lease_token=NULL,lease_expires_at=NULL,updated_at=clock_timestamp() WHERE j.id=v_job.id;\r\n UPDATE public.task_evidence ev SET status=v_status WHERE ev.id=v_job.evidence_id;\r\n INSERT INTO public.task_evidence_audit(evidence_id,company_id,actor_profile_id,actor_type,event_type,safe_details) VALUES(v_job.evidence_id,v_job.company_id,NULL,'system','verification.succeeded',jsonb_build_object('verdict',p_verdict,'attempt',v_job.attempt_count));\r\nEND $function$\n",
+          "identity_arguments": "p_job_id uuid, p_lease_token uuid, p_model_name text, p_model_version text, p_verdict text, p_confidence numeric, p_explanation text, p_reason_codes jsonb, p_visible_observations jsonb, p_uncertainty_flags jsonb, p_usage_metadata jsonb",
+          "language": "plpgsql",
+          "name": "complete_task_evidence_verification_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "1fa60e7188b5ee088d749972a85c621d72d9942b0ee3d00397399f9d1fbc3bc2",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.complete_task_localization_job(p_task_id uuid, p_language text, p_source_hash text, p_lease_token uuid, p_title text, p_description text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions', 'pg_temp'\nAS $function$\r\nDECLARE v_job public.task_localization_jobs%ROWTYPE; v_live_hash text;\r\nBEGIN\r\n  SELECT job.* INTO v_job FROM public.task_localization_jobs AS job\r\n  WHERE job.task_id=p_task_id AND job.language=p_language AND job.status='processing'\r\n    AND job.lease_token=p_lease_token AND job.lease_expires_at\u003e=clock_timestamp() FOR UPDATE;\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED'; END IF;\r\n  SELECT encode(extensions.digest(convert_to(task.title || E'\\n' || coalesce(task.description,''),'UTF8'),'sha256'),'hex')\r\n    INTO v_live_hash FROM public.tasks AS task WHERE task.id=p_task_id AND task.company_id=v_job.company_id;\r\n  IF v_live_hash IS DISTINCT FROM p_source_hash OR v_job.source_hash IS DISTINCT FROM p_source_hash OR btrim(p_title)='' THEN\r\n    RAISE EXCEPTION 'LOCALIZATION_SOURCE_CHANGED';\r\n  END IF;\r\n  INSERT INTO public.task_localizations(task_id,company_id,language,source_hash,title,description)\r\n  VALUES(p_task_id,v_job.company_id,p_language,p_source_hash,btrim(p_title),p_description)\r\n  ON CONFLICT(task_id,language) DO UPDATE SET source_hash=EXCLUDED.source_hash,title=EXCLUDED.title,\r\n    description=EXCLUDED.description,updated_at=clock_timestamp();\r\n  UPDATE public.task_localization_jobs AS job SET status='completed',lease_token=NULL,lease_expires_at=NULL,\r\n    safe_failure_code=NULL,updated_at=clock_timestamp() WHERE job.task_id=p_task_id AND job.language=p_language;\r\nEND $function$\n",
+          "identity_arguments": "p_task_id uuid, p_language text, p_source_hash text, p_lease_token uuid, p_title text, p_description text",
+          "language": "plpgsql",
+          "name": "complete_task_localization_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, extensions, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, extensions, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c9135729de8daecefc8d2b91afd990ade524beecd9e495aa2b7da61caa57a197",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.consume_device_pairing_request(p_code_hash text, p_public_agent_id uuid, p_credential_hash text, p_agent_version text, p_platform text, p_os_version text, p_hostname_label text, p_declared_capabilities jsonb)\n RETURNS TABLE(gateway_id uuid, company_id uuid, location_id uuid, approved_capabilities jsonb)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_request public.device_pairing_requests%ROWTYPE; v_gateway public.device_gateways%ROWTYPE; v_cap text; v_event_bucket timestamptz;\r\nBEGIN\r\n  IF p_code_hash !~ '^[0-9a-f]{64}$' OR p_credential_hash !~ '^[0-9a-f]{64}$'\r\n     OR p_agent_version IS NULL OR p_platform IS NULL\r\n     OR char_length(btrim(p_agent_version)) NOT BETWEEN 1 AND 80\r\n     OR char_length(btrim(p_platform)) NOT BETWEEN 1 AND 40\r\n     OR p_os_version IS NOT NULL AND char_length(btrim(p_os_version)) NOT BETWEEN 1 AND 80\r\n     OR p_hostname_label IS NOT NULL AND p_hostname_label !~ '^[A-Za-z0-9][A-Za-z0-9._-]{0,62}$'\r\n     OR private.valid_agent_capability_declarations(p_declared_capabilities) IS NOT TRUE THEN RAISE EXCEPTION 'PAIRING_INVALID'; END IF;\r\n  SELECT request_row.* INTO v_request FROM public.device_pairing_requests AS request_row\r\n  WHERE request_row.code_hash=p_code_hash FOR UPDATE;\r\n  IF NOT FOUND OR v_request.used_at IS NOT NULL OR v_request.revoked_at IS NOT NULL OR v_request.expires_at\u003c=clock_timestamp() THEN\r\n    RAISE EXCEPTION 'PAIRING_INVALID';\r\n  END IF;\r\n  SELECT gateway_row.* INTO v_gateway FROM public.device_gateways AS gateway_row\r\n  WHERE gateway_row.id=v_request.gateway_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.company_id\u003c\u003ev_request.company_id OR v_gateway.location_id IS DISTINCT FROM v_request.location_id OR v_gateway.status='disabled'\r\n     OR EXISTS(SELECT 1 FROM public.device_agent_credentials AS credential_row\r\n       WHERE credential_row.gateway_id=v_gateway.id AND credential_row.revoked_at IS NULL) THEN\r\n    RAISE EXCEPTION 'PAIRING_INVALID';\r\n  END IF;\r\n  INSERT INTO public.device_agent_credentials(gateway_id,public_agent_id,credential_hash)\r\n  VALUES(v_gateway.id,p_public_agent_id,p_credential_hash);\r\n  UPDATE public.device_pairing_requests AS request_row SET used_at=clock_timestamp()\r\n  WHERE request_row.id=v_request.id;\r\n  UPDATE public.device_gateways AS gateway_row\r\n  SET status='offline',paired_at=clock_timestamp(),agent_version=btrim(p_agent_version),\r\n    platform=btrim(p_platform),os_version=nullif(btrim(p_os_version),''),hostname_label=nullif(btrim(p_hostname_label),'')\r\n  WHERE gateway_row.id=v_gateway.id;\r\n  FOR v_cap IN SELECT DISTINCT jsonb_array_elements_text(p_declared_capabilities) LOOP\r\n    IF v_cap='brain.heartbeat.v1' THEN\r\n      INSERT INTO public.device_gateway_capabilities(gateway_id,capability_code,declared_version,approved,granted_by,granted_at)\r\n      VALUES(v_gateway.id,v_cap,1,true,v_request.created_by,clock_timestamp())\r\n      ON CONFLICT ON CONSTRAINT device_gateway_capabilities_pkey DO UPDATE SET declared_version=1,approved=true,\r\n        granted_by=EXCLUDED.granted_by,granted_at=EXCLUDED.granted_at,revoked_at=NULL,last_declared_at=clock_timestamp();\r\n    ELSE\r\n      v_event_bucket := date_trunc('hour',clock_timestamp());\r\n      BEGIN\r\n        INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,event_type,outcome_code,event_bucket)\r\n        SELECT v_gateway.company_id,v_gateway.location_id,v_gateway.id,\r\n          'capability.unknown_declared','UNKNOWN_CAPABILITIES_IGNORED',v_event_bucket\r\n        WHERE NOT EXISTS (\r\n          SELECT 1 FROM public.device_agent_audit AS audit_row\r\n          WHERE audit_row.gateway_id=v_gateway.id\r\n            AND audit_row.event_type='capability.unknown_declared'\r\n            AND audit_row.event_bucket=v_event_bucket\r\n        );\r\n      EXCEPTION WHEN unique_violation THEN NULL;\r\n      END;\r\n    END IF;\r\n  END LOOP;\r\n  INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,event_type,outcome_code)\r\n  VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,'agent.paired','PAIRED');\r\n  RETURN QUERY SELECT v_gateway.id,v_gateway.company_id,v_gateway.location_id,\r\n    coalesce((SELECT jsonb_agg(jsonb_build_object('code',capability_row.capability_code,'version',capability_row.declared_version) ORDER BY capability_row.capability_code)\r\n      FROM public.device_gateway_capabilities AS capability_row\r\n      WHERE capability_row.gateway_id=v_gateway.id AND capability_row.approved AND capability_row.revoked_at IS NULL),'[]'::jsonb);\r\nEND $function$\n",
+          "identity_arguments": "p_code_hash text, p_public_agent_id uuid, p_credential_hash text, p_agent_version text, p_platform text, p_os_version text, p_hostname_label text, p_declared_capabilities jsonb",
+          "language": "plpgsql",
+          "name": "consume_device_pairing_request",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "d9fcabe700d0308e182d410455581ba54b0927402da68279b0026092ca25e908",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.create_device_gateway(p_location_id uuid, p_name text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_gateway_id uuid;\r\nBEGIN\r\n  SELECT * INTO v_profile FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('owner','super_admin') THEN RAISE EXCEPTION 'GATEWAY_FORBIDDEN'; END IF;\r\n  IF char_length(btrim(p_name)) NOT BETWEEN 1 AND 120 OR NOT EXISTS(\r\n    SELECT 1 FROM public.locations l WHERE l.id=p_location_id AND l.company_id=v_profile.company_id AND l.status='active'\r\n  ) THEN RAISE EXCEPTION 'GATEWAY_INVALID'; END IF;\r\n  INSERT INTO public.device_gateways(company_id,location_id,name,gateway_type,status,created_by)\r\n  VALUES(v_profile.company_id,p_location_id,btrim(p_name),'brain_agent','unpaired',v_profile.id) RETURNING id INTO v_gateway_id;\r\n  INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,actor_profile_id,event_type,outcome_code)\r\n  VALUES(v_profile.company_id,p_location_id,v_gateway_id,v_profile.id,'gateway.created','CREATED');\r\n  RETURN v_gateway_id;\r\nEND $function$\n",
+          "identity_arguments": "p_location_id uuid, p_name text",
+          "language": "plpgsql",
+          "name": "create_device_gateway",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "518b911cc4e4e0bbedb35242bd97821b3b53904adebc43ce175e549f3ffbde16",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.create_device_pairing_request(p_gateway_id uuid)\n RETURNS TABLE(gateway_id uuid, pairing_code text, expires_at timestamp with time zone)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_gateway public.device_gateways%ROWTYPE; v_code text; v_expiry timestamptz;\r\nBEGIN\r\n  SELECT * INTO v_profile FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('owner','super_admin') THEN RAISE EXCEPTION 'PAIRING_FORBIDDEN'; END IF;\r\n  SELECT * INTO v_gateway FROM public.device_gateways g\r\n    WHERE g.id=p_gateway_id AND g.company_id=v_profile.company_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.location_id IS NULL OR v_gateway.status='disabled' THEN RAISE EXCEPTION 'PAIRING_GATEWAY_UNAVAILABLE'; END IF;\r\n  IF NOT EXISTS (SELECT 1 FROM public.locations l WHERE l.id=v_gateway.location_id AND l.company_id=v_gateway.company_id AND l.status='active') THEN\r\n    RAISE EXCEPTION 'PAIRING_LOCATION_UNAVAILABLE';\r\n  END IF;\r\n  UPDATE public.device_pairing_requests r SET revoked_at=clock_timestamp()\r\n    WHERE r.gateway_id=v_gateway.id AND r.used_at IS NULL AND r.revoked_at IS NULL;\r\n  v_code := encode(extensions.gen_random_bytes(16),'hex'); v_expiry := clock_timestamp()+interval '10 minutes';\r\n  INSERT INTO public.device_pairing_requests(company_id,location_id,gateway_id,code_hash,expires_at,created_by)\r\n  VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,\r\n    encode(extensions.digest(convert_to(v_code,'UTF8'),'sha256'),'hex'),v_expiry,v_profile.id);\r\n  UPDATE public.device_gateways SET status='pairing' WHERE id=v_gateway.id;\r\n  INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,actor_profile_id,event_type,outcome_code)\r\n  VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,v_profile.id,'pairing.created','CREATED');\r\n  RETURN QUERY SELECT v_gateway.id,v_code,v_expiry;\r\nEND $function$\n",
+          "identity_arguments": "p_gateway_id uuid",
+          "language": "plpgsql",
+          "name": "create_device_pairing_request",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "09ee14310fa972cc8056ae42bf99233314fdc1a64a1945a6fcf37450d9fe62a1",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.create_task_batch_with_outbox_events(p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_proposal_id uuid, p_items jsonb)\n RETURNS TABLE(created_count integer, task_ids uuid[])\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  v_role text;\r\n  v_timezone text;\r\n  v_proposal_status text;\r\n  v_proposal_payload jsonb;\r\n  v_count integer;\r\n  v_existing integer;\r\n  v_item jsonb;\r\n  v_index integer;\r\n  v_task_ids uuid[] := ARRAY[]::uuid[];\r\n  v_expected_event_payload jsonb;\r\nBEGIN\r\n  IF p_actor_id IS NULL OR p_profile_id IS NULL OR p_tenant_id IS NULL OR\r\n     p_proposal_id IS NULL OR p_actor_id \u003c\u003e p_profile_id THEN\r\n    RAISE EXCEPTION 'INVALID_ACTOR_CONTEXT' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  SELECT p.role INTO v_role\r\n    FROM public.profiles AS p\r\n   WHERE p.id = p_profile_id\r\n     AND p.company_id = p_tenant_id\r\n     AND p.status = 'active';\r\n  IF v_role IS NULL OR v_role NOT IN ('manager', 'owner', 'super_admin') THEN\r\n    RAISE EXCEPTION 'BATCH_TASK_ROLE_DENIED' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  SELECT c.timezone INTO v_timezone\r\n    FROM public.companies AS c\r\n   WHERE c.id = p_tenant_id;\r\n  IF v_timezone IS NULL OR btrim(v_timezone) = '' THEN\r\n    RAISE EXCEPTION 'COMPANY_TIMEZONE_REQUIRED' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  SELECT bap.status, bap.canonical_payload\r\n    INTO v_proposal_status, v_proposal_payload\r\n    FROM public.brain_action_proposals AS bap\r\n   WHERE bap.id = p_proposal_id\r\n     AND bap.actor_id = p_actor_id\r\n     AND bap.profile_id = p_profile_id\r\n     AND bap.tenant_id = p_tenant_id\r\n     AND bap.canonical_action = 'create_task_batch'\r\n     AND bap.schema_version = 1;\r\n  IF v_proposal_status IS NULL THEN\r\n    RAISE EXCEPTION 'INVALID_BATCH_PROPOSAL' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  IF jsonb_typeof(p_items) \u003c\u003e 'array' THEN\r\n    RAISE EXCEPTION 'INVALID_BATCH_ITEMS' USING ERRCODE = '22023';\r\n  END IF;\r\n  v_count := jsonb_array_length(p_items);\r\n  IF v_count \u003c 1 OR v_count \u003e 25 OR jsonb_array_length(v_proposal_payload-\u003e'tasks') \u003c\u003e v_count THEN\r\n    RAISE EXCEPTION 'INVALID_BATCH_SIZE' USING ERRCODE = '22023';\r\n  END IF;\r\n  IF v_proposal_payload-\u003e\u003e'timezone' IS DISTINCT FROM v_timezone OR\r\n     (SELECT count(DISTINCT entry.value-\u003e\u003e'task_id') FROM jsonb_array_elements(p_items) AS entry(value)) \u003c\u003e v_count OR\r\n     (SELECT count(DISTINCT entry.value-\u003e\u003e'event_id') FROM jsonb_array_elements(p_items) AS entry(value)) \u003c\u003e v_count OR\r\n     (SELECT count(DISTINCT entry.value-\u003e\u003e'command_id') FROM jsonb_array_elements(p_items) AS entry(value)) \u003c\u003e v_count OR\r\n     (SELECT count(DISTINCT entry.value-\u003e\u003e'idempotency_key') FROM jsonb_array_elements(p_items) AS entry(value)) \u003c\u003e v_count THEN\r\n    RAISE EXCEPTION 'INVALID_BATCH_IDENTITY' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  -- Validate the complete batch and its exact proposal relationship before any insert.\r\n  FOR v_item, v_index IN\r\n    SELECT entry.value, (entry.ordinality - 1)::integer\r\n      FROM jsonb_array_elements(p_items) WITH ORDINALITY AS entry(value, ordinality)\r\n  LOOP\r\n    IF jsonb_typeof(v_item) \u003c\u003e 'object' OR\r\n       (SELECT count(*) FROM jsonb_object_keys(v_item)) \u003c\u003e 17 OR\r\n       (v_item-\u003e\u003e'item_index')::integer \u003c\u003e v_index OR\r\n       (v_item - ARRAY['task_id','event_id','command_id','correlation_id','idempotency_key']::text[])\r\n         IS DISTINCT FROM (v_proposal_payload-\u003e'tasks'-\u003ev_index) OR\r\n       nullif(btrim(v_item-\u003e\u003e'title'), '') IS NULL OR\r\n       nullif(btrim(v_item-\u003e\u003e'description'), '') IS NULL OR\r\n       v_item-\u003e\u003e'priority' NOT IN ('low','medium','high','critical') OR\r\n       v_item-\u003e\u003e'status' \u003c\u003e 'pending' OR\r\n       (v_item-\u003e\u003e'due_date')::date IS DISTINCT FROM\r\n         ((v_item-\u003e\u003e'due_at')::timestamptz AT TIME ZONE v_timezone)::date OR\r\n       (v_item-\u003e\u003e'correlation_id')::uuid IS DISTINCT FROM\r\n         (SELECT bap.correlation_id FROM public.brain_action_proposals AS bap WHERE bap.id = p_proposal_id) OR\r\n       v_item-\u003e\u003e'idempotency_key' !~ '^[0-9a-f]{64}$' THEN\r\n      RAISE EXCEPTION 'INVALID_CANONICAL_BATCH_ITEM' USING ERRCODE = '22023';\r\n    END IF;\r\n\r\n    IF NOT EXISTS (\r\n      SELECT 1 FROM public.employees AS e\r\n       WHERE e.id = (v_item-\u003e\u003e'assigned_employee_id')::uuid\r\n         AND e.company_id = p_tenant_id AND e.status = 'active'\r\n         AND btrim(concat_ws(' ', e.first_name, e.last_name)) = v_item-\u003e\u003e'assigned_employee_name'\r\n    ) THEN\r\n      RAISE EXCEPTION 'INVALID_BATCH_ASSIGNEE' USING ERRCODE = '42501';\r\n    END IF;\r\n    IF NOT EXISTS (\r\n      SELECT 1 FROM public.locations AS l\r\n       WHERE l.id = (v_item-\u003e\u003e'location_id')::uuid\r\n         AND l.company_id = p_tenant_id\r\n         AND (l.status IS NULL OR l.status = 'active')\r\n         AND l.name = v_item-\u003e\u003e'location_name'\r\n    ) THEN\r\n      RAISE EXCEPTION 'INVALID_BATCH_LOCATION' USING ERRCODE = '42501';\r\n    END IF;\r\n  END LOOP;\r\n\r\n  SELECT count(*) INTO v_existing\r\n    FROM public.tasks AS t\r\n   WHERE t.id IN (SELECT (entry.value-\u003e\u003e'task_id')::uuid FROM jsonb_array_elements(p_items) AS entry(value));\r\n  IF v_existing \u003e 0 THEN\r\n    IF v_existing \u003c\u003e v_count OR v_proposal_status NOT IN ('executing','executed') OR\r\n       (SELECT count(*) FROM public.brain_event_outbox AS beo\r\n         WHERE beo.proposal_id = p_proposal_id\r\n           AND beo.aggregate_id IN (SELECT (entry.value-\u003e\u003e'task_id')::uuid FROM jsonb_array_elements(p_items) AS entry(value))) \u003c\u003e v_count THEN\r\n      RAISE EXCEPTION 'CONFLICTING_BATCH_RETRY' USING ERRCODE = '23505';\r\n    END IF;\r\n    RETURN QUERY SELECT v_count, array_agg((entry.value-\u003e\u003e'task_id')::uuid ORDER BY entry.ordinality)\r\n      FROM jsonb_array_elements(p_items) WITH ORDINALITY AS entry(value, ordinality);\r\n    RETURN;\r\n  END IF;\r\n  IF v_proposal_status \u003c\u003e 'executing' THEN\r\n    RAISE EXCEPTION 'BATCH_PROPOSAL_NOT_EXECUTING' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  FOR v_item, v_index IN\r\n    SELECT entry.value, (entry.ordinality - 1)::integer\r\n      FROM jsonb_array_elements(p_items) WITH ORDINALITY AS entry(value, ordinality)\r\n  LOOP\r\n    INSERT INTO public.tasks (\r\n      id, company_id, location_id, assigned_employee_id, title, description,\r\n      priority, status, due_date, due_at, created_by\r\n    ) VALUES (\r\n      (v_item-\u003e\u003e'task_id')::uuid, p_tenant_id, (v_item-\u003e\u003e'location_id')::uuid,\r\n      (v_item-\u003e\u003e'assigned_employee_id')::uuid, btrim(v_item-\u003e\u003e'title'), v_item-\u003e\u003e'description',\r\n      v_item-\u003e\u003e'priority', 'pending', (v_item-\u003e\u003e'due_date')::date,\r\n      (v_item-\u003e\u003e'due_at')::timestamptz, p_profile_id\r\n    );\r\n\r\n    v_expected_event_payload := jsonb_build_object(\r\n      'taskId', (v_item-\u003e\u003e'task_id')::uuid,\r\n      'title', btrim(v_item-\u003e\u003e'title'),\r\n      'priority', v_item-\u003e\u003e'priority',\r\n      'status', 'pending',\r\n      'assignedEmployeeId', (v_item-\u003e\u003e'assigned_employee_id')::uuid,\r\n      'dueDate', v_item-\u003e\u003e'due_date'\r\n    );\r\n    INSERT INTO public.brain_event_outbox (\r\n      id, event_type, schema_version, company_id, actor_id, profile_id,\r\n      aggregate_type, aggregate_id, command_id, correlation_id, causation_id,\r\n      proposal_id, idempotency_key, payload, occurred_at\r\n    ) VALUES (\r\n      (v_item-\u003e\u003e'event_id')::uuid, 'task.created', 1, p_tenant_id, p_actor_id, p_profile_id,\r\n      'task', (v_item-\u003e\u003e'task_id')::uuid, (v_item-\u003e\u003e'command_id')::uuid,\r\n      (v_item-\u003e\u003e'correlation_id')::uuid, (v_item-\u003e\u003e'command_id')::uuid,\r\n      p_proposal_id, v_item-\u003e\u003e'idempotency_key', v_expected_event_payload, clock_timestamp()\r\n    );\r\n    v_task_ids := array_append(v_task_ids, (v_item-\u003e\u003e'task_id')::uuid);\r\n  END LOOP;\r\n\r\n  RETURN QUERY SELECT v_count, v_task_ids;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_proposal_id uuid, p_items jsonb",
+          "language": "plpgsql",
+          "name": "create_task_batch_with_outbox_events",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "72104e8cab499b627b62faf7414890a2d6c32e1d4858c1aa06541e1c178751f7",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.create_task_with_outbox_event(p_task_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_title text, p_description text, p_priority text, p_status text, p_assigned_employee_id uuid, p_due_date date, p_event_id uuid, p_event_type text, p_event_schema_version integer, p_aggregate_type text, p_aggregate_id uuid, p_command_id uuid, p_correlation_id uuid, p_event_causation_id uuid, p_proposal_id uuid, p_idempotency_key text, p_event_payload jsonb, p_occurred_at timestamp with time zone)\n RETURNS TABLE(task_id uuid, title text, priority text, status text, assigned_employee_id uuid, due_date date, outbox_event_id uuid)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  v_expected_payload jsonb;\r\nBEGIN\r\n  IF p_actor_id IS NULL OR p_profile_id IS NULL OR p_tenant_id IS NULL OR\r\n     p_actor_id \u003c\u003e p_profile_id THEN\r\n    RAISE EXCEPTION 'INVALID_ACTOR_CONTEXT' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  IF NOT EXISTS (\r\n    SELECT 1\r\n      FROM public.profiles AS pr\r\n     WHERE pr.id = p_profile_id\r\n       AND pr.company_id = p_tenant_id\r\n       AND pr.status = 'active'\r\n  ) THEN\r\n    RAISE EXCEPTION 'INVALID_ACTIVE_PROFILE' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  IF NOT EXISTS (\r\n    SELECT 1\r\n      FROM public.brain_action_proposals AS bap\r\n     WHERE bap.id = p_proposal_id\r\n       AND bap.actor_id = p_actor_id\r\n       AND bap.profile_id = p_profile_id\r\n       AND bap.tenant_id = p_tenant_id\r\n       AND bap.canonical_action = 'create_task'\r\n       AND bap.status = 'executing'\r\n  ) THEN\r\n    RAISE EXCEPTION 'INVALID_EXECUTING_PROPOSAL' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  IF p_assigned_employee_id IS NOT NULL AND NOT EXISTS (\r\n    SELECT 1\r\n      FROM public.employees AS emp\r\n     WHERE emp.id = p_assigned_employee_id\r\n       AND emp.company_id = p_tenant_id\r\n  ) THEN\r\n    RAISE EXCEPTION 'CROSS_TENANT_ASSIGNEE' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  IF p_title IS NULL OR btrim(p_title) = '' OR\r\n     p_priority NOT IN ('low','medium','high','critical') OR\r\n     p_status NOT IN ('pending','in_progress','completed','cancelled') THEN\r\n    RAISE EXCEPTION 'INVALID_TASK_PAYLOAD' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  IF p_event_type \u003c\u003e 'task.created' OR p_event_schema_version \u003c\u003e 1 OR\r\n     p_aggregate_type \u003c\u003e 'task' OR p_aggregate_id \u003c\u003e p_task_id OR\r\n     p_event_causation_id \u003c\u003e p_command_id OR\r\n     p_idempotency_key !~ '^[0-9a-f]{64}$' THEN\r\n    RAISE EXCEPTION 'INVALID_EVENT_RELATIONSHIP' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  v_expected_payload := jsonb_build_object(\r\n    'taskId', p_task_id,\r\n    'title', btrim(p_title),\r\n    'priority', p_priority,\r\n    'status', p_status,\r\n    'assignedEmployeeId', p_assigned_employee_id,\r\n    'dueDate', CASE WHEN p_due_date IS NULL THEN NULL ELSE to_char(p_due_date, 'YYYY-MM-DD') END\r\n  );\r\n  IF p_event_payload IS DISTINCT FROM v_expected_payload THEN\r\n    RAISE EXCEPTION 'INVALID_EVENT_PAYLOAD' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  INSERT INTO public.tasks (\r\n    id, company_id, assigned_employee_id, title, description,\r\n    priority, status, due_date, created_by\r\n  ) VALUES (\r\n    p_task_id, p_tenant_id, p_assigned_employee_id, btrim(p_title), p_description,\r\n    p_priority, p_status, p_due_date, p_profile_id\r\n  );\r\n\r\n  INSERT INTO public.brain_event_outbox (\r\n    id, event_type, schema_version, company_id, actor_id, profile_id,\r\n    aggregate_type, aggregate_id, command_id, correlation_id, causation_id,\r\n    proposal_id, idempotency_key, payload, occurred_at\r\n  ) VALUES (\r\n    p_event_id, p_event_type, p_event_schema_version, p_tenant_id, p_actor_id, p_profile_id,\r\n    p_aggregate_type, p_aggregate_id, p_command_id, p_correlation_id, p_event_causation_id,\r\n    p_proposal_id, p_idempotency_key, p_event_payload, p_occurred_at\r\n  );\r\n\r\n  RETURN QUERY SELECT\r\n    p_task_id, btrim(p_title), p_priority, p_status,\r\n    p_assigned_employee_id, p_due_date, p_event_id;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_task_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_title text, p_description text, p_priority text, p_status text, p_assigned_employee_id uuid, p_due_date date, p_event_id uuid, p_event_type text, p_event_schema_version integer, p_aggregate_type text, p_aggregate_id uuid, p_command_id uuid, p_correlation_id uuid, p_event_causation_id uuid, p_proposal_id uuid, p_idempotency_key text, p_event_payload jsonb, p_occurred_at timestamp with time zone",
+          "language": "plpgsql",
+          "name": "create_task_with_outbox_event",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "a61eb730b18f5830e49889a0c2a1afc114a5ebc406dee67ce5346b8ffab1ef00",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.create_task_with_outbox_event_due_at(p_task_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_title text, p_description text, p_priority text, p_status text, p_assigned_employee_id uuid, p_due_date date, p_due_at timestamp with time zone, p_event_id uuid, p_event_type text, p_event_schema_version integer, p_aggregate_type text, p_aggregate_id uuid, p_command_id uuid, p_correlation_id uuid, p_event_causation_id uuid, p_proposal_id uuid, p_idempotency_key text, p_event_payload jsonb, p_occurred_at timestamp with time zone)\n RETURNS TABLE(task_id uuid, title text, priority text, status text, assigned_employee_id uuid, due_date date, due_at timestamp with time zone, outbox_event_id uuid)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  v_expected_payload jsonb;\r\n  v_proposal_payload jsonb;\r\n  v_timezone text;\r\nBEGIN\r\n  IF p_actor_id IS NULL OR p_profile_id IS NULL OR p_tenant_id IS NULL OR\r\n     p_actor_id \u003c\u003e p_profile_id THEN\r\n    RAISE EXCEPTION 'INVALID_ACTOR_CONTEXT' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  IF NOT EXISTS (\r\n    SELECT 1 FROM public.profiles AS pr\r\n    WHERE pr.id = p_profile_id AND pr.company_id = p_tenant_id AND pr.status = 'active'\r\n  ) THEN\r\n    RAISE EXCEPTION 'INVALID_ACTIVE_PROFILE' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  SELECT bap.canonical_payload\r\n    INTO v_proposal_payload\r\n    FROM public.brain_action_proposals AS bap\r\n   WHERE bap.id = p_proposal_id\r\n     AND bap.actor_id = p_actor_id\r\n     AND bap.profile_id = p_profile_id\r\n     AND bap.tenant_id = p_tenant_id\r\n     AND bap.canonical_action = 'create_task'\r\n     AND bap.status = 'executing';\r\n  IF v_proposal_payload IS NULL THEN\r\n    RAISE EXCEPTION 'INVALID_EXECUTING_PROPOSAL' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  IF p_assigned_employee_id IS NOT NULL AND NOT EXISTS (\r\n    SELECT 1 FROM public.employees AS emp\r\n    WHERE emp.id = p_assigned_employee_id AND emp.company_id = p_tenant_id\r\n  ) THEN\r\n    RAISE EXCEPTION 'CROSS_TENANT_ASSIGNEE' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  SELECT company.timezone INTO v_timezone\r\n    FROM public.companies AS company\r\n   WHERE company.id = p_tenant_id;\r\n  IF v_timezone IS NULL OR p_due_date IS NULL OR p_due_at IS NULL OR\r\n     v_proposal_payload-\u003e\u003e'timezone' IS DISTINCT FROM v_timezone OR\r\n     (v_proposal_payload-\u003e\u003e'due_at')::timestamptz IS DISTINCT FROM p_due_at OR\r\n     v_proposal_payload-\u003e\u003e'due_date' IS DISTINCT FROM to_char(p_due_date, 'YYYY-MM-DD') OR\r\n     v_proposal_payload-\u003e\u003e'due_local' IS DISTINCT FROM to_char(p_due_at AT TIME ZONE v_timezone, 'YYYY-MM-DD\"T\"HH24:MI') OR\r\n     (p_due_at AT TIME ZONE v_timezone)::date IS DISTINCT FROM p_due_date THEN\r\n    RAISE EXCEPTION 'INVALID_DUE_TIME' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  IF p_title IS NULL OR btrim(p_title) = '' OR\r\n     p_priority NOT IN ('low','medium','high','critical') OR\r\n     p_status NOT IN ('pending','in_progress','completed','cancelled') THEN\r\n    RAISE EXCEPTION 'INVALID_TASK_PAYLOAD' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  IF p_event_type \u003c\u003e 'task.created' OR p_event_schema_version \u003c\u003e 1 OR\r\n     p_aggregate_type \u003c\u003e 'task' OR p_aggregate_id \u003c\u003e p_task_id OR\r\n     p_event_causation_id \u003c\u003e p_command_id OR\r\n     p_idempotency_key !~ '^[0-9a-f]{64}$' THEN\r\n    RAISE EXCEPTION 'INVALID_EVENT_RELATIONSHIP' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  v_expected_payload := jsonb_build_object(\r\n    'taskId', p_task_id,\r\n    'title', btrim(p_title),\r\n    'priority', p_priority,\r\n    'status', p_status,\r\n    'assignedEmployeeId', p_assigned_employee_id,\r\n    'dueDate', to_char(p_due_date, 'YYYY-MM-DD')\r\n  );\r\n  IF p_event_payload IS DISTINCT FROM v_expected_payload THEN\r\n    RAISE EXCEPTION 'INVALID_EVENT_PAYLOAD' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  INSERT INTO public.tasks AS task (\r\n    id, company_id, assigned_employee_id, title, description,\r\n    priority, status, due_date, due_at, created_by\r\n  ) VALUES (\r\n    p_task_id, p_tenant_id, p_assigned_employee_id, btrim(p_title), p_description,\r\n    p_priority, p_status, p_due_date, p_due_at, p_profile_id\r\n  );\r\n\r\n  INSERT INTO public.brain_event_outbox AS outbox (\r\n    id, event_type, schema_version, company_id, actor_id, profile_id,\r\n    aggregate_type, aggregate_id, command_id, correlation_id, causation_id,\r\n    proposal_id, idempotency_key, payload, occurred_at\r\n  ) VALUES (\r\n    p_event_id, p_event_type, p_event_schema_version, p_tenant_id, p_actor_id, p_profile_id,\r\n    p_aggregate_type, p_aggregate_id, p_command_id, p_correlation_id, p_event_causation_id,\r\n    p_proposal_id, p_idempotency_key, p_event_payload, p_occurred_at\r\n  );\r\n\r\n  RETURN QUERY SELECT\r\n    p_task_id, btrim(p_title), p_priority, p_status,\r\n    p_assigned_employee_id, p_due_date, p_due_at, p_event_id;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_task_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid, p_title text, p_description text, p_priority text, p_status text, p_assigned_employee_id uuid, p_due_date date, p_due_at timestamp with time zone, p_event_id uuid, p_event_type text, p_event_schema_version integer, p_aggregate_type text, p_aggregate_id uuid, p_command_id uuid, p_correlation_id uuid, p_event_causation_id uuid, p_proposal_id uuid, p_idempotency_key text, p_event_payload jsonb, p_occurred_at timestamp with time zone",
+          "language": "plpgsql",
+          "name": "create_task_with_outbox_event_due_at",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "1e69894ede99fdd710f1b84ff32a59f55917f5bfc9d6e01363a63f29bcfa2c43",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.enqueue_arabic_task_localization()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions', 'pg_temp'\nAS $function$\r\nDECLARE v_hash text;\r\nBEGIN\r\n  IF NEW.assigned_employee_id IS NULL OR NOT EXISTS (\r\n    SELECT 1 FROM public.employees AS employee\r\n    JOIN public.profiles AS profile ON profile.employee_id = employee.id\r\n      AND profile.company_id = employee.company_id\r\n    WHERE employee.id = NEW.assigned_employee_id AND employee.company_id = NEW.company_id\r\n      AND employee.status = 'active' AND profile.status = 'active' AND profile.preferred_language = 'ar'\r\n  ) THEN RETURN NEW; END IF;\r\n  v_hash := encode(extensions.digest(convert_to(NEW.title || E'\\n' || coalesce(NEW.description, ''), 'UTF8'), 'sha256'), 'hex');\r\n  INSERT INTO public.task_localization_jobs(task_id, company_id, language, source_hash)\r\n  VALUES (NEW.id, NEW.company_id, 'ar', v_hash)\r\n  ON CONFLICT (task_id, language) DO UPDATE SET\r\n    company_id = EXCLUDED.company_id, source_hash = EXCLUDED.source_hash,\r\n    status = CASE WHEN public.task_localization_jobs.source_hash = EXCLUDED.source_hash\r\n      AND public.task_localization_jobs.status = 'completed' THEN 'completed' ELSE 'pending' END,\r\n    attempt_count = CASE WHEN public.task_localization_jobs.source_hash = EXCLUDED.source_hash\r\n      THEN public.task_localization_jobs.attempt_count ELSE 0 END,\r\n    available_at = clock_timestamp(), lease_token = NULL, lease_expires_at = NULL,\r\n    safe_failure_code = NULL, updated_at = clock_timestamp();\r\n  RETURN NEW;\r\nEND $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "enqueue_arabic_task_localization",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, extensions, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, extensions, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "24971119bb9023a6acdfc73553783c0e4e0b43d378b23f1b2c956dabc8e2c8d2",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.enqueue_legacy_arabic_task_localizations(p_limit integer DEFAULT 25)\n RETURNS TABLE(scanned bigint, enqueued bigint, already_current bigint, already_queued bigint, unresolved bigint)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'extensions', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  v_task record;\r\n  v_affected integer;\r\n  v_live_hash text;\r\n  v_live_recipient_resolved boolean;\r\nBEGIN\r\n  IF p_limit IS NULL OR p_limit \u003c 1 OR p_limit \u003e 50 THEN\r\n    RAISE EXCEPTION 'INVALID_BACKFILL_BATCH_LIMIT';\r\n  END IF;\r\n\r\n  scanned := 0;\r\n  enqueued := 0;\r\n  already_current := 0;\r\n  already_queued := 0;\r\n  unresolved := 0;\r\n\r\n  FOR v_task IN\r\n    WITH assessed AS (\r\n      SELECT\r\n        task.id,\r\n        task.company_id,\r\n        encode(extensions.digest(\r\n          convert_to(task.title || E'\\n' || coalesce(task.description, ''), 'UTF8'),\r\n          'sha256'\r\n        ), 'hex') AS source_hash,\r\n        btrim(task.title) \u003c\u003e '' AS has_content,\r\n        EXISTS (\r\n          SELECT 1\r\n          FROM public.employees AS employee\r\n          JOIN public.profiles AS profile\r\n            ON profile.employee_id = employee.id\r\n           AND profile.company_id = employee.company_id\r\n          WHERE employee.id = task.assigned_employee_id\r\n            AND employee.company_id = task.company_id\r\n            AND employee.status = 'active'\r\n            AND profile.status = 'active'\r\n            AND profile.preferred_language = 'ar'\r\n        ) AS recipient_resolved\r\n      FROM public.tasks AS task\r\n      WHERE task.status IN ('pending', 'in_progress')\r\n      ORDER BY task.created_at, task.id\r\n    ), classified AS (\r\n      SELECT\r\n        assessed.*,\r\n        EXISTS (\r\n          SELECT 1 FROM public.task_localizations AS localization\r\n          WHERE localization.task_id = assessed.id\r\n            AND localization.company_id = assessed.company_id\r\n            AND localization.language = 'ar'\r\n            AND localization.source_hash = assessed.source_hash\r\n        ) AS is_current,\r\n        EXISTS (\r\n          SELECT 1 FROM public.task_localization_jobs AS job\r\n          WHERE job.task_id = assessed.id\r\n            AND job.company_id = assessed.company_id\r\n            AND job.language = 'ar'\r\n            AND job.source_hash = assessed.source_hash\r\n            AND job.status IN ('pending', 'processing')\r\n        ) AS is_queued\r\n      FROM assessed\r\n    )\r\n    SELECT classified.*\r\n    FROM classified\r\n    ORDER BY\r\n      CASE\r\n        WHEN classified.has_content AND classified.recipient_resolved\r\n          AND NOT classified.is_current AND NOT classified.is_queued THEN 0\r\n        WHEN classified.has_content AND classified.recipient_resolved AND classified.is_current THEN 1\r\n        WHEN classified.has_content AND classified.recipient_resolved AND classified.is_queued THEN 2\r\n        ELSE 3\r\n      END,\r\n      classified.id\r\n    LIMIT p_limit\r\n  LOOP\r\n    scanned := scanned + 1;\r\n\r\n    IF NOT v_task.has_content OR NOT v_task.recipient_resolved THEN\r\n      unresolved := unresolved + 1;\r\n      CONTINUE;\r\n    END IF;\r\n\r\n    IF v_task.is_current THEN\r\n      already_current := already_current + 1;\r\n      CONTINUE;\r\n    END IF;\r\n\r\n    IF v_task.is_queued THEN\r\n      already_queued := already_queued + 1;\r\n      CONTINUE;\r\n    END IF;\r\n\r\n    -- Lock and revalidate the canonical source immediately before the upsert.\r\n    -- This prevents an edit or reassignment racing the bounded scan from\r\n    -- replacing a newer job with a stale source hash.\r\n    SELECT\r\n      encode(extensions.digest(\r\n        convert_to(task.title || E'\\n' || coalesce(task.description, ''), 'UTF8'),\r\n        'sha256'\r\n      ), 'hex'),\r\n      btrim(task.title) \u003c\u003e '' AND EXISTS (\r\n        SELECT 1\r\n        FROM public.employees AS employee\r\n        JOIN public.profiles AS profile\r\n          ON profile.employee_id = employee.id\r\n         AND profile.company_id = employee.company_id\r\n        WHERE employee.id = task.assigned_employee_id\r\n          AND employee.company_id = task.company_id\r\n          AND employee.status = 'active'\r\n          AND profile.status = 'active'\r\n          AND profile.preferred_language = 'ar'\r\n      )\r\n    INTO v_live_hash, v_live_recipient_resolved\r\n    FROM public.tasks AS task\r\n    WHERE task.id = v_task.id\r\n      AND task.company_id = v_task.company_id\r\n      AND task.status IN ('pending', 'in_progress')\r\n    FOR UPDATE;\r\n\r\n    IF NOT FOUND OR v_live_hash IS DISTINCT FROM v_task.source_hash\r\n       OR v_live_recipient_resolved IS DISTINCT FROM true THEN\r\n      unresolved := unresolved + 1;\r\n      CONTINUE;\r\n    END IF;\r\n\r\n    INSERT INTO public.task_localization_jobs AS job (\r\n      task_id, company_id, language, source_hash, status, attempt_count,\r\n      available_at, lease_token, lease_expires_at, safe_failure_code, updated_at\r\n    ) VALUES (\r\n      v_task.id, v_task.company_id, 'ar', v_task.source_hash, 'pending', 0,\r\n      clock_timestamp(), NULL, NULL, NULL, clock_timestamp()\r\n    )\r\n    ON CONFLICT (task_id, language) DO UPDATE SET\r\n      company_id = EXCLUDED.company_id,\r\n      source_hash = EXCLUDED.source_hash,\r\n      status = 'pending',\r\n      attempt_count = 0,\r\n      available_at = clock_timestamp(),\r\n      lease_token = NULL,\r\n      lease_expires_at = NULL,\r\n      safe_failure_code = NULL,\r\n      updated_at = clock_timestamp()\r\n    WHERE job.source_hash IS DISTINCT FROM EXCLUDED.source_hash\r\n      AND job.status \u003c\u003e 'processing';\r\n\r\n    GET DIAGNOSTICS v_affected = ROW_COUNT;\r\n    IF v_affected = 1 THEN\r\n      enqueued := enqueued + 1;\r\n    ELSE\r\n      already_queued := already_queued + 1;\r\n    END IF;\r\n  END LOOP;\r\n\r\n  RETURN NEXT;\r\nEND $function$\n",
+          "identity_arguments": "p_limit integer",
+          "language": "plpgsql",
+          "name": "enqueue_legacy_arabic_task_localizations",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, extensions, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, extensions, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c55725ae336bd76d288d27c52c066bf19a92bf9a9156390366904deb025f1b67",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.enqueue_task_evidence_verification(p_evidence_id uuid)\n RETURNS TABLE(evidence_id uuid, verification_status text, duplicate boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_ev public.task_evidence%ROWTYPE; v_job public.task_evidence_verification_jobs%ROWTYPE; v_cycle integer; v_insert_count bigint;\r\nBEGIN\r\n  SELECT pr.* INTO v_profile FROM public.profiles pr WHERE pr.id=auth.uid() AND pr.status='active';\r\n  IF NOT FOUND OR v_profile.company_id IS NULL THEN RAISE EXCEPTION 'ACCOUNT_NOT_PROVISIONED'; END IF;\r\n  SELECT ev.* INTO v_ev FROM public.task_evidence ev JOIN public.tasks t ON t.id=ev.task_id AND t.company_id=ev.company_id\r\n   WHERE ev.id=p_evidence_id AND ev.company_id=v_profile.company_id AND\r\n    (v_profile.role IN ('manager','owner','super_admin') OR\r\n     (v_profile.role='employee' AND v_profile.employee_id IS NOT NULL AND (ev.submitted_by_profile_id=v_profile.id OR t.assigned_employee_id=v_profile.employee_id))) FOR UPDATE OF ev;\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'EVIDENCE_NOT_AVAILABLE'; END IF;\r\n  IF v_ev.status NOT IN ('pending_review','queued','processing','verification_failed') THEN RAISE EXCEPTION 'EVIDENCE_NOT_QUEUEABLE'; END IF;\r\n  SELECT j.* INTO v_job FROM public.task_evidence_verification_jobs j WHERE j.evidence_id=v_ev.id ORDER BY j.cycle_number DESC LIMIT 1;\r\n  IF FOUND AND v_job.status IN ('queued','processing') THEN\r\n    v_insert_count := 0;\r\n  ELSE\r\n    v_cycle := coalesce(v_job.cycle_number,0)+1;\r\n    IF v_cycle \u003e 3 THEN RAISE EXCEPTION 'VERIFICATION_RETRY_LIMIT_REACHED'; END IF;\r\n    INSERT INTO public.task_evidence_verification_jobs(evidence_id,company_id,cycle_number) VALUES(v_ev.id,v_ev.company_id,v_cycle);\r\n    GET DIAGNOSTICS v_insert_count = ROW_COUNT;\r\n  END IF;\r\n  IF v_ev.status IN ('pending_review','verification_failed') THEN UPDATE public.task_evidence SET status='queued' WHERE id=v_ev.id; END IF;\r\n  IF v_insert_count = 1 THEN INSERT INTO public.task_evidence_audit(evidence_id,company_id,actor_profile_id,event_type)\r\n    VALUES(v_ev.id,v_ev.company_id,v_profile.id,'verification.queued'); END IF;\r\n  RETURN QUERY SELECT v_ev.id, (SELECT ev.status FROM public.task_evidence ev WHERE ev.id=v_ev.id), v_insert_count = 0;\r\nEND $function$\n",
+          "identity_arguments": "p_evidence_id uuid",
+          "language": "plpgsql",
+          "name": "enqueue_task_evidence_verification",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "7d9daf76ff7bf9b9d1ef3915da921ff1162c7539e7f302f0f30fee5f6bf2eef9",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_brain_action_proposal(p_id uuid, p_payload_hash text, p_error_code text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nbegin\r\n  update public.brain_action_proposals set status='failed', failed_at=now(), safe_error_code=left(p_error_code,100)\r\n   where id=p_id and payload_hash=p_payload_hash and status='executing';\r\n  return found;\r\nend $function$\n",
+          "identity_arguments": "p_id uuid, p_payload_hash text, p_error_code text",
+          "language": "plpgsql",
+          "name": "fail_brain_action_proposal",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c973626a9f40331de11c0a78dbef0ff709f28636e6e9a189f73d60807694bac8",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_notification_delivery(p_job_id uuid, p_lease_token uuid, p_code text, p_permanent boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE j public.notification_delivery_jobs%ROWTYPE;v_retry boolean;BEGIN SELECT x.* INTO j FROM public.notification_delivery_jobs x WHERE x.id=p_job_id AND x.status='processing' AND x.lease_token=p_lease_token FOR UPDATE;IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED';END IF;v_retry:=NOT p_permanent AND j.attempt_count\u003c5;UPDATE public.notification_delivery_jobs x SET status=CASE WHEN v_retry THEN 'pending' ELSE 'failed' END,available_at=CASE WHEN v_retry THEN clock_timestamp()+make_interval(secs=\u003epower(2,j.attempt_count)::integer*30) ELSE x.available_at END,lease_token=NULL,lease_expires_at=NULL,last_failure_code=left(p_code,80) WHERE x.id=j.id;IF p_permanent THEN UPDATE public.push_subscriptions s SET revoked_at=clock_timestamp() WHERE s.id=j.subscription_id;END IF;INSERT INTO public.notification_audit(company_id,notification_id,event_type,safe_details) VALUES(j.company_id,j.notification_id,CASE WHEN v_retry THEN 'push.retry' ELSE 'push.permanently_failed' END,jsonb_build_object('code',left(p_code,80)));END $function$\n",
+          "identity_arguments": "p_job_id uuid, p_lease_token uuid, p_code text, p_permanent boolean",
+          "language": "plpgsql",
+          "name": "fail_notification_delivery",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "21c1eacdd632710538655a583080ac04f39d1506cab59479ad50381b1f53a7ef",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_notification_outbox(p_outbox_id uuid, p_lease_token uuid, p_code text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE o public.notification_outbox%ROWTYPE;v_retry boolean;BEGIN SELECT x.* INTO o FROM public.notification_outbox x WHERE x.id=p_outbox_id AND x.status='processing' AND x.lease_token=p_lease_token FOR UPDATE;IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED';END IF;v_retry:=o.attempt_count\u003c5;UPDATE public.notification_outbox x SET status=CASE WHEN v_retry THEN 'pending' ELSE 'failed' END,available_at=CASE WHEN v_retry THEN clock_timestamp()+make_interval(secs=\u003epower(2,o.attempt_count)::integer*30) ELSE x.available_at END,lease_token=NULL,lease_expires_at=NULL,last_failure_code=left(p_code,80) WHERE x.id=o.id;INSERT INTO public.notification_audit(company_id,event_type,safe_details) VALUES(o.company_id,'obligation.failed',jsonb_build_object('retryable',v_retry,'code',left(p_code,80)));END $function$\n",
+          "identity_arguments": "p_outbox_id uuid, p_lease_token uuid, p_code text",
+          "language": "plpgsql",
+          "name": "fail_notification_outbox",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "437e8c34bce134997256b4056bf6e4223c5d1119999ea392db7516751bf93c3e",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_task_evidence_upload(p_evidence_id uuid)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_evidence public.task_evidence%ROWTYPE;\r\nBEGIN\r\n  IF NOT EXISTS (SELECT 1 FROM public.profiles AS pr WHERE pr.id = auth.uid() AND pr.status = 'active') THEN RETURN; END IF;\r\n  SELECT ev.* INTO v_evidence FROM public.task_evidence AS ev\r\n   WHERE ev.id = p_evidence_id AND ev.submitted_by_profile_id = auth.uid() FOR UPDATE;\r\n  IF NOT FOUND OR v_evidence.status = 'pending_review' THEN RETURN; END IF;\r\n  UPDATE public.task_evidence AS ev SET status = 'upload_failed' WHERE ev.id = v_evidence.id;\r\n  INSERT INTO public.task_evidence_audit (evidence_id, company_id, actor_profile_id, event_type, safe_details)\r\n  VALUES (v_evidence.id, v_evidence.company_id, auth.uid(), 'upload.failed', '{\"retryable\":true}'::jsonb);\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_evidence_id uuid",
+          "language": "plpgsql",
+          "name": "fail_task_evidence_upload",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "00263b73c74abdfd7a31a6944773859bb31652ac2ae3c2abd0b4746558f07de0",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_task_evidence_verification_job(p_job_id uuid, p_lease_token uuid, p_failure_code text, p_retryable boolean)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_job public.task_evidence_verification_jobs%ROWTYPE; v_retry boolean;\r\nBEGIN\r\n SELECT j.* INTO v_job FROM public.task_evidence_verification_jobs j WHERE j.id=p_job_id AND j.status='processing' AND j.lease_token=p_lease_token FOR UPDATE;\r\n IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED'; END IF; v_retry:=p_retryable AND v_job.attempt_count\u003cv_job.max_attempts;\r\n UPDATE public.task_evidence_verification_attempts a SET status='failed',failure_code=p_failure_code,completed_at=clock_timestamp() WHERE a.job_id=v_job.id AND a.attempt_number=v_job.attempt_count;\r\n UPDATE public.task_evidence_verification_jobs j SET status=CASE WHEN v_retry THEN 'queued' ELSE 'failed' END,available_at=CASE WHEN v_retry THEN clock_timestamp()+make_interval(secs=\u003epower(2,v_job.attempt_count)::integer*30) ELSE j.available_at END,\r\n lease_token=NULL,lease_expires_at=NULL,last_failure_code=p_failure_code,updated_at=clock_timestamp() WHERE j.id=v_job.id;\r\n UPDATE public.task_evidence ev SET status=CASE WHEN v_retry THEN 'queued' ELSE 'verification_failed' END WHERE ev.id=v_job.evidence_id;\r\n INSERT INTO public.task_evidence_audit(evidence_id,company_id,actor_profile_id,actor_type,event_type,safe_details) VALUES(v_job.evidence_id,v_job.company_id,NULL,'system','verification.failed',jsonb_build_object('code',p_failure_code,'retryable',v_retry,'attempt',v_job.attempt_count));\r\nEND $function$\n",
+          "identity_arguments": "p_job_id uuid, p_lease_token uuid, p_failure_code text, p_retryable boolean",
+          "language": "plpgsql",
+          "name": "fail_task_evidence_verification_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "fa5e2e6025ab24d000115ff29ec990774c8c2bc0c4accc6a58325bfe494d89e8",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.fail_task_localization_job(p_task_id uuid, p_language text, p_lease_token uuid, p_code text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE v_job public.task_localization_jobs%ROWTYPE; v_retry boolean;\r\nBEGIN\r\n  SELECT job.* INTO v_job FROM public.task_localization_jobs AS job WHERE job.task_id=p_task_id\r\n    AND job.language=p_language AND job.status='processing' AND job.lease_token=p_lease_token FOR UPDATE;\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'LEASE_NOT_OWNED'; END IF;\r\n  v_retry := v_job.attempt_count \u003c 5;\r\n  UPDATE public.task_localization_jobs AS job SET status=CASE WHEN v_retry THEN 'pending' ELSE 'failed' END,\r\n    available_at=CASE WHEN v_retry THEN clock_timestamp()+make_interval(secs=\u003epower(2,v_job.attempt_count)::integer*30) ELSE job.available_at END,\r\n    lease_token=NULL,lease_expires_at=NULL,safe_failure_code=left(p_code,80),updated_at=clock_timestamp()\r\n  WHERE job.task_id=p_task_id AND job.language=p_language;\r\nEND $function$\n",
+          "identity_arguments": "p_task_id uuid, p_language text, p_lease_token uuid, p_code text",
+          "language": "plpgsql",
+          "name": "fail_task_localization_job",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "e1713d51f20fa2185c107ee41836835cf1faa2e4cd88d473301cfbcac265b8af",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.generate_task_reminder_obligations()\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_database_now timestamptz := clock_timestamp();\r\n  v_count integer;\r\nBEGIN\r\n  INSERT INTO public.notification_outbox (\r\n    company_id,\r\n    event_key,\r\n    event_type,\r\n    aggregate_type,\r\n    aggregate_id\r\n  )\r\n  SELECT\r\n    task.company_id,\r\n    'task.due_30m:' || task.id::text || ':' ||\r\n      to_char(\r\n        task.due_at AT TIME ZONE 'UTC',\r\n        'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\r\n      ),\r\n    'task.due_30m',\r\n    'tasks',\r\n    task.id\r\n  FROM public.tasks AS task\r\n  WHERE task.due_at IS NOT NULL\r\n    AND task.assigned_employee_id IS NOT NULL\r\n    AND task.status IN ('pending', 'in_progress')\r\n    AND v_database_now \u003e= task.due_at - interval '30 minutes'\r\n    AND v_database_now \u003c task.due_at\r\n  ON CONFLICT (company_id, event_key) DO NOTHING;\r\n\r\n  GET DIAGNOSTICS v_count = ROW_COUNT;\r\n  RETURN v_count;\r\nEND\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "generate_task_reminder_obligations",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "b4118339389db2fd79a7ad6fb967cc200ef1c2edcc3a3f47197fa733aca0a758",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_brain_chat_quota_status()\n RETURNS TABLE(quota_limit integer, remaining integer, reset_at timestamp with time zone)\n LANGUAGE plpgsql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_user_id uuid := auth.uid();\r\n  v_now timestamptz := statement_timestamp();\r\n  v_row public.brain_chat_user_quotas%ROWTYPE;\r\nBEGIN\r\n  IF v_user_id IS NULL THEN\r\n    RAISE EXCEPTION 'AUTHENTICATION_REQUIRED' USING ERRCODE = '42501';\r\n  END IF;\r\n\r\n  SELECT q.*\r\n    INTO v_row\r\n    FROM public.brain_chat_user_quotas AS q\r\n   WHERE q.user_id = v_user_id;\r\n\r\n  IF NOT FOUND OR v_row.window_resets_at \u003c= v_now THEN\r\n    RETURN QUERY SELECT 100, 100, NULL::timestamptz;\r\n  ELSE\r\n    RETURN QUERY SELECT 100, 100 - v_row.request_count, v_row.window_resets_at;\r\n  END IF;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "get_brain_chat_quota_status",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c923263883b0bf802bd1fd799c1c93da8f00dd21e632db7e7c0f3ec4530814b2",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_company_notification_diagnostics()\n RETURNS TABLE(unread bigint, pending_obligations bigint, pending_push bigint, failed_push bigint)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT count(DISTINCT n.id) FILTER(WHERE n.status='unread'),count(DISTINCT o.id) FILTER(WHERE o.status IN('pending','processing')),count(DISTINCT d.id) FILTER(WHERE d.status IN('pending','processing')),count(DISTINCT d.id) FILTER(WHERE d.status='failed') FROM public.profiles p LEFT JOIN public.notifications n ON n.company_id=p.company_id LEFT JOIN public.notification_outbox o ON o.company_id=p.company_id LEFT JOIN public.notification_delivery_jobs d ON d.company_id=p.company_id WHERE p.id=auth.uid() AND p.status='active' AND p.role IN('manager','owner','super_admin')\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "get_company_notification_diagnostics",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "61deed3eb0abc4798e0f0d33a472ceec2b93bfb215aad59044f308d50a26f9fe",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_my_notification_state()\n RETURNS TABLE(unread_count bigint, preferences jsonb, subscription_count bigint)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT count(n.id) FILTER(WHERE n.status='unread'),to_jsonb(pref),count(DISTINCT s.id) FILTER(WHERE s.revoked_at IS NULL)\r\n FROM public.profiles p LEFT JOIN public.notifications n ON n.recipient_id=p.id AND n.company_id=p.company_id\r\n LEFT JOIN public.notification_preferences pref ON pref.profile_id=p.id LEFT JOIN public.push_subscriptions s ON s.profile_id=p.id AND s.company_id=p.company_id\r\n WHERE p.id=auth.uid() AND p.status='active' GROUP BY pref.*\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "get_my_notification_state",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "3a2dd3bcc210b2641f81c2572ef397a89775b75b1b68929af17beb0db333e005",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_my_task_visibility_diagnostic()\n RETURNS TABLE(persisted_role text, employee_linked boolean, assigned_task_count bigint)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT\r\n    pr.role,\r\n    (pr.employee_id IS NOT NULL AND emp.id IS NOT NULL),\r\n    CASE\r\n      WHEN pr.employee_id IS NULL OR emp.id IS NULL THEN 0::bigint\r\n      ELSE (\r\n        SELECT count(*)\r\n          FROM public.tasks AS t\r\n         WHERE t.company_id = pr.company_id\r\n           AND t.assigned_employee_id = pr.employee_id\r\n      )\r\n    END\r\n  FROM public.profiles AS pr\r\n  LEFT JOIN public.employees AS emp\r\n    ON emp.id = pr.employee_id\r\n   AND emp.company_id = pr.company_id\r\n  WHERE pr.id = auth.uid()\r\n    AND pr.status = 'active';\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "get_my_task_visibility_diagnostic",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "bfecc230d85af3972da22c9e93ac796866b41c4f08656c9e66f556f9bfd2a4c0",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_task_evidence_access(p_evidence_id uuid)\n RETURNS TABLE(storage_path text, mime_type text)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT ev.original_storage_path, ev.original_mime_type\r\n  FROM public.task_evidence ev\r\n  JOIN public.profiles pr ON pr.id = auth.uid() AND pr.status = 'active' AND pr.company_id = ev.company_id\r\n  JOIN public.tasks t ON t.id = ev.task_id AND t.company_id = ev.company_id\r\n  WHERE ev.id = p_evidence_id\r\n    AND ev.status IN ('pending_review','queued','processing','ai_verified','ai_rejected','needs_human_review','verification_failed','human_approved','human_rejected')\r\n    AND (pr.role IN ('manager','owner','super_admin') OR\r\n      (pr.role = 'employee' AND pr.employee_id IS NOT NULL AND\r\n       (ev.submitted_by_profile_id = pr.id OR t.assigned_employee_id = pr.employee_id)));\r\n$function$\n",
+          "identity_arguments": "p_evidence_id uuid",
+          "language": "sql",
+          "name": "get_task_evidence_access",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "afce2a8002df552f6a7745d54f7cc51cb06244185a314be614b5e92fdbfd922d",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.get_task_evidence_upload(p_evidence_id uuid)\n RETURNS TABLE(storage_path text, expected_mime_type text, expected_size_bytes bigint, expected_sha256 text, upload_status text)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n  SELECT ev.original_storage_path, ev.original_mime_type, ev.original_size_bytes, ev.original_sha256, ev.status\r\n    FROM public.task_evidence AS ev\r\n    JOIN public.profiles AS pr ON pr.id = auth.uid()\r\n   WHERE ev.id = p_evidence_id AND ev.submitted_by_profile_id = auth.uid()\r\n     AND pr.status = 'active' AND pr.company_id = ev.company_id;\r\n$function$\n",
+          "identity_arguments": "p_evidence_id uuid",
+          "language": "sql",
+          "name": "get_task_evidence_upload",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "e349a2465404ab4aa170907d7ed6544f3b397cadaf30cca1f26d9f3c12700aba",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.list_my_notifications(p_limit integer DEFAULT 30, p_before timestamp with time zone DEFAULT NULL::timestamp with time zone)\n RETURNS TABLE(id uuid, title text, message text, category text, status text, route text, created_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT n.id,n.title,n.message,n.category,n.status,n.route,n.created_at FROM public.notifications n JOIN public.profiles p ON p.id=auth.uid() AND p.status='active' AND p.company_id=n.company_id\r\n WHERE n.recipient_id=auth.uid() AND n.status\u003c\u003e'archived' AND (p_before IS NULL OR n.created_at\u003cp_before) ORDER BY n.created_at DESC LIMIT least(greatest(p_limit,1),50)\r\n$function$\n",
+          "identity_arguments": "p_limit integer, p_before timestamp with time zone",
+          "language": "sql",
+          "name": "list_my_notifications",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "b9abc432c84aec2661f0fe435ea0ff6f4ec187f7c28a36bd1581380e19250606",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.list_task_evidence_reviews()\n RETURNS TABLE(evidence_id uuid, evidence_status text, task_id uuid, task_title text, task_description text, task_status text, submitter_profile_id uuid, submitter_name text, ai_verdict text, confidence numeric, explanation text, reason_codes jsonb, visible_observations jsonb, uncertainty_flags jsonb, attempt_number integer, attempts jsonb, audit_history jsonb, created_at timestamp with time zone)\n LANGUAGE sql\n STABLE SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\n SELECT ev.id,ev.status,ev.task_id,t.title,t.description,t.status,ev.submitted_by_profile_id,coalesce(nullif(sp.full_name,''),'Team member'),\r\n a.verdict,a.confidence,a.explanation,a.reason_codes,a.visible_observations,a.uncertainty_flags,a.attempt_number,\r\n coalesce((SELECT jsonb_agg(jsonb_build_object('cycleNumber',vj.cycle_number,'attemptNumber',va.attempt_number,'status',va.status,'verdict',va.verdict,'confidence',va.confidence,'failureCode',va.failure_code,'startedAt',va.started_at,'completedAt',va.completed_at) ORDER BY va.started_at) FROM public.task_evidence_verification_attempts va JOIN public.task_evidence_verification_jobs vj ON vj.id=va.job_id WHERE va.evidence_id=ev.id),'[]'::jsonb),\r\n coalesce((SELECT jsonb_agg(jsonb_build_object('eventType',au.event_type,'actorType',au.actor_type,'createdAt',au.created_at,'safeDetails',au.safe_details) ORDER BY au.created_at) FROM public.task_evidence_audit au WHERE au.evidence_id=ev.id),'[]'::jsonb),ev.created_at\r\n FROM public.task_evidence ev JOIN public.profiles pr ON pr.id=auth.uid() AND pr.status='active' AND pr.company_id=ev.company_id AND pr.role IN ('manager','owner','super_admin')\r\n JOIN public.tasks t ON t.id=ev.task_id AND t.company_id=ev.company_id JOIN public.profiles sp ON sp.id=ev.submitted_by_profile_id\r\n LEFT JOIN LATERAL(SELECT x.* FROM public.task_evidence_verification_attempts x WHERE x.evidence_id=ev.id ORDER BY x.started_at DESC LIMIT 1)a ON true\r\n WHERE ev.status IN ('queued','processing','ai_verified','ai_rejected','needs_human_review','verification_failed','human_approved','human_rejected') ORDER BY ev.created_at DESC LIMIT 100;\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "sql",
+          "name": "list_task_evidence_reviews",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "stable"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "cfb9f4b3109ca7dadc862652ff2e0f513885b2f64722ed4e33f889452227b31f",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.localize_employee_notification()\n RETURNS trigger\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE v_language text;\r\nBEGIN\r\n  SELECT profile.preferred_language INTO v_language FROM public.profiles AS profile\r\n  WHERE profile.id=NEW.recipient_id AND profile.company_id=NEW.company_id AND profile.status='active';\r\n  IF v_language='ar' THEN\r\n    NEW.title := CASE NEW.notification_type\r\n      WHEN 'task.assigned' THEN 'تم إسناد مهمة'\r\n      WHEN 'task.reassigned' THEN 'تم تغيير إسناد المهمة'\r\n      WHEN 'task.due_30m' THEN 'المهمة مستحقة خلال 30 دقيقة'\r\n      WHEN 'task.completed' THEN 'اكتملت المهمة'\r\n      ELSE NEW.title END;\r\n    NEW.message := CASE WHEN NEW.category='tasks' THEN 'افتح HospiBrain لعرض تفاصيل المهمة.' ELSE NEW.message END;\r\n  END IF;\r\n  RETURN NEW;\r\nEND $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "localize_employee_notification",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c9a8999f2a5077c086c12a54100e070ea8bf3d946232d54f5e893b92b2f87984",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.mark_all_my_notifications_read()\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_count integer;v_company uuid;BEGIN SELECT p.company_id INTO v_company FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';IF NOT FOUND THEN RAISE EXCEPTION 'NOT_AUTHORIZED';END IF;\r\n UPDATE public.notifications n SET status='read',is_read=true,read_at=coalesce(n.read_at,clock_timestamp()),updated_at=clock_timestamp() WHERE n.recipient_id=auth.uid() AND n.company_id=v_company AND n.status='unread';GET DIAGNOSTICS v_count=ROW_COUNT;INSERT INTO public.notification_audit(company_id,profile_id,event_type,safe_details) VALUES(v_company,auth.uid(),'notification.read_all',jsonb_build_object('count',v_count));RETURN v_count;END $function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "mark_all_my_notifications_read",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "b310a2919ed0e4e2b4288c8e8437ef32806ae849659c7a45069a84b02a05f522",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.materialize_notification_outbox(p_outbox_id uuid, p_lease_token uuid)\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_outbox public.notification_outbox%ROWTYPE;\r\n  v_recipient record;\r\n  v_notification_id uuid;\r\n  v_count integer := 0;\r\n  v_category text;\r\n  v_title text;\r\n  v_message text;\r\n  v_route text;\r\n  v_allowed boolean;\r\n  v_in_app boolean;\r\nBEGIN\r\n  SELECT outbox.*\r\n  INTO v_outbox\r\n  FROM public.notification_outbox AS outbox\r\n  WHERE outbox.id = p_outbox_id\r\n    AND outbox.status = 'processing'\r\n    AND outbox.lease_token = p_lease_token\r\n    AND outbox.lease_expires_at \u003e= clock_timestamp()\r\n  FOR UPDATE;\r\n\r\n  IF NOT FOUND THEN\r\n    RAISE EXCEPTION 'LEASE_NOT_OWNED';\r\n  END IF;\r\n\r\n  -- N2 supersedes undelivered N1 calendar-day reminder obligations without\r\n  -- fabricating a recipient-resolution failure or mutating the task.\r\n  IF v_outbox.event_type IN ('task.due_soon', 'task.overdue') THEN\r\n    INSERT INTO public.notification_audit (\r\n      company_id,\r\n      event_type,\r\n      safe_details\r\n    ) VALUES (\r\n      v_outbox.company_id,\r\n      'obligation.superseded',\r\n      jsonb_build_object('eventType', v_outbox.event_type)\r\n    );\r\n\r\n    UPDATE public.notification_outbox AS outbox\r\n    SET\r\n      status = 'completed',\r\n      lease_token = NULL,\r\n      lease_expires_at = NULL,\r\n      completed_at = clock_timestamp()\r\n    WHERE outbox.id = v_outbox.id;\r\n\r\n    RETURN 0;\r\n  END IF;\r\n\r\n  v_category := CASE\r\n    WHEN v_outbox.event_type LIKE 'task.%' THEN 'tasks'\r\n    WHEN v_outbox.event_type LIKE 'announcement.%' THEN 'announcements'\r\n    WHEN v_outbox.event_type LIKE 'maintenance.%' THEN 'maintenance'\r\n    WHEN v_outbox.event_type LIKE 'incident.%' THEN 'incidents'\r\n    WHEN v_outbox.event_type LIKE 'evidence.%' THEN 'evidence'\r\n    ELSE 'system'\r\n  END;\r\n\r\n  v_route := CASE v_category\r\n    WHEN 'tasks' THEN '/dashboard/tasks'\r\n    WHEN 'announcements' THEN '/dashboard/announcements'\r\n    WHEN 'maintenance' THEN '/dashboard/maintenance'\r\n    WHEN 'incidents' THEN '/dashboard/incidents'\r\n    WHEN 'evidence' THEN CASE\r\n      WHEN v_outbox.event_type IN (\r\n        'evidence.needs_human_review',\r\n        'evidence.verification_failed'\r\n      ) THEN '/dashboard/evidence-review'\r\n      ELSE '/dashboard/tasks'\r\n    END\r\n    ELSE '/dashboard'\r\n  END;\r\n\r\n  v_title := CASE v_outbox.event_type\r\n    WHEN 'task.assigned' THEN 'Task assigned'\r\n    WHEN 'task.reassigned' THEN 'Task assignment changed'\r\n    WHEN 'task.due_30m' THEN 'Task due in 30 minutes.'\r\n    WHEN 'task.completed' THEN 'Task completed'\r\n    WHEN 'announcement.published' THEN 'New announcement'\r\n    WHEN 'maintenance.assigned' THEN 'Maintenance ticket assigned'\r\n    WHEN 'maintenance.urgent_created' THEN 'Urgent maintenance alert'\r\n    WHEN 'incident.reported' THEN 'Incident reported'\r\n    WHEN 'evidence.submitted' THEN 'Task evidence submitted'\r\n    WHEN 'evidence.needs_human_review' THEN 'Evidence needs review'\r\n    WHEN 'evidence.verification_failed' THEN 'Evidence verification failed'\r\n    WHEN 'evidence.human_approved' THEN 'Evidence approved'\r\n    WHEN 'evidence.human_rejected' THEN 'Evidence requires resubmission'\r\n    ELSE 'Operational update'\r\n  END;\r\n\r\n  v_message := CASE\r\n    WHEN v_outbox.event_type = 'evidence.human_rejected'\r\n      THEN 'Open HospiBrain to review and resubmit evidence.'\r\n    ELSE 'Open HospiBrain to view this update.'\r\n  END;\r\n\r\n  FOR v_recipient IN\r\n    SELECT DISTINCT profile.id AS profile_id\r\n    FROM public.profiles AS profile\r\n    WHERE profile.company_id = v_outbox.company_id\r\n      AND profile.status = 'active'\r\n      AND profile.role IN ('employee', 'manager', 'owner', 'super_admin')\r\n      AND (\r\n        (\r\n          v_outbox.event_type LIKE 'task.%'\r\n          AND v_outbox.event_type \u003c\u003e 'task.due_30m'\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.tasks AS task\r\n            WHERE task.id = v_outbox.aggregate_id\r\n              AND task.company_id = v_outbox.company_id\r\n              AND task.assigned_employee_id = profile.employee_id\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type = 'task.due_30m'\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.tasks AS task\r\n            JOIN public.employees AS employee\r\n              ON employee.id = task.assigned_employee_id\r\n              AND employee.company_id = task.company_id\r\n              AND employee.status = 'active'\r\n            WHERE task.id = v_outbox.aggregate_id\r\n              AND task.company_id = v_outbox.company_id\r\n              AND profile.employee_id = employee.id\r\n              AND profile.company_id = employee.company_id\r\n              AND task.status IN ('pending', 'in_progress')\r\n              AND task.due_at IS NOT NULL\r\n              AND clock_timestamp() \u003c task.due_at\r\n              AND v_outbox.event_key =\r\n                'task.due_30m:' || task.id::text || ':' ||\r\n                to_char(\r\n                  task.due_at AT TIME ZONE 'UTC',\r\n                  'YYYY-MM-DD\"T\"HH24:MI:SS.US\"Z\"'\r\n                )\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type = 'announcement.published'\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.announcements AS announcement\r\n            WHERE announcement.id = v_outbox.aggregate_id\r\n              AND announcement.company_id = v_outbox.company_id\r\n              AND (\r\n                announcement.expires_at IS NULL\r\n                OR announcement.expires_at \u003e clock_timestamp()\r\n              )\r\n              AND announcement.created_by_id \u003c\u003e profile.id\r\n              AND (\r\n                coalesce(cardinality(announcement.target_roles), 0) = 0\r\n                OR profile.role = ANY (announcement.target_roles)\r\n              )\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type = 'maintenance.assigned'\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.maintenance_tickets AS maintenance\r\n            WHERE maintenance.id = v_outbox.aggregate_id\r\n              AND maintenance.company_id = v_outbox.company_id\r\n              AND maintenance.assigned_to_id = profile.employee_id\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type IN (\r\n            'maintenance.urgent_created',\r\n            'maintenance.updated',\r\n            'incident.reported',\r\n            'incident.updated',\r\n            'evidence.needs_human_review',\r\n            'evidence.verification_failed'\r\n          )\r\n          AND profile.role IN ('manager', 'owner', 'super_admin')\r\n        )\r\n        OR (\r\n          v_outbox.event_type = 'evidence.submitted'\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.task_evidence AS evidence\r\n            JOIN public.tasks AS task\r\n              ON task.id = evidence.task_id\r\n              AND task.company_id = evidence.company_id\r\n            WHERE evidence.id = v_outbox.aggregate_id\r\n              AND evidence.company_id = v_outbox.company_id\r\n              AND task.assigned_employee_id = profile.employee_id\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type IN (\r\n            'evidence.human_approved',\r\n            'evidence.human_rejected'\r\n          )\r\n          AND EXISTS (\r\n            SELECT 1\r\n            FROM public.task_evidence AS evidence\r\n            JOIN public.tasks AS task\r\n              ON task.id = evidence.task_id\r\n              AND task.company_id = evidence.company_id\r\n            WHERE evidence.id = v_outbox.aggregate_id\r\n              AND evidence.company_id = v_outbox.company_id\r\n              AND (\r\n                evidence.submitted_by_profile_id = profile.id\r\n                OR task.assigned_employee_id = profile.employee_id\r\n              )\r\n          )\r\n        )\r\n        OR (\r\n          v_outbox.event_type = 'system.account_ready'\r\n          AND profile.id = v_outbox.aggregate_id\r\n        )\r\n      )\r\n  LOOP\r\n    SELECT\r\n      CASE v_category\r\n        WHEN 'tasks' THEN CASE\r\n          WHEN v_outbox.event_type IN ('task.assigned', 'task.reassigned')\r\n            THEN coalesce(preference.task_assignments, true)\r\n          WHEN v_outbox.event_type = 'task.due_30m'\r\n            THEN coalesce(preference.due_reminders, true)\r\n          ELSE coalesce(preference.task_updates, true)\r\n        END\r\n        WHEN 'announcements' THEN coalesce(preference.announcements, true)\r\n        WHEN 'maintenance' THEN coalesce(preference.maintenance, true)\r\n        WHEN 'incidents' THEN coalesce(preference.incidents, true)\r\n        WHEN 'evidence' THEN coalesce(preference.evidence_review, true)\r\n        ELSE true\r\n      END,\r\n      coalesce(preference.in_app_enabled, true)\r\n    INTO v_allowed, v_in_app\r\n    FROM public.profiles AS profile\r\n    LEFT JOIN public.notification_preferences AS preference\r\n      ON preference.profile_id = profile.id\r\n    WHERE profile.id = v_recipient.profile_id;\r\n\r\n    IF v_allowed THEN\r\n      INSERT INTO public.notifications (\r\n        company_id,\r\n        recipient_id,\r\n        title,\r\n        message,\r\n        notification_type,\r\n        related_entity_type,\r\n        related_entity_id,\r\n        status,\r\n        category,\r\n        route,\r\n        event_key,\r\n        is_read\r\n      ) VALUES (\r\n        v_outbox.company_id,\r\n        v_recipient.profile_id,\r\n        v_title,\r\n        v_message,\r\n        v_outbox.event_type,\r\n        v_outbox.aggregate_type,\r\n        v_outbox.aggregate_id,\r\n        CASE WHEN v_in_app THEN 'unread' ELSE 'archived' END,\r\n        v_category,\r\n        v_route,\r\n        v_outbox.event_key,\r\n        NOT v_in_app\r\n      )\r\n      ON CONFLICT (recipient_id, event_key)\r\n        WHERE event_key IS NOT NULL\r\n        DO NOTHING\r\n      RETURNING id INTO v_notification_id;\r\n\r\n      IF v_notification_id IS NOT NULL THEN\r\n        v_count := v_count + 1;\r\n\r\n        INSERT INTO public.notification_audit (\r\n          company_id,\r\n          notification_id,\r\n          profile_id,\r\n          event_type\r\n        ) VALUES\r\n          (\r\n            v_outbox.company_id,\r\n            v_notification_id,\r\n            v_recipient.profile_id,\r\n            'recipient.resolved'\r\n          ),\r\n          (\r\n            v_outbox.company_id,\r\n            v_notification_id,\r\n            v_recipient.profile_id,\r\n            'notification.created'\r\n          );\r\n\r\n        INSERT INTO public.notification_delivery_jobs (\r\n          notification_id,\r\n          subscription_id,\r\n          company_id\r\n        )\r\n        SELECT\r\n          v_notification_id,\r\n          subscription.id,\r\n          v_outbox.company_id\r\n        FROM public.push_subscriptions AS subscription\r\n        JOIN public.notification_preferences AS preference\r\n          ON preference.profile_id = subscription.profile_id\r\n        WHERE subscription.profile_id = v_recipient.profile_id\r\n          AND subscription.company_id = v_outbox.company_id\r\n          AND subscription.revoked_at IS NULL\r\n          AND preference.push_enabled\r\n          AND NOT (\r\n            preference.quiet_hours_enabled\r\n            AND CASE\r\n              WHEN preference.quiet_hours_start \u003c= preference.quiet_hours_end\r\n                THEN\r\n                  (clock_timestamp() AT TIME ZONE preference.timezone)::time\r\n                    \u003e= preference.quiet_hours_start\r\n                  AND\r\n                  (clock_timestamp() AT TIME ZONE preference.timezone)::time\r\n                    \u003c preference.quiet_hours_end\r\n              ELSE\r\n                (clock_timestamp() AT TIME ZONE preference.timezone)::time\r\n                  \u003e= preference.quiet_hours_start\r\n                OR\r\n                (clock_timestamp() AT TIME ZONE preference.timezone)::time\r\n                  \u003c preference.quiet_hours_end\r\n            END\r\n          )\r\n        ON CONFLICT (notification_id, subscription_id) DO NOTHING;\r\n\r\n        IF FOUND THEN\r\n          INSERT INTO public.notification_audit (\r\n            company_id,\r\n            notification_id,\r\n            profile_id,\r\n            event_type\r\n          ) VALUES (\r\n            v_outbox.company_id,\r\n            v_notification_id,\r\n            v_recipient.profile_id,\r\n            'push.queued'\r\n          );\r\n        END IF;\r\n      END IF;\r\n    END IF;\r\n\r\n    v_notification_id := NULL;\r\n  END LOOP;\r\n\r\n  IF v_count = 0 THEN\r\n    INSERT INTO public.notification_audit (\r\n      company_id,\r\n      event_type,\r\n      safe_details\r\n    ) VALUES (\r\n      v_outbox.company_id,\r\n      'recipient.unresolved',\r\n      jsonb_build_object('eventType', v_outbox.event_type)\r\n    );\r\n  END IF;\r\n\r\n  UPDATE public.notification_outbox AS outbox\r\n  SET\r\n    status = 'completed',\r\n    lease_token = NULL,\r\n    lease_expires_at = NULL,\r\n    completed_at = clock_timestamp()\r\n  WHERE outbox.id = v_outbox.id;\r\n\r\n  RETURN v_count;\r\nEND\r\n$function$\n",
+          "identity_arguments": "p_outbox_id uuid, p_lease_token uuid",
+          "language": "plpgsql",
+          "name": "materialize_notification_outbox",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "54416d49efa646d47b0f909f2257d6a4f978e4a42025105504e8bde077994022",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.prepare_device_gateway_repair(p_gateway_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_gateway public.device_gateways%ROWTYPE;\r\nBEGIN\r\n  SELECT * INTO v_profile FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('owner','super_admin') THEN RAISE EXCEPTION 'AGENT_REPAIR_FORBIDDEN'; END IF;\r\n  SELECT * INTO v_gateway FROM public.device_gateways g\r\n    WHERE g.id=p_gateway_id AND g.company_id=v_profile.company_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.location_id IS NULL OR NOT EXISTS(\r\n    SELECT 1 FROM public.locations l WHERE l.id=v_gateway.location_id AND l.company_id=v_profile.company_id AND l.status='active'\r\n  ) THEN RAISE EXCEPTION 'AGENT_NOT_FOUND'; END IF;\r\n  UPDATE public.device_agent_credentials SET revoked_at=coalesce(revoked_at,clock_timestamp()),revoked_by=coalesce(revoked_by,v_profile.id)\r\n    WHERE gateway_id=v_gateway.id AND revoked_at IS NULL;\r\n  UPDATE public.device_pairing_requests SET revoked_at=clock_timestamp()\r\n    WHERE gateway_id=v_gateway.id AND used_at IS NULL AND revoked_at IS NULL;\r\n  UPDATE public.device_gateway_capabilities SET approved=false,revoked_at=coalesce(revoked_at,clock_timestamp())\r\n    WHERE gateway_id=v_gateway.id AND (approved OR revoked_at IS NULL);\r\n  UPDATE public.device_gateways SET status='unpaired',last_seen_at=NULL,paired_at=NULL,\r\n    agent_version=NULL,platform=NULL,os_version=NULL,hostname_label=NULL WHERE id=v_gateway.id;\r\n  INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,actor_profile_id,event_type,outcome_code)\r\n  VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,v_profile.id,'agent.repair_prepared','PREPARED');\r\n  RETURN true;\r\nEND $function$\n",
+          "identity_arguments": "p_gateway_id uuid",
+          "language": "plpgsql",
+          "name": "prepare_device_gateway_repair",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "9370ad1f4c949b2701f701cf76173a1f6db6a036f3008fc6e64f0c2d327a89e2",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.prepare_task_evidence_upload(p_task_id uuid, p_location_id uuid, p_source_type text, p_original_mime_type text, p_original_size_bytes bigint, p_original_sha256 text, p_idempotency_key uuid)\n RETURNS TABLE(evidence_id uuid, storage_path text, upload_status text, is_duplicate boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE\r\n  v_profile public.profiles%ROWTYPE;\r\n  v_task public.tasks%ROWTYPE;\r\n  v_existing public.task_evidence%ROWTYPE;\r\n  v_evidence_id uuid := gen_random_uuid();\r\n  v_extension text;\r\n  v_path text;\r\nBEGIN\r\n  IF auth.uid() IS NULL THEN RAISE EXCEPTION 'UNAUTHENTICATED'; END IF;\r\n\r\n  SELECT pr.* INTO v_profile\r\n    FROM public.profiles AS pr\r\n   WHERE pr.id = auth.uid() AND pr.status = 'active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('employee', 'manager', 'owner', 'super_admin') OR v_profile.company_id IS NULL THEN\r\n    RAISE EXCEPTION 'ACCOUNT_NOT_PROVISIONED';\r\n  END IF;\r\n\r\n  SELECT t.* INTO v_task\r\n    FROM public.tasks AS t\r\n   WHERE t.id = p_task_id AND t.company_id = v_profile.company_id;\r\n  IF NOT FOUND THEN RAISE EXCEPTION 'TASK_NOT_AVAILABLE'; END IF;\r\n\r\n  IF v_profile.role = 'employee' AND (\r\n    v_profile.employee_id IS NULL OR v_task.assigned_employee_id IS DISTINCT FROM v_profile.employee_id\r\n  ) THEN RAISE EXCEPTION 'TASK_NOT_ASSIGNED'; END IF;\r\n\r\n  IF v_profile.employee_id IS NOT NULL AND NOT EXISTS (\r\n    SELECT 1 FROM public.employees AS emp\r\n     WHERE emp.id = v_profile.employee_id AND emp.company_id = v_profile.company_id\r\n  ) THEN RAISE EXCEPTION 'INVALID_EMPLOYEE_LINK'; END IF;\r\n\r\n  IF p_location_id IS NOT NULL AND NOT EXISTS (\r\n    SELECT 1 FROM public.locations AS loc\r\n     WHERE loc.id = p_location_id AND loc.company_id = v_profile.company_id\r\n  ) THEN RAISE EXCEPTION 'LOCATION_NOT_AVAILABLE'; END IF;\r\n\r\n  IF p_source_type NOT IN ('mobile_camera', 'gallery_upload')\r\n     OR p_original_mime_type NOT IN ('image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif')\r\n     OR p_original_size_bytes \u003c= 0 OR p_original_size_bytes \u003e 20971520\r\n     OR p_original_sha256 !~ '^[0-9a-f]{64}$' THEN\r\n    RAISE EXCEPTION 'INVALID_EVIDENCE_METADATA';\r\n  END IF;\r\n\r\n  SELECT ev.* INTO v_existing\r\n    FROM public.task_evidence AS ev\r\n   WHERE ev.submitted_by_profile_id = auth.uid() AND ev.idempotency_key = p_idempotency_key;\r\n  IF FOUND THEN\r\n    IF v_existing.task_id \u003c\u003e p_task_id OR v_existing.location_id IS DISTINCT FROM p_location_id\r\n       OR v_existing.source_type \u003c\u003e p_source_type OR v_existing.original_mime_type \u003c\u003e p_original_mime_type\r\n       OR v_existing.original_size_bytes \u003c\u003e p_original_size_bytes OR v_existing.original_sha256 \u003c\u003e lower(p_original_sha256) THEN\r\n      RAISE EXCEPTION 'IDEMPOTENCY_CONFLICT';\r\n    END IF;\r\n    RETURN QUERY SELECT v_existing.id, v_existing.original_storage_path, v_existing.status, true;\r\n    RETURN;\r\n  END IF;\r\n\r\n  SELECT ev.* INTO v_existing\r\n    FROM public.task_evidence AS ev\r\n   WHERE ev.company_id = v_profile.company_id AND ev.task_id = p_task_id\r\n     AND ev.original_sha256 = lower(p_original_sha256)\r\n     AND ev.submitted_by_profile_id = auth.uid();\r\n  IF FOUND THEN\r\n    RETURN QUERY SELECT v_existing.id, v_existing.original_storage_path, v_existing.status, true;\r\n    RETURN;\r\n  END IF;\r\n\r\n  v_extension := CASE p_original_mime_type\r\n    WHEN 'image/jpeg' THEN 'jpg' WHEN 'image/png' THEN 'png' WHEN 'image/webp' THEN 'webp'\r\n    WHEN 'image/heic' THEN 'heic' WHEN 'image/heif' THEN 'heif' END;\r\n  v_path := v_profile.company_id::text || '/' || p_task_id::text || '/' || v_evidence_id::text || '/original.' || v_extension;\r\n\r\n  INSERT INTO public.task_evidence (\r\n    id, company_id, task_id, location_id, submitted_by_profile_id, submitted_by_employee_id,\r\n    source_type, original_storage_path, original_mime_type, original_size_bytes,\r\n    original_sha256, idempotency_key\r\n  ) VALUES (\r\n    v_evidence_id, v_profile.company_id, p_task_id, p_location_id, v_profile.id, v_profile.employee_id,\r\n    p_source_type, v_path, p_original_mime_type, p_original_size_bytes,\r\n    lower(p_original_sha256), p_idempotency_key\r\n  );\r\n  INSERT INTO public.task_evidence_audit (evidence_id, company_id, actor_profile_id, event_type)\r\n  VALUES (v_evidence_id, v_profile.company_id, v_profile.id, 'upload.prepared');\r\n\r\n  RETURN QUERY SELECT v_evidence_id, v_path, 'pending_upload'::text, false;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_task_id uuid, p_location_id uuid, p_source_type text, p_original_mime_type text, p_original_size_bytes bigint, p_original_sha256 text, p_idempotency_key uuid",
+          "language": "plpgsql",
+          "name": "prepare_task_evidence_upload",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "99d92f35b9e859670dc7557e066ba13f1230fb38bc2194341e8e23298b17f895",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.reject_brain_action_proposal(p_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nbegin\r\n  update public.brain_action_proposals set status='expired'\r\n   where id=p_id and actor_id=p_actor_id and profile_id=p_profile_id and tenant_id=p_tenant_id and status='pending' and expires_at \u003c= now();\r\n  update public.brain_action_proposals set status='rejected', rejected_at=now()\r\n   where id=p_id and actor_id=p_actor_id and profile_id=p_profile_id and tenant_id=p_tenant_id and status='pending' and expires_at \u003e now();\r\n  if found then return 'rejected'; end if;\r\n  if exists(select 1 from public.brain_action_proposals where id=p_id and actor_id=p_actor_id and profile_id=p_profile_id and tenant_id=p_tenant_id) then return 'invalid_status'; end if;\r\n  return 'not_found';\r\nend $function$\n",
+          "identity_arguments": "p_id uuid, p_actor_id uuid, p_profile_id uuid, p_tenant_id uuid",
+          "language": "plpgsql",
+          "name": "reject_brain_action_proposal",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "4369510a89554f3cc055dbcacac8d3f9498371063fa3487de76892056d3404a3",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.resolve_device_agent_rate_identity(p_public_agent_id uuid, p_credential_hash text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_credential_id uuid;\r\nBEGIN\r\n  IF p_credential_hash !~ '^[0-9a-f]{64}$' THEN RETURN NULL; END IF;\r\n  SELECT c.id INTO v_credential_id FROM public.device_agent_credentials c\r\n  WHERE c.public_agent_id=p_public_agent_id AND c.credential_hash=p_credential_hash AND c.revoked_at IS NULL;\r\n  RETURN v_credential_id;\r\nEND $function$\n",
+          "identity_arguments": "p_public_agent_id uuid, p_credential_hash text",
+          "language": "plpgsql",
+          "name": "resolve_device_agent_rate_identity",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "52ad645e6dd3f392c24fea93185ad27cdef38a85e344a4631736e52260803810",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.review_task_evidence(p_evidence_id uuid, p_decision text, p_note text, p_confirm boolean)\n RETURNS TABLE(evidence_id uuid, evidence_status text, task_status_unchanged boolean)\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_ev public.task_evidence%ROWTYPE; v_task_status text;\r\nBEGIN\r\n IF p_confirm IS NOT TRUE OR p_decision NOT IN ('approved','rejected') OR length(coalesce(p_note,''))\u003e1000 THEN RAISE EXCEPTION 'INVALID_REVIEW'; END IF;\r\n SELECT pr.* INTO v_profile FROM public.profiles pr WHERE pr.id=auth.uid() AND pr.status='active' AND pr.role IN ('manager','owner','super_admin');\r\n IF NOT FOUND THEN RAISE EXCEPTION 'REVIEW_NOT_AUTHORIZED'; END IF;\r\n SELECT ev.* INTO v_ev FROM public.task_evidence ev WHERE ev.id=p_evidence_id AND ev.company_id=v_profile.company_id AND ev.status IN ('ai_verified','ai_rejected','needs_human_review','verification_failed') FOR UPDATE;\r\n IF NOT FOUND THEN RAISE EXCEPTION 'EVIDENCE_NOT_REVIEWABLE'; END IF;\r\n SELECT t.status INTO v_task_status FROM public.tasks t WHERE t.id=v_ev.task_id AND t.company_id=v_ev.company_id;\r\n INSERT INTO public.task_evidence_reviews(evidence_id,company_id,reviewer_profile_id,decision,note) VALUES(v_ev.id,v_ev.company_id,v_profile.id,p_decision,nullif(btrim(p_note),''));\r\n UPDATE public.task_evidence SET status=CASE p_decision WHEN 'approved' THEN 'human_approved' ELSE 'human_rejected' END WHERE id=v_ev.id;\r\n INSERT INTO public.task_evidence_audit(evidence_id,company_id,actor_profile_id,event_type,safe_details) VALUES(v_ev.id,v_ev.company_id,v_profile.id,CASE p_decision WHEN 'approved' THEN 'review.approved' ELSE 'review.rejected' END,jsonb_build_object('has_note',nullif(btrim(p_note),'') IS NOT NULL));\r\n RETURN QUERY SELECT v_ev.id,(SELECT ev.status FROM public.task_evidence ev WHERE ev.id=v_ev.id),(SELECT t.status=v_task_status FROM public.tasks t WHERE t.id=v_ev.task_id);\r\nEND $function$\n",
+          "identity_arguments": "p_evidence_id uuid, p_decision text, p_note text, p_confirm boolean",
+          "language": "plpgsql",
+          "name": "review_task_evidence",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "f29c53c571336f9c04288cbeba24072e20f904ef37b247b45dfa37abbc5a974d",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.revoke_device_agent(p_gateway_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_gateway public.device_gateways%ROWTYPE; v_count integer;\r\nBEGIN\r\n  SELECT * INTO v_profile FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('owner','super_admin') THEN RAISE EXCEPTION 'AGENT_REVOCATION_FORBIDDEN'; END IF;\r\n  SELECT * INTO v_gateway FROM public.device_gateways g WHERE g.id=p_gateway_id AND g.company_id=v_profile.company_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.location_id IS NULL THEN RAISE EXCEPTION 'AGENT_NOT_FOUND'; END IF;\r\n  UPDATE public.device_agent_credentials SET revoked_at=clock_timestamp(),revoked_by=v_profile.id WHERE gateway_id=v_gateway.id AND revoked_at IS NULL;\r\n  GET DIAGNOSTICS v_count=ROW_COUNT;\r\n  UPDATE public.device_gateway_capabilities SET approved=false,revoked_at=clock_timestamp() WHERE gateway_id=v_gateway.id AND approved;\r\n  UPDATE public.device_gateways SET status='disabled' WHERE id=v_gateway.id;\r\n  INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,actor_profile_id,event_type,outcome_code)\r\n  VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,v_profile.id,'agent.revoked',CASE WHEN v_count\u003e0 THEN 'REVOKED' ELSE 'ALREADY_REVOKED' END);\r\n  RETURN v_count\u003e0;\r\nEND $function$\n",
+          "identity_arguments": "p_gateway_id uuid",
+          "language": "plpgsql",
+          "name": "revoke_device_agent",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "a5e3633115edd8893389ebb1ea5b06043b8595c986eeefa62f915389bb3d1286",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.revoke_device_pairing_request(p_gateway_id uuid)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_profile public.profiles%ROWTYPE; v_gateway public.device_gateways%ROWTYPE; v_count integer;\r\nBEGIN\r\n  SELECT * INTO v_profile FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';\r\n  IF NOT FOUND OR v_profile.role NOT IN ('owner','super_admin') THEN RAISE EXCEPTION 'PAIRING_FORBIDDEN'; END IF;\r\n  SELECT * INTO v_gateway FROM public.device_gateways g WHERE g.id=p_gateway_id AND g.company_id=v_profile.company_id FOR UPDATE;\r\n  IF NOT FOUND OR v_gateway.location_id IS NULL THEN RAISE EXCEPTION 'PAIRING_GATEWAY_UNAVAILABLE'; END IF;\r\n  UPDATE public.device_pairing_requests SET revoked_at=clock_timestamp()\r\n    WHERE gateway_id=v_gateway.id AND used_at IS NULL AND revoked_at IS NULL;\r\n  GET DIAGNOSTICS v_count=ROW_COUNT;\r\n  IF v_count\u003e0 THEN\r\n    UPDATE public.device_gateways SET status='unpaired' WHERE id=v_gateway.id AND status='pairing';\r\n    INSERT INTO public.device_agent_audit(company_id,location_id,gateway_id,actor_profile_id,event_type,outcome_code)\r\n    VALUES(v_gateway.company_id,v_gateway.location_id,v_gateway.id,v_profile.id,'pairing.revoked','REVOKED');\r\n  END IF;\r\n  RETURN v_count\u003e0;\r\nEND $function$\n",
+          "identity_arguments": "p_gateway_id uuid",
+          "language": "plpgsql",
+          "name": "revoke_device_pairing_request",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "a7c7c7bb9b2e59a8d3edeef12b7947daa52c5eb9e04daf442d68432940a9d3a9",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.revoke_my_push_subscription(p_endpoint text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_company uuid;BEGIN SELECT p.company_id INTO v_company FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';IF NOT FOUND THEN RAISE EXCEPTION 'NOT_AUTHORIZED';END IF;UPDATE public.push_subscriptions s SET revoked_at=clock_timestamp() WHERE s.profile_id=auth.uid() AND s.company_id=v_company AND s.endpoint=p_endpoint;INSERT INTO public.notification_audit(company_id,profile_id,event_type) VALUES(v_company,auth.uid(),'subscription.revoked');END $function$\n",
+          "identity_arguments": "p_endpoint text",
+          "language": "plpgsql",
+          "name": "revoke_my_push_subscription",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "c0324e065e58f0ae86c25f77f06f02810ba55c1528169f8374d361734d9af292",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.save_my_notification_preferences(p_preferences jsonb)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE p public.profiles%ROWTYPE;v_timezone text:=coalesce(nullif(p_preferences-\u003e\u003e'timezone',''),'UTC');BEGIN SELECT pr.* INTO p FROM public.profiles pr WHERE pr.id=auth.uid() AND pr.status='active';IF NOT FOUND THEN RAISE EXCEPTION 'NOT_AUTHORIZED';END IF;IF NOT EXISTS(SELECT 1 FROM pg_catalog.pg_timezone_names z WHERE z.name=v_timezone) THEN RAISE EXCEPTION 'INVALID_TIMEZONE';END IF;\r\n INSERT INTO public.notification_preferences(profile_id,company_id,in_app_enabled,push_enabled,task_assignments,task_updates,due_reminders,announcements,maintenance,incidents,evidence_review,quiet_hours_enabled,quiet_hours_start,quiet_hours_end,timezone)\r\n VALUES(p.id,p.company_id,coalesce((p_preferences-\u003e\u003e'inAppEnabled')::boolean,true),coalesce((p_preferences-\u003e\u003e'pushEnabled')::boolean,false),coalesce((p_preferences-\u003e\u003e'taskAssignments')::boolean,true),coalesce((p_preferences-\u003e\u003e'taskUpdates')::boolean,true),coalesce((p_preferences-\u003e\u003e'dueReminders')::boolean,true),coalesce((p_preferences-\u003e\u003e'announcements')::boolean,true),coalesce((p_preferences-\u003e\u003e'maintenance')::boolean,true),coalesce((p_preferences-\u003e\u003e'incidents')::boolean,true),coalesce((p_preferences-\u003e\u003e'evidenceReview')::boolean,true),coalesce((p_preferences-\u003e\u003e'quietHoursEnabled')::boolean,false),(p_preferences-\u003e\u003e'quietHoursStart')::time,(p_preferences-\u003e\u003e'quietHoursEnd')::time,v_timezone)\r\n ON CONFLICT(profile_id) DO UPDATE SET in_app_enabled=excluded.in_app_enabled,push_enabled=excluded.push_enabled,task_assignments=excluded.task_assignments,task_updates=excluded.task_updates,due_reminders=excluded.due_reminders,announcements=excluded.announcements,maintenance=excluded.maintenance,incidents=excluded.incidents,evidence_review=excluded.evidence_review,quiet_hours_enabled=excluded.quiet_hours_enabled,quiet_hours_start=excluded.quiet_hours_start,quiet_hours_end=excluded.quiet_hours_end,timezone=excluded.timezone,updated_at=clock_timestamp();END $function$\n",
+          "identity_arguments": "p_preferences jsonb",
+          "language": "plpgsql",
+          "name": "save_my_notification_preferences",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": true,
+          "definition_sha256": "0fe210c6d69102b7199de3f33e6f3e8fb411bc92270bcb5a6d343f8a5f04393f",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.save_my_push_subscription(p_endpoint text, p_p256dh text, p_auth text, p_device text)\n RETURNS uuid\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE p public.profiles%ROWTYPE;v_id uuid;BEGIN SELECT pr.* INTO p FROM public.profiles pr WHERE pr.id=auth.uid() AND pr.status='active';IF NOT FOUND OR length(p_endpoint)\u003e2048 OR length(p_p256dh)\u003e512 OR length(p_auth)\u003e512 OR p_endpoint !~ '^[REDACTED_URL_OR_CONNECTION_STRING]\\.googleapis\\.com|updates\\.push\\.services\\.mozilla\\.com|web\\.push\\.apple\\.com|[^/]+\\.notify\\.windows\\.com)/' THEN RAISE EXCEPTION 'INVALID_SUBSCRIPTION';END IF;\r\n INSERT INTO public.push_subscriptions(company_id,profile_id,endpoint,p256dh,auth_key,user_agent_family) VALUES(p.company_id,p.id,p_endpoint,p_p256dh,p_auth,left(p_device,80)) ON CONFLICT(profile_id,endpoint) DO UPDATE SET p256dh=excluded.p256dh,auth_key=excluded.auth_key,user_agent_family=excluded.user_agent_family,revoked_at=NULL,last_seen_at=clock_timestamp() RETURNING id INTO v_id;\r\n INSERT INTO public.notification_preferences(profile_id,company_id,push_enabled) VALUES(p.id,p.company_id,true) ON CONFLICT(profile_id) DO UPDATE SET push_enabled=true,updated_at=clock_timestamp();INSERT INTO public.notification_audit(company_id,profile_id,event_type) VALUES(p.company_id,p.id,'subscription.created');RETURN v_id;END $function$\n",
+          "identity_arguments": "p_endpoint text, p_p256dh text, p_auth text, p_device text",
+          "language": "plpgsql",
+          "name": "save_my_push_subscription",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "0237be456dea356db67d69e0868c4cf90c2a274aff4d59eb51895d0f0c594288",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.update_my_notification(p_notification_id uuid, p_action text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\nDECLARE v_company uuid;\r\nBEGIN SELECT p.company_id INTO v_company FROM public.profiles p WHERE p.id=auth.uid() AND p.status='active';IF NOT FOUND THEN RAISE EXCEPTION 'NOT_AUTHORIZED';END IF;\r\n UPDATE public.notifications n SET status=CASE p_action WHEN 'read' THEN 'read' WHEN 'archive' THEN 'archived' ELSE n.status END,is_read=CASE WHEN p_action IN('read','archive') THEN true ELSE n.is_read END,\r\n read_at=CASE WHEN p_action IN('read','archive') THEN coalesce(n.read_at,clock_timestamp()) ELSE n.read_at END,archived_at=CASE WHEN p_action='archive' THEN clock_timestamp() ELSE n.archived_at END,updated_at=clock_timestamp()\r\n WHERE n.id=p_notification_id AND n.recipient_id=auth.uid() AND n.company_id=v_company;IF NOT FOUND OR p_action NOT IN('read','archive') THEN RAISE EXCEPTION 'NOT_AVAILABLE';END IF;\r\n INSERT INTO public.notification_audit(company_id,notification_id,profile_id,event_type) VALUES(v_company,p_notification_id,auth.uid(),CASE p_action WHEN 'read' THEN 'notification.read' ELSE 'notification.archived' END);\r\nEND $function$\n",
+          "identity_arguments": "p_notification_id uuid, p_action text",
+          "language": "plpgsql",
+          "name": "update_my_notification",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "3eb61df438339e81b4b87704766dae84b916c130aca0332df817ac6f7771d869",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.update_my_preferred_language(p_language text)\n RETURNS text\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'public', 'pg_temp'\nAS $function$\r\nDECLARE\r\n  v_language text := lower(btrim(p_language));\r\nBEGIN\r\n  IF auth.uid() IS NULL THEN\r\n    RAISE EXCEPTION 'UNAUTHENTICATED' USING ERRCODE = '42501';\r\n  END IF;\r\n  IF v_language NOT IN ('en', 'ar') THEN\r\n    RAISE EXCEPTION 'INVALID_LANGUAGE' USING ERRCODE = '22023';\r\n  END IF;\r\n\r\n  UPDATE public.profiles AS p\r\n  SET preferred_language = v_language, updated_at = clock_timestamp()\r\n  WHERE p.id = auth.uid() AND p.status = 'active';\r\n\r\n  IF NOT FOUND THEN\r\n    RAISE EXCEPTION 'ACCOUNT_NOT_PROVISIONED' USING ERRCODE = '42501';\r\n  END IF;\r\n  RETURN v_language;\r\nEND;\r\n$function$\n",
+          "identity_arguments": "p_language text",
+          "language": "plpgsql",
+          "name": "update_my_preferred_language",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=public, pg_temp"
+          ],
+          "schema": "public",
+          "search_path": "search_path=public, pg_temp",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "575e45cd4244210b1fe74094763cadbd65e127dfdb2f7272465832dfa42cf0b3",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.update_own_full_name(new_full_name text)\n RETURNS void\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO ''\nAS $function$\r\ndeclare\r\n  user_id uuid;\r\nbegin\r\n  user_id := auth.uid();\r\n  if user_id is null then\r\n    raise exception 'Not authenticated';\r\n  end if;\r\n  \r\n  -- Verify user is active before allowing update\r\n  if not exists(select 1 from public.profiles where id = user_id and status = 'active') then\r\n    raise exception 'User account is not active';\r\n  end if;\r\n  \r\n  -- Update ONLY full_name for the current user\r\n  update public.profiles \r\n  set full_name = new_full_name, updated_at = now()\r\n  where id = user_id;\r\nend;\r\n$function$\n",
+          "identity_arguments": "new_full_name text",
+          "language": "plpgsql",
+          "name": "update_own_full_name",
+          "owner": "postgres",
+          "proconfig": [
+            "search_path=\"\""
+          ],
+          "schema": "public",
+          "search_path": "search_path=\"\"",
+          "security": "definer",
+          "security_definer": true,
+          "volatility": "volatile"
+        },
+        {
+          "definition_redacted": false,
+          "definition_sha256": "9dac957cb01962c0be4eedb8ab9799397b180fca5ed1727f2a28e7ec6ea87bb5",
+          "full_create_or_replace_definition": "CREATE OR REPLACE FUNCTION public.update_timestamp()\n RETURNS trigger\n LANGUAGE plpgsql\nAS $function$\r\nbegin\r\n  new.updated_at = now();\r\n  return new;\r\nend;\r\n$function$\n",
+          "identity_arguments": "",
+          "language": "plpgsql",
+          "name": "update_timestamp",
+          "owner": "postgres",
+          "proconfig": null,
+          "schema": "public",
+          "search_path": null,
+          "security": "invoker",
+          "security_definer": false,
+          "volatility": "volatile"
+        }
+      ],
+      "capture_metadata": {
+        "captured_application_function_count": 70,
+        "captured_at": "2026-07-24T10:15:52.436638+00:00",
+        "captured_cron_job_count": 0,
+        "contains_auth_user_rows": false,
+        "contains_business_rows": false,
+        "contains_storage_objects": false,
+        "contains_unredacted_cron_literals": false,
+        "contains_vault_values": false,
+        "cron_job_count_matches_b0": false,
+        "database_name": "postgres",
+        "database_server_version": "17.6",
+        "expected_application_function_count": 70,
+        "expected_cron_job_count": 2,
+        "expected_project_ref": "jjhtasppfxunbrswgxht",
+        "function_count_matches_b0": true,
+        "phase": "B1",
+        "project_ref_confirmation": "unavailable_from_safe_SQL_Editor_catalog_context",
+        "read_only_design": true,
+        "safely_observed_project_ref": null
+      },
+      "cron_repository_provenance_inputs": [],
+      "known_capture_limitations": [
+        "The project reference is confirmed only when Supabase exposes a safe project-ref setting to the SQL session; otherwise compare the SQL Editor project selector with expected_project_ref.",
+        "SQL Editor catalog access may omit function metadata that the connected database role cannot inspect.",
+        "pg_get_functiondef returns the server-rendered CREATE OR REPLACE definition, which may normalize formatting relative to the originally submitted source.",
+        "A function definition matching a sensitive pattern is redacted in full_create_or_replace_definition. definition_sha256 always fingerprints the original server-rendered definition, and definition_redacted identifies affected rows.",
+        "Function dependencies, table definitions, policies, grants, triggers, extensions, and storage configuration remain authoritative in the separate B0 evidence and are not duplicated here.",
+        "Cron command literals are always redacted. production_command_sha256 fingerprints the exact stored command for offline repository provenance comparison without exposing the command.",
+        "Cron SHA-256 equality proves exact UTF-8 command equality only; a mismatch does not identify which literal, whitespace, URL, Vault reference, or credential-bearing fragment differs.",
+        "Vault values, credentials, tokens, secret-bearing URLs, auth users, business rows, storage objects, cron execution history, and migration history are intentionally excluded.",
+        "No Preview catalog or environment state is captured."
+      ]
+    }
+  }
+]

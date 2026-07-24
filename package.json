@@ -18,6 +18,10 @@
     "test:create-task-application": "node --experimental-strip-types --test __tests__/stage-k6-create-task-application.test.mjs",
     "test:approved-actions": "node --experimental-strip-types --test __tests__/stage-k7-approved-action-registry.test.mjs",
     "test:transactional-outbox": "node --experimental-strip-types --test __tests__/stage-k8-transactional-outbox.test.mjs"
+    ,"agent:pair": "node --experimental-strip-types agent/src/cli.ts pair"
+    ,"agent:start": "node --experimental-strip-types agent/src/cli.ts start"
+    ,"agent:status": "node --experimental-strip-types agent/src/cli.ts status"
+    ,"agent:unpair-local": "node --experimental-strip-types agent/src/cli.ts unpair-local"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.3",

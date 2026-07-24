@@ -1,0 +1,42 @@
+# Phase 2A Preview acceptance evidence
+
+- Preview Supabase project reference:
+- Preview Vercel deployment URL:
+- Reviewer and UTC test window:
+- Confirmed not Production: PASS / FAIL
+- Migration 016 application result:
+- Verification checks passed / failed:
+- Rollback smoke checks passed / failed:
+- Rollback persistence counts:
+- Concurrent first limiter result:
+- Exact boundary / first rejection result:
+- Concurrent pairing one-winner result:
+- Heartbeat/revocation race result:
+- Stable-ID re-pair race result:
+- Temporary concurrency gateway removed: PASS / FAIL
+- Trusted-header normal result:
+- Trusted-header spoof comparison result:
+- Windows version:
+- Dedicated Windows account confirmed:
+- DPAPI round-trip after restart: PASS / FAIL
+- Directory ACL: PASS / FAIL
+- State-file ACL: PASS / FAIL
+- Plaintext token scan: PASS / FAIL
+- Hidden pairing input: PASS / FAIL
+- Pairing: PASS / FAIL
+- Heartbeat: PASS / FAIL
+- Revocation and no retry storm: PASS / FAIL
+- Prepare/re-pair with stable identity: PASS / FAIL
+- Old credential remains invalid: PASS / FAIL
+- Local encrypted state removed: PASS / FAIL
+- Owner browser/API: PASS / FAIL
+- Manager browser/API: PASS / FAIL
+- Employee browser/API: PASS / FAIL
+- Super-admin browser/API: PASS / FAIL
+- Cross-company/location isolation: PASS / FAIL
+- Arabic/RTL/mobile: PASS / FAIL
+- Secret/log/database/UI exposure review: PASS / FAIL
+- Hardware/private-network traffic remained absent: PASS / FAIL
+- Remaining observations:
+- Final decision: GO / STOP
+- Approver:

@@ -1,0 +1,40 @@
+[
+  {
+    "b1_function_environment_evidence": {
+      "application_function_definitions": [],
+      "capture_metadata": {
+        "captured_application_function_count": 0,
+        "captured_at": "2026-07-23T15:56:56.412449+00:00",
+        "captured_cron_job_count": 0,
+        "contains_auth_user_rows": false,
+        "contains_business_rows": false,
+        "contains_storage_objects": false,
+        "contains_unredacted_cron_literals": false,
+        "contains_vault_values": false,
+        "cron_job_count_matches_b0": false,
+        "database_name": "postgres",
+        "database_server_version": "17.6",
+        "expected_application_function_count": 70,
+        "expected_cron_job_count": 2,
+        "expected_project_ref": "jjhtasppfxunbrswgxht",
+        "function_count_matches_b0": false,
+        "phase": "B1",
+        "project_ref_confirmation": "unavailable_from_safe_SQL_Editor_catalog_context",
+        "read_only_design": true,
+        "safely_observed_project_ref": null
+      },
+      "cron_repository_provenance_inputs": [],
+      "known_capture_limitations": [
+        "The project reference is confirmed only when Supabase exposes a safe project-ref setting to the SQL session; otherwise compare the SQL Editor project selector with expected_project_ref.",
+        "SQL Editor catalog access may omit function metadata that the connected database role cannot inspect.",
+        "pg_get_functiondef returns the server-rendered CREATE OR REPLACE definition, which may normalize formatting relative to the originally submitted source.",
+        "A function definition matching a sensitive pattern is redacted in full_create_or_replace_definition. definition_sha256 always fingerprints the original server-rendered definition, and definition_redacted identifies affected rows.",
+        "Function dependencies, table definitions, policies, grants, triggers, extensions, and storage configuration remain authoritative in the separate B0 evidence and are not duplicated here.",
+        "Cron command literals are always redacted. production_command_sha256 fingerprints the exact stored command for offline repository provenance comparison without exposing the command.",
+        "Cron SHA-256 equality proves exact UTF-8 command equality only; a mismatch does not identify which literal, whitespace, URL, Vault reference, or credential-bearing fragment differs.",
+        "Vault values, credentials, tokens, secret-bearing URLs, auth users, business rows, storage objects, cron execution history, and migration history are intentionally excluded.",
+        "No Preview catalog or environment state is captured."
+      ]
+    }
+  }
+]

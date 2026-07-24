@@ -70,8 +70,8 @@ test('preview exposes the exact local time and timezone and confirmation never r
 });
 
 test('timed singular creation is atomic and leaves the original date-only K8 RPC unchanged', () => {
-  const sql = read('supabase/migrations/202607220011_create_task_due_at.sql');
-  const oldK8 = read('supabase/migrations/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql');
+  const sql = read('supabase/migration_audit/pre_baseline_20260724/202607220011_create_task_due_at.sql');
+  const oldK8 = read('supabase/migration_audit/pre_baseline_20260724/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql');
   assert.match(sql, /^--[\s\S]*BEGIN;[\s\S]*CREATE FUNCTION public\.create_task_with_outbox_event_due_at/);
   assert.match(sql, /INSERT INTO public\.tasks[\s\S]*INSERT INTO public\.brain_event_outbox/);
   assert.match(sql, /v_proposal_payload->>'due_at'[\s\S]*IS DISTINCT FROM p_due_at/);
@@ -86,7 +86,7 @@ test('N2 eligibility recognizes the newly persisted timed task in its exact 30-m
   const dueAt = new Date('2026-07-22T13:30:00.000Z').getTime();
   const now = new Date('2026-07-22T13:00:00.000Z').getTime();
   assert.equal(now >= dueAt - 30 * 60 * 1000 && now < dueAt, true);
-  const n2 = read('supabase/migrations/202607220010_task_due_30m_notifications.sql');
+  const n2 = read('supabase/migration_audit/pre_baseline_20260724/202607220010_task_due_30m_notifications.sql');
   assert.match(n2, /v_database_now >= task\.due_at - interval '30 minutes'/);
   assert.match(n2, /v_database_now < task\.due_at/);
 });

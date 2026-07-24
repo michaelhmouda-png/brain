@@ -1,0 +1,106 @@
+{
+  "exception_record_version": "B3-accepted-1",
+  "accepted_on": "2026-07-24",
+  "baseline_sha256": "debd7618da6d393d8010861e83a18e2c0a9ac208d360569f5e23f789e95f68e2",
+  "normalized_manifest_sha256": "d314eba9cc454048aa635049502710e46df0dc3478b74a6ea17a31c1695990cb",
+  "b3_comparison_sha256": "fc2008b35e44e1251df4f37388443b0176366ecc45bdf1ae5ebdd08fe7a0ead3",
+  "classification": "accepted_environmental_or_physical_layout_differences",
+  "missing_objects": 0,
+  "extra_objects": 0,
+  "accepted_changed_records": 17,
+  "exceptions": [
+    {
+      "id": "historical-dropped-column-physical-ordinals",
+      "classification": "physical_layout",
+      "action": "accepted_without_remediation",
+      "rule": "Do not recreate dropped-column gaps.",
+      "changed_records": 16,
+      "relations": {
+        "public.incident_reports": {
+          "incident_time": {
+            "production_ordinal": 8,
+            "fresh_baseline_ordinal": 7
+          },
+          "reported_by_id": {
+            "production_ordinal": 12,
+            "fresh_baseline_ordinal": 8
+          },
+          "status": {
+            "production_ordinal": 13,
+            "fresh_baseline_ordinal": 9
+          },
+          "created_at": {
+            "production_ordinal": 14,
+            "fresh_baseline_ordinal": 10
+          },
+          "updated_at": {
+            "production_ordinal": 15,
+            "fresh_baseline_ordinal": 11
+          },
+          "location_id": {
+            "production_ordinal": 16,
+            "fresh_baseline_ordinal": 12
+          },
+          "affected_area": {
+            "production_ordinal": 17,
+            "fresh_baseline_ordinal": 13
+          }
+        },
+        "public.maintenance_tickets": {
+          "assigned_to_id": {
+            "production_ordinal": 8,
+            "fresh_baseline_ordinal": 6
+          },
+          "due_date": {
+            "production_ordinal": 9,
+            "fresh_baseline_ordinal": 7
+          },
+          "status": {
+            "production_ordinal": 10,
+            "fresh_baseline_ordinal": 8
+          },
+          "created_by_id": {
+            "production_ordinal": 11,
+            "fresh_baseline_ordinal": 9
+          },
+          "completed_at": {
+            "production_ordinal": 12,
+            "fresh_baseline_ordinal": 10
+          },
+          "completion_notes": {
+            "production_ordinal": 13,
+            "fresh_baseline_ordinal": 11
+          },
+          "created_at": {
+            "production_ordinal": 14,
+            "fresh_baseline_ordinal": 12
+          },
+          "updated_at": {
+            "production_ordinal": 15,
+            "fresh_baseline_ordinal": 13
+          },
+          "location_id": {
+            "production_ordinal": 16,
+            "fresh_baseline_ordinal": 14
+          }
+        }
+      }
+    },
+    {
+      "id": "managed-pg-net-extension-schema-placement",
+      "classification": "managed_environment",
+      "action": "accepted_without_remediation",
+      "rule": "Do not force pg_net into a different managed schema.",
+      "changed_records": 1,
+      "extension": "pg_net",
+      "version": "0.20.4",
+      "production_schema": "extensions",
+      "fresh_managed_schema": "public"
+    }
+  ],
+  "cron": {
+    "scheduling_in_baseline": false,
+    "camera_evidence_command_provenance": "unresolved_exact_byte_mismatch",
+    "command_substituted": false
+  }
+}

@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local Brain Agent credentials/state
+agent/.state/
+.brain-agent/
+brain-agent.json
+
+.b0-capture/
+/supabase/.temp/

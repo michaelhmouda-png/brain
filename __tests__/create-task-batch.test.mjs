@@ -8,7 +8,7 @@ import { localDateTimeToInstant } from '../lib/brain/tasks/batch/task-batch-time
 
 const root=process.cwd();
 const read=(file)=>fs.readFileSync(path.join(root,file),'utf8');
-const migration=read('supabase/migrations/202607210021_create_task_batch.sql');
+const migration=read('supabase/migration_audit/pre_baseline_20260724/202607210021_create_task_batch.sql');
 const route=read('app/api/brain/chat/route.ts');
 const batch=read('lib/brain/tasks/batch/create-task-batch.server.ts');
 const batchTime=read('lib/brain/tasks/batch/task-batch-time.ts');
@@ -63,7 +63,7 @@ test('executor uses only durable proposal correlation and SQL validation remains
   assert.doesNotMatch(batch,/correlation_id: input\.context\.actor\.correlationId/);
   assert.match(migration,/v_item->>'correlation_id'[\s\S]*bap\.correlation_id/);
   assert.match(route,/markProposalFailed\(proposalStore, stored\.id, stored\.payloadHash, 'EXECUTION_FAILED'\)/);
-  assert.match(read('supabase/migrations/202607190001_stage0c_brain_action_proposals.sql'),/status='pending'[\s\S]*return jsonb_build_object\('outcome','invalid_status'\)/);
+  assert.match(read('supabase/migration_audit/pre_baseline_20260724/202607190001_stage0c_brain_action_proposals.sql'),/status='pending'[\s\S]*return jsonb_build_object\('outcome','invalid_status'\)/);
 });
 
 test('trusted canonicalization resolves company employees locations timezone and rejects authority fields',()=>{

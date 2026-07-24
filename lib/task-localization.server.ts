@@ -27,6 +27,39 @@ function records(value: unknown): Record<string, unknown>[] {
     : [];
 }
 
+export type TaskLocalizationBackfillResult = {
+  scanned: number;
+  enqueued: number;
+  alreadyCurrent: number;
+  alreadyQueued: number;
+  unresolved: number;
+};
+
+function safeCount(value: unknown): number | null {
+  const count = typeof value === 'number' ? value : typeof value === 'string' ? Number(value) : NaN;
+  return Number.isSafeInteger(count) && count >= 0 ? count : null;
+}
+
+export async function enqueueLegacyTaskLocalizationBatch(
+  service: SupabaseClient = createSupabaseServer(),
+  limit = 25,
+): Promise<TaskLocalizationBackfillResult> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 50) throw new Error('TASK_LOCALIZATION_BACKFILL_LIMIT_INVALID');
+  const { data, error } = await service.rpc('enqueue_legacy_arabic_task_localizations', { p_limit: limit });
+  if (error) throw new Error('TASK_LOCALIZATION_BACKFILL_FAILED');
+  const result = records(data)[0];
+  if (!result) throw new Error('TASK_LOCALIZATION_BACKFILL_RESULT_INVALID');
+  const counts = {
+    scanned: safeCount(result.scanned),
+    enqueued: safeCount(result.enqueued),
+    alreadyCurrent: safeCount(result.already_current),
+    alreadyQueued: safeCount(result.already_queued),
+    unresolved: safeCount(result.unresolved),
+  };
+  if (Object.values(counts).some((count) => count === null)) throw new Error('TASK_LOCALIZATION_BACKFILL_RESULT_INVALID');
+  return counts as TaskLocalizationBackfillResult;
+}
+
 export async function loadTaskDisplayLocalizations(input: {
   companyId: string;
   language: 'en' | 'ar';

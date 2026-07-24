@@ -25,7 +25,7 @@ test('employee Brain tool allowlist excludes score, analytics and management ope
 });
 
 test('migration preserves RLS and binds Khaled through same-tenant profile employee link', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607210020_phase_ar1_profile_language.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210020_phase_ar1_profile_language.sql', import.meta.url), 'utf8');
   assert.match(sql, /ADD COLUMN preferred_language text NOT NULL DEFAULT 'en'/);
   assert.match(sql, /CHECK \(preferred_language IN \('en', 'ar'\)\)/);
   assert.match(sql, /e\.id = p\.employee_id[\s\S]*e\.company_id = p\.company_id/);

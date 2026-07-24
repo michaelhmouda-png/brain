@@ -3,11 +3,11 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const migrationUrl = new URL(
-  '../supabase/migrations/202607210011_d1_employee_catalog_baseline.sql',
+  '../supabase/migration_audit/pre_baseline_20260724/202607210011_d1_employee_catalog_baseline.sql',
   import.meta.url,
 );
 const k8MigrationUrl = new URL(
-  '../supabase/migrations/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql',
+  '../supabase/migration_audit/pre_baseline_20260724/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql',
   import.meta.url,
 );
 

@@ -4,7 +4,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 const read = (file) => fs.readFileSync(path.join(process.cwd(), file), 'utf8');
-const sql = read('supabase/migrations/202607220012_task_localization_foundation.sql');
+const sql = read('supabase/migration_audit/pre_baseline_20260724/202607220012_task_localization_foundation.sql');
 const api = read('app/api/tasks/route.ts');
 const tasksPage = read('app/dashboard/tasks/page.tsx');
 const evidence = read('components/brain/TaskEvidenceAttachment.tsx');

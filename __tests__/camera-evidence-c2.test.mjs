@@ -6,7 +6,7 @@ import { parsePrepareTaskEvidence, sniffTaskEvidenceMime, TASK_EVIDENCE_MAX_BYTE
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const migration = read('supabase/migrations/202607210005_camera_evidence_c2_task_uploads.sql');
+const migration = read('supabase/migration_audit/pre_baseline_20260724/202607210005_camera_evidence_c2_task_uploads.sql');
 
 test('C2 validates canonical upload metadata and rejects spoofable or oversized input', () => {
   assert.equal(TASK_EVIDENCE_MAX_BYTES, 20 * 1024 * 1024);

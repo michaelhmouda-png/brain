@@ -120,7 +120,7 @@ test('client protocol exposes only opaque proposal display data', async () => {
 });
 
 test('migration locks normal clients out and claims pending atomically', async () => {
-  const sql=await readFile(new URL('../supabase/migrations/202607190001_stage0c_brain_action_proposals.sql',import.meta.url),'utf8');
+  const sql=await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607190001_stage0c_brain_action_proposals.sql',import.meta.url),'utf8');
   assert.match(sql,/revoke all on public\.brain_action_proposals from public, anon, authenticated/i);
   assert.match(sql,/update public\.brain_action_proposals[\s\S]*status='pending'[\s\S]*returning \* into p/i);
   assert.doesNotMatch(sql,/grant .*authenticated/i);

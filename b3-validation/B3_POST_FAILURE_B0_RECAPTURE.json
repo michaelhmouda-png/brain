@@ -1,0 +1,143 @@
+[
+  {
+    "production_catalog_evidence": {
+      "application_publication_membership": [],
+      "application_schemas": [
+        {
+          "owner": "pg_database_owner",
+          "schema": "public"
+        }
+      ],
+      "capture_metadata": {
+        "captured_at": "2026-07-23T15:56:52.081607+00:00",
+        "contains_auth_user_rows": false,
+        "contains_business_rows": false,
+        "contains_uploaded_objects": false,
+        "contains_vault_values": false,
+        "cron_redaction_policy": "Every single-quoted cron command literal is replaced before JSON assembly; an additional evidence-wide redaction pass removes URL, bearer, Vault-reference, credential-assignment, JWT-like, and long-hex patterns.",
+        "database_name": "postgres",
+        "database_server_version": "17.6",
+        "expected_project_ref": "jjhtasppfxunbrswgxht",
+        "phase": "B0",
+        "project_ref_confirmation": "unavailable_from_safe_SQL_Editor_catalog_context",
+        "read_only_design": true,
+        "safely_observed_project_ref": null
+      },
+      "columns": [],
+      "constraints": [],
+      "cron_jobs": [],
+      "custom_auth_users_triggers_and_functions": [],
+      "extensions": [
+        {
+          "name": "pg_stat_statements",
+          "relocatable": true,
+          "schema": "extensions",
+          "version": "1.11"
+        },
+        {
+          "name": "pgcrypto",
+          "relocatable": true,
+          "schema": "extensions",
+          "version": "1.3"
+        },
+        {
+          "name": "plpgsql",
+          "relocatable": false,
+          "schema": "pg_catalog",
+          "version": "1.0"
+        },
+        {
+          "name": "supabase_vault",
+          "relocatable": false,
+          "schema": "vault",
+          "version": "0.3.1"
+        },
+        {
+          "name": "uuid-ossp",
+          "relocatable": true,
+          "schema": "extensions",
+          "version": "1.1"
+        }
+      ],
+      "function_execute_grants": [],
+      "functions": [],
+      "indexes": [],
+      "known_capture_limitations": [
+        "The project reference is confirmed only when Supabase exposes a safe project-ref setting to the SQL session; otherwise compare the SQL Editor project selector with expected_project_ref.",
+        "SQL Editor catalog access may omit objects or ACL details that the connected database role cannot inspect.",
+        "Managed Supabase platform configuration outside PostgreSQL catalogs is not captured, including dashboard settings, API gateway settings, backups, PITR, network restrictions, and external integrations.",
+        "Built-in auth and storage implementation internals are excluded; only custom auth.users triggers/functions and storage.objects/storage.buckets policies are captured.",
+        "Function bodies are intentionally excluded. Signatures, ownership, SECURITY DEFINER, proconfig/search_path, and execute grants are captured.",
+        "Vault secret values, uploaded storage objects, auth users, and application business rows are intentionally excluded.",
+        "Cron execution history is not captured. Job metadata is captured and the entire JSON result receives conservative secret, URL, bearer, token, password, Vault-reference, and connection-string redaction.",
+        "Logical replication slots, WAL state, subscriber connection strings, and publication row filters/column lists outside available publication catalogs may require privileged inspection and are not fully represented.",
+        "Extension-owned object internals are not expanded; extension name, version, and installation schema are captured.",
+        "Migration-history presence is detected through the catalog only. Applied migration versions are unavailable when the relation is absent and are intentionally not queried dynamically; versions is always an empty array."
+      ],
+      "migration_history": {
+        "present": false,
+        "table_regclass": null,
+        "versions": []
+      },
+      "policies": [],
+      "routine_grants": [],
+      "row_level_security": [],
+      "schema_grants": [
+        {
+          "grantable": false,
+          "grantee": "PUBLIC",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "pg_database_owner",
+          "grantor": "pg_database_owner",
+          "privilege": "CREATE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "pg_database_owner",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "postgres",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "anon",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "authenticated",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        },
+        {
+          "grantable": false,
+          "grantee": "service_role",
+          "grantor": "pg_database_owner",
+          "privilege": "USAGE",
+          "schema": "public"
+        }
+      ],
+      "storage_bucket_configuration": [],
+      "storage_policies": [],
+      "table_and_sequence_grants": [],
+      "tables_and_views": [],
+      "triggers": []
+    }
+  }
+]

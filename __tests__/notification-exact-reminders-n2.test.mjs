@@ -5,8 +5,8 @@ import test from 'node:test';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const sql = read('supabase/migrations/202607220010_task_due_30m_notifications.sql');
-const n1 = read('supabase/migrations/202607210009_notification_foundation_n1.sql');
+const sql = read('supabase/migration_audit/pre_baseline_20260724/202607220010_task_due_30m_notifications.sql');
+const n1 = read('supabase/migration_audit/pre_baseline_20260724/202607210009_notification_foundation_n1.sql');
 const worker = read('lib/notification-worker.server.ts');
 const serviceWorker = read('public/notification-sw.js');
 const settings = read('components/NotificationSettings.tsx');

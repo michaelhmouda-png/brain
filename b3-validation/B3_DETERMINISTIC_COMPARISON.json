@@ -1,0 +1,701 @@
+{
+  "apply_result": {
+    "fresh_application_table_count_before_apply": 0,
+    "other_write_sql_applied": false,
+    "status": "committed",
+    "transaction": "single_baseline_begin_commit"
+  },
+  "capture": {
+    "b0_sql": "original_read_only_B0_capture",
+    "b1_sql": "original_read_only_B1_capture",
+    "cron_jobs_observed": 0,
+    "cron_provenance_inputs_observed": 0
+  },
+  "comparison_version": "B3-1",
+  "cron_provenance": {
+    "camera_evidence_worker": "outstanding_exact_byte_mismatch",
+    "command_deployed": false,
+    "command_substituted": false
+  },
+  "dependency_repair": {
+    "foreign_keys_audited": 133,
+    "manifest_byte_identical": true,
+    "moved_before_foreign_keys": "public.employees.employees_company_id_id_uidx",
+    "scope": "ordering_only",
+    "supported_by_captured_constraints": 127,
+    "supported_by_captured_unique_indexes": 1,
+    "supported_by_managed_prerequisites": 5
+  },
+  "differences": {
+    "application_policies": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "application_publication_membership": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "application_schemas": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "columns": {
+      "changed": [
+        {
+          "expected": {
+            "column": "affected_area",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 17,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "text"
+          },
+          "identity": "public.incident_reports.affected_area",
+          "observed": {
+            "column": "affected_area",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 13,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "text"
+          }
+        },
+        {
+          "expected": {
+            "column": "created_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 14,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.incident_reports.created_at",
+          "observed": {
+            "column": "created_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 10,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        },
+        {
+          "expected": {
+            "column": "incident_time",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 8,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.incident_reports.incident_time",
+          "observed": {
+            "column": "incident_time",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 7,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        },
+        {
+          "expected": {
+            "column": "location_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 16,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "uuid"
+          },
+          "identity": "public.incident_reports.location_id",
+          "observed": {
+            "column": "location_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 12,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "uuid"
+          }
+        },
+        {
+          "expected": {
+            "column": "reported_by_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 12,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "uuid"
+          },
+          "identity": "public.incident_reports.reported_by_id",
+          "observed": {
+            "column": "reported_by_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 8,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "uuid"
+          }
+        },
+        {
+          "expected": {
+            "column": "status",
+            "default": "'open'::text",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 13,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "text"
+          },
+          "identity": "public.incident_reports.status",
+          "observed": {
+            "column": "status",
+            "default": "'open'::text",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 9,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "text"
+          }
+        },
+        {
+          "expected": {
+            "column": "updated_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 15,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.incident_reports.updated_at",
+          "observed": {
+            "column": "updated_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 11,
+            "relation": "incident_reports",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        },
+        {
+          "expected": {
+            "column": "assigned_to_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 8,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          },
+          "identity": "public.maintenance_tickets.assigned_to_id",
+          "observed": {
+            "column": "assigned_to_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 6,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          }
+        },
+        {
+          "expected": {
+            "column": "completed_at",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 12,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.maintenance_tickets.completed_at",
+          "observed": {
+            "column": "completed_at",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 10,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        },
+        {
+          "expected": {
+            "column": "completion_notes",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 13,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "text"
+          },
+          "identity": "public.maintenance_tickets.completion_notes",
+          "observed": {
+            "column": "completion_notes",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 11,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "text"
+          }
+        },
+        {
+          "expected": {
+            "column": "created_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 14,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.maintenance_tickets.created_at",
+          "observed": {
+            "column": "created_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 12,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        },
+        {
+          "expected": {
+            "column": "created_by_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 11,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          },
+          "identity": "public.maintenance_tickets.created_by_id",
+          "observed": {
+            "column": "created_by_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": false,
+            "ordinal_position": 9,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          }
+        },
+        {
+          "expected": {
+            "column": "due_date",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 9,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "date"
+          },
+          "identity": "public.maintenance_tickets.due_date",
+          "observed": {
+            "column": "due_date",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 7,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "date"
+          }
+        },
+        {
+          "expected": {
+            "column": "location_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 16,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          },
+          "identity": "public.maintenance_tickets.location_id",
+          "observed": {
+            "column": "location_id",
+            "default": null,
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 14,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "uuid"
+          }
+        },
+        {
+          "expected": {
+            "column": "status",
+            "default": "'open'::text",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 10,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "text"
+          },
+          "identity": "public.maintenance_tickets.status",
+          "observed": {
+            "column": "status",
+            "default": "'open'::text",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 8,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "text"
+          }
+        },
+        {
+          "expected": {
+            "column": "updated_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 15,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          },
+          "identity": "public.maintenance_tickets.updated_at",
+          "observed": {
+            "column": "updated_at",
+            "default": "now()",
+            "generated": null,
+            "identity": null,
+            "nullable": true,
+            "ordinal_position": 13,
+            "relation": "maintenance_tickets",
+            "schema": "public",
+            "type": "timestamp with time zone"
+          }
+        }
+      ],
+      "extra": [],
+      "missing": []
+    },
+    "constraints": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "custom_auth_users_triggers_and_functions": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "extensions": {
+      "changed": [
+        {
+          "expected": {
+            "name": "pg_net",
+            "relocatable": false,
+            "schema": "extensions",
+            "version": "0.20.4"
+          },
+          "identity": "pg_net",
+          "observed": {
+            "name": "pg_net",
+            "relocatable": false,
+            "schema": "public",
+            "version": "0.20.4"
+          }
+        }
+      ],
+      "extra": [],
+      "missing": []
+    },
+    "function_execute_grants": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "functions": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "indexes": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "routine_grants": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "row_level_security": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "schema_grants": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "storage_bucket_configuration": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "storage_policies": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "table_and_sequence_grants": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "tables": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "triggers": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    },
+    "views": {
+      "changed": [],
+      "extra": [],
+      "missing": []
+    }
+  },
+  "disposable_project": {
+    "lifecycle": "deleted_after_recapture",
+    "protected_reference_guard": "passed",
+    "ref": "wozuloihfxptpeztcarn",
+    "region": "eu-central-1",
+    "size": "micro"
+  },
+  "inputs": {
+    "authoritative_b0_sha256": "51ace3fcb4cac1b84380ce83c89ad86847e13499feecd7c01017b38f154d86dc",
+    "authoritative_b1_sha256": "bb16865d4ba9b2695b3aae5feb0ae38a144873c98809884c63190a494b68b188",
+    "b0_recapture_sha256": "ee855a04b9f3f5feb14eb5b6f85017d3f2f4945e616aea95366f4f64864b4681",
+    "b1_recapture_sha256": "a220463bcf8169b1b1da32f39f1316514ab4257e82939c1c4bda988172ba8433",
+    "baseline_sha256": "debd7618da6d393d8010861e83a18e2c0a9ac208d360569f5e23f789e95f68e2",
+    "manifest_sha256": "d314eba9cc454048aa635049502710e46df0dc3478b74a6ea17a31c1695990cb"
+  },
+  "status": "failed_catalog_differences",
+  "summary": {
+    "application_policies": {
+      "changed": 0,
+      "expected": 85,
+      "extra": 0,
+      "missing": 0,
+      "observed": 85
+    },
+    "application_publication_membership": {
+      "changed": 0,
+      "expected": 0,
+      "extra": 0,
+      "missing": 0,
+      "observed": 0
+    },
+    "application_schemas": {
+      "changed": 0,
+      "expected": 2,
+      "extra": 0,
+      "missing": 0,
+      "observed": 2
+    },
+    "columns": {
+      "changed": 16,
+      "expected": 576,
+      "extra": 0,
+      "missing": 0,
+      "observed": 576
+    },
+    "constraints": {
+      "changed": 0,
+      "expected": 352,
+      "extra": 0,
+      "missing": 0,
+      "observed": 352
+    },
+    "custom_auth_users_triggers_and_functions": {
+      "changed": 0,
+      "expected": 0,
+      "extra": 0,
+      "missing": 0,
+      "observed": 0
+    },
+    "extensions": {
+      "changed": 1,
+      "expected": 7,
+      "extra": 0,
+      "missing": 0,
+      "observed": 7
+    },
+    "function_execute_grants": {
+      "changed": 0,
+      "expected": 162,
+      "extra": 0,
+      "missing": 0,
+      "observed": 162
+    },
+    "functions": {
+      "changed": 0,
+      "expected": 70,
+      "extra": 0,
+      "missing": 0,
+      "observed": 70
+    },
+    "indexes": {
+      "changed": 0,
+      "expected": 169,
+      "extra": 0,
+      "missing": 0,
+      "observed": 169
+    },
+    "routine_grants": {
+      "changed": 0,
+      "expected": 162,
+      "extra": 0,
+      "missing": 0,
+      "observed": 162
+    },
+    "row_level_security": {
+      "changed": 0,
+      "expected": 50,
+      "extra": 0,
+      "missing": 0,
+      "observed": 50
+    },
+    "schema_grants": {
+      "changed": 0,
+      "expected": 10,
+      "extra": 0,
+      "missing": 0,
+      "observed": 10
+    },
+    "storage_bucket_configuration": {
+      "changed": 0,
+      "expected": 1,
+      "extra": 0,
+      "missing": 0,
+      "observed": 1
+    },
+    "storage_policies": {
+      "changed": 0,
+      "expected": 2,
+      "extra": 0,
+      "missing": 0,
+      "observed": 2
+    },
+    "table_and_sequence_grants": {
+      "changed": 0,
+      "expected": 1062,
+      "extra": 0,
+      "missing": 0,
+      "observed": 1062
+    },
+    "tables": {
+      "changed": 0,
+      "expected": 50,
+      "extra": 0,
+      "missing": 0,
+      "observed": 50
+    },
+    "triggers": {
+      "changed": 0,
+      "expected": 20,
+      "extra": 0,
+      "missing": 0,
+      "observed": 20
+    },
+    "views": {
+      "changed": 0,
+      "expected": 0,
+      "extra": 0,
+      "missing": 0,
+      "observed": 0
+    }
+  },
+  "totals": {
+    "changed": 17,
+    "expected": 2780,
+    "extra": 0,
+    "missing": 0,
+    "observed": 2780
+  }
+}

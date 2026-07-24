@@ -70,7 +70,7 @@ test('incident mutation authority is role-bound and client identity fields are n
 });
 
 test('incident INSERT policy binds active canonical reporters, tenant, location, and initial status', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607210004_incident_reporter_insert_policy.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210004_incident_reporter_insert_policy.sql', import.meta.url), 'utf8');
   assert.match(sql, /FOR INSERT\s+TO authenticated/);
   assert.match(sql, /pr\.id = auth\.uid\(\)/);
   assert.match(sql, /reported_by_id = auth\.uid\(\)/);

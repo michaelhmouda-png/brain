@@ -180,7 +180,7 @@ test('route completes proposal only after cohesive task handler succeeds', async
 });
 
 test('migration is server-only and enforces one event type per command', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607200001_stage_k5_brain_domain_events.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607200001_stage_k5_brain_domain_events.sql', import.meta.url), 'utf8');
   assert.match(sql, /UNIQUE \(command_id, event_type\)/i);
   assert.match(sql, /ENABLE ROW LEVEL SECURITY/i);
   assert.match(sql, /FORCE ROW LEVEL SECURITY/i);

@@ -1,6 +1,9 @@
 -- Migration 012 post-deployment verification.
 -- One SELECT-only statement. It does not recompute or rewrite migration 011's
--- historical fingerprint and returns only structural metadata and aggregates.
+-- historical fingerprint and returns only structural metadata, non-reversible
+-- SHA-256 evidence, and aggregates. Historical field equality is enforced by
+-- the migration's transaction-local pre-update snapshot; this verifier confirms
+-- the resulting six-row identity/vocabulary state and expected updated_at effect.
 WITH
 checkpoint AS (
   SELECT
@@ -32,15 +35,43 @@ employee_constraints AS (
     constraint_row.conname AS constraint_name,
     constraint_row.contype::text AS constraint_type,
     constraint_row.convalidated AS validated,
+    constraint_row.confdeltype::text AS delete_action,
+    referenced_namespace.nspname AS referenced_schema,
+    referenced_relation.relname AS referenced_table,
     pg_catalog.pg_get_constraintdef(constraint_row.oid, true) AS definition
   FROM pg_catalog.pg_constraint AS constraint_row
+  LEFT JOIN pg_catalog.pg_class AS referenced_relation
+    ON referenced_relation.oid = constraint_row.confrelid
+  LEFT JOIN pg_catalog.pg_namespace AS referenced_namespace
+    ON referenced_namespace.oid = referenced_relation.relnamespace
   WHERE constraint_row.conrelid = to_regclass('public.employees')
+),
+employee_constraint_literals AS (
+  SELECT
+    constraint_row.constraint_name,
+    array_agg((literal.match)[1] ORDER BY (literal.match)[1]) AS literal_values
+  FROM employee_constraints AS constraint_row
+  CROSS JOIN LATERAL regexp_matches(
+    constraint_row.definition,
+    '''([^'']+)''',
+    'g'
+  ) AS literal(match)
+  GROUP BY constraint_row.constraint_name
 ),
 employee_indexes AS (
   SELECT
     index_relation.relname AS index_name,
     index_row.indisunique AS is_unique,
     index_row.indisvalid AS is_valid,
+    ARRAY(
+      SELECT attribute.attname
+      FROM unnest(index_row.indkey) WITH ORDINALITY AS key_column(attribute_number, ordinal_position)
+      JOIN pg_catalog.pg_attribute AS attribute
+        ON attribute.attrelid = index_row.indrelid
+        AND attribute.attnum = key_column.attribute_number
+      ORDER BY key_column.ordinal_position
+    ) AS key_columns,
+    pg_catalog.pg_get_expr(index_row.indpred, index_row.indrelid) AS predicate,
     pg_catalog.pg_get_indexdef(index_row.indexrelid) AS definition
   FROM pg_catalog.pg_index AS index_row
   JOIN pg_catalog.pg_class AS index_relation
@@ -70,9 +101,28 @@ exception_constraints AS (
     constraint_row.conname AS constraint_name,
     constraint_row.contype::text AS constraint_type,
     constraint_row.convalidated AS validated,
+    constraint_row.confdeltype::text AS delete_action,
+    referenced_namespace.nspname AS referenced_schema,
+    referenced_relation.relname AS referenced_table,
     pg_catalog.pg_get_constraintdef(constraint_row.oid, true) AS definition
   FROM pg_catalog.pg_constraint AS constraint_row
+  LEFT JOIN pg_catalog.pg_class AS referenced_relation
+    ON referenced_relation.oid = constraint_row.confrelid
+  LEFT JOIN pg_catalog.pg_namespace AS referenced_namespace
+    ON referenced_namespace.oid = referenced_relation.relnamespace
   WHERE constraint_row.conrelid = to_regclass('public.employee_migration_exceptions')
+),
+exception_constraint_literals AS (
+  SELECT
+    constraint_row.constraint_name,
+    array_agg((literal.match)[1] ORDER BY (literal.match)[1]) AS literal_values
+  FROM exception_constraints AS constraint_row
+  CROSS JOIN LATERAL regexp_matches(
+    constraint_row.definition,
+    '''([^'']+)''',
+    'g'
+  ) AS literal(match)
+  GROUP BY constraint_row.constraint_name
 ),
 exception_grants AS (
   SELECT grant_row.grantee, grant_row.privilege_type, grant_row.is_grantable
@@ -106,6 +156,11 @@ employee_aggregates AS (
       WHERE employee.lifecycle_status IS DISTINCT FROM 'active'
         AND employee.lifecycle_status IS NOT NULL
     )::bigint AS canonical_other_count,
+    count(*) FILTER (WHERE employee.lifecycle_effective_at IS NOT NULL)::bigint AS lifecycle_effective_count,
+    count(*) FILTER (
+      WHERE employee.updated_at >= employee.lifecycle_effective_at
+    )::bigint AS updated_at_at_or_after_lifecycle_count,
+    count(*) FILTER (WHERE employee.version = 1)::bigint AS version_one_count,
     count(*) FILTER (WHERE employee.version <> 1)::bigint AS unexpected_version_count,
     count(*) FILTER (
       WHERE employee.lifecycle_effective_at IS NULL
@@ -116,6 +171,106 @@ employee_aggregates AS (
     count(*) FILTER (WHERE employee.archived_by_profile_id IS NOT NULL)::bigint AS populated_archive_actor_count,
     count(*) FILTER (WHERE employee.termination_reason_code IS NOT NULL)::bigint AS populated_termination_reason_count
   FROM public.employees AS employee
+),
+employee_identity_and_legacy_evidence AS (
+  SELECT
+    count(*)::bigint AS employee_count,
+    count(DISTINCT employee.id)::bigint AS distinct_employee_id_count,
+    count(*) FILTER (WHERE employee.company_id IS NULL)::bigint AS null_company_count,
+    count(*) FILTER (WHERE company.id IS NULL)::bigint AS missing_company_count,
+    encode(
+      extensions.digest(
+        convert_to(
+          string_agg(employee.id::text || ':' || employee.company_id::text, '|' ORDER BY employee.id),
+          'UTF8'
+        ),
+        'sha256'
+      ),
+      'hex'
+    ) AS employee_company_identity_set_hash,
+    encode(
+      extensions.digest(
+        convert_to(
+          string_agg(
+            jsonb_build_array(
+              employee.id,
+              employee.company_id,
+              employee.status,
+              employee.employment_type,
+              employee.role,
+              employee.department,
+              employee.first_name,
+              employee.last_name,
+              employee.location_id,
+              employee.department_id,
+              employee.hire_date,
+              employee.email,
+              employee.phone,
+              employee.notes,
+              employee.salary,
+              employee.created_at
+            )::text,
+            '|'
+            ORDER BY employee.id
+          ),
+          'UTF8'
+        ),
+        'sha256'
+      ),
+      'hex'
+    ) AS legacy_business_field_set_hash
+  FROM public.employees AS employee
+  LEFT JOIN public.companies AS company ON company.id = employee.company_id
+),
+employee_vocabularies AS (
+  SELECT
+    (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.status AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.status
+      ) AS grouped
+    ) AS status_counts,
+    (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.employment_type AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.employment_type
+      ) AS grouped
+    ) AS employment_type_counts,
+    (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.role AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.role
+      ) AS grouped
+    ) AS role_counts,
+    (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.department AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.department
+      ) AS grouped
+    ) AS department_counts
+),
+employee_trigger AS (
+  SELECT
+    trigger_row.tgname AS trigger_name,
+    trigger_row.tgenabled::text AS enabled_state,
+    trigger_row.tgtype AS trigger_type,
+    namespace.nspname AS function_schema,
+    procedure.proname AS function_name,
+    procedure.prosecdef AS security_definer,
+    regexp_replace(lower(procedure.prosrc), '\s+', '', 'g') AS normalized_source
+  FROM pg_catalog.pg_trigger AS trigger_row
+  JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger_row.tgfoid
+  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+  WHERE trigger_row.tgrelid = to_regclass('public.employees')
+    AND NOT trigger_row.tgisinternal
 ),
 company_grants AS (
   SELECT grant_row.grantee, grant_row.privilege_type, grant_row.is_grantable
@@ -249,6 +404,66 @@ checks(check_name, passed, details) AS (
   UNION ALL
 
   SELECT
+    'employee_updated_at_trigger_expected_and_enabled',
+    (SELECT count(*) FROM employee_trigger) = 1
+      AND EXISTS (
+        SELECT 1
+        FROM employee_trigger AS trigger_state
+        WHERE trigger_state.trigger_name = 'employees_update_timestamp'
+          AND trigger_state.enabled_state = 'O'
+          AND trigger_state.trigger_type = 19
+          AND trigger_state.function_schema = 'public'
+          AND trigger_state.function_name = 'update_timestamp'
+          AND NOT trigger_state.security_definer
+          AND trigger_state.normalized_source = 'beginnew.updated_at=now();returnnew;end;'
+      ),
+    jsonb_build_object(
+      'trigger', (SELECT to_jsonb(trigger_state) FROM employee_trigger AS trigger_state LIMIT 1),
+      'policy', 'existing trigger intentionally advances updated_at; lifecycle_effective_at stores the pre-trigger updated_at'
+    )
+
+  UNION ALL
+
+  SELECT
+    'employee_identity_and_company_relationships_preserved',
+    evidence.employee_count = 6
+      AND evidence.distinct_employee_id_count = 6
+      AND evidence.null_company_count = 0
+      AND evidence.missing_company_count = 0
+      AND evidence.employee_company_identity_set_hash ~ '^[0-9a-f]{64}$',
+    to_jsonb(evidence)
+  FROM employee_identity_and_legacy_evidence AS evidence
+
+  UNION ALL
+
+  SELECT
+    'legacy_business_fields_preserved_by_atomic_snapshot',
+    evidence.employee_count = 6
+      AND evidence.legacy_business_field_set_hash ~ '^[0-9a-f]{64}$'
+      AND aggregate.invalid_lifecycle_timestamp_count = 0,
+    jsonb_build_object(
+      'employee_count', evidence.employee_count,
+      'legacy_business_field_set_hash', evidence.legacy_business_field_set_hash,
+      'historical_comparison', 'enforced inside migration transaction against pg_temp.d1_012_employee_before',
+      'updated_at_policy', 'updated_at may advance only through the reviewed trigger'
+    )
+  FROM employee_identity_and_legacy_evidence AS evidence
+  CROSS JOIN employee_aggregates AS aggregate
+
+  UNION ALL
+
+  SELECT
+    'legacy_vocabularies_exactly_preserved',
+    vocabulary.status_counts = '{"active": 6}'::jsonb
+      AND vocabulary.employment_type_counts = '{"full-time": 5, "full time": 1}'::jsonb
+      AND vocabulary.role_counts = '{"employee": 1, "manager": 2, "owner": 2, "Owner": 1}'::jsonb
+      AND vocabulary.department_counts = '{"Floor": 1, "General": 2, "management": 2, "Waiter": 1}'::jsonb,
+    to_jsonb(vocabulary)
+  FROM employee_vocabularies AS vocabulary
+
+  UNION ALL
+
+  SELECT
     'employee_foundation_columns_exact',
     (SELECT count(*) FROM employee_columns AS column_row WHERE column_row.column_name IN (
       'employee_number', 'lifecycle_status', 'version', 'lifecycle_effective_at',
@@ -271,11 +486,52 @@ checks(check_name, passed, details) AS (
   UNION ALL
 
   SELECT
-    'employee_foundation_constraints_validated',
+    'employee_foundation_constraints_exact_and_validated',
     (SELECT count(*) FROM employee_constraints AS constraint_row WHERE constraint_row.constraint_name IN (
       'employees_lifecycle_status_check', 'employees_version_positive',
       'employees_archive_shape', 'employees_archived_by_profile_id_fkey'
-    ) AND constraint_row.validated) = 4,
+    ) AND constraint_row.validated) = 4
+      AND EXISTS (
+        SELECT 1 FROM employee_constraints
+        WHERE constraint_name = 'employees_lifecycle_status_check'
+          AND constraint_type = 'c'
+          AND definition LIKE '%lifecycle_status IS NULL%'
+          AND definition LIKE '%draft%'
+          AND definition LIKE '%active%'
+          AND definition LIKE '%on_leave%'
+          AND definition LIKE '%inactive%'
+          AND definition LIKE '%terminated%'
+          AND definition LIKE '%archived%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM employee_constraint_literals
+        WHERE constraint_name = 'employees_lifecycle_status_check'
+          AND literal_values = ARRAY[
+            'active', 'archived', 'draft', 'inactive', 'on_leave', 'terminated'
+          ]::text[]
+      )
+      AND EXISTS (
+        SELECT 1 FROM employee_constraints
+        WHERE constraint_name = 'employees_version_positive'
+          AND constraint_type = 'c'
+          AND regexp_replace(definition, '[()\s]', '', 'g') = 'CHECKversion>0'
+      )
+      AND EXISTS (
+        SELECT 1 FROM employee_constraints
+        WHERE constraint_name = 'employees_archive_shape'
+          AND constraint_type = 'c'
+          AND definition LIKE '%lifecycle_status IS DISTINCT FROM%archived%'
+          AND definition LIKE '%archived_at IS NOT NULL%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM employee_constraints
+        WHERE constraint_name = 'employees_archived_by_profile_id_fkey'
+          AND constraint_type = 'f'
+          AND referenced_schema = 'public'
+          AND referenced_table = 'profiles'
+          AND delete_action = 'r'
+          AND definition LIKE 'FOREIGN KEY (archived_by_profile_id)%REFERENCES profiles(id)%ON DELETE RESTRICT%'
+      ),
     jsonb_build_object(
       'constraints', (SELECT jsonb_agg(to_jsonb(constraint_row) ORDER BY constraint_row.constraint_name) FROM employee_constraints AS constraint_row WHERE constraint_row.constraint_name IN (
         'employees_lifecycle_status_check', 'employees_version_positive',
@@ -287,8 +543,20 @@ checks(check_name, passed, details) AS (
 
   SELECT
     'employee_foundation_indexes_valid',
-    EXISTS (SELECT 1 FROM employee_indexes WHERE index_name = 'employees_company_id_id_uidx' AND is_unique AND is_valid)
-      AND EXISTS (SELECT 1 FROM employee_indexes WHERE index_name = 'employees_company_employee_number_uidx' AND is_unique AND is_valid AND definition ~ 'WHERE \(employee_number IS NOT NULL\)'),
+    EXISTS (
+      SELECT 1 FROM employee_indexes
+      WHERE index_name = 'employees_company_id_id_uidx'
+        AND is_unique AND is_valid
+        AND key_columns = ARRAY['company_id', 'id']::name[]
+        AND predicate IS NULL
+    )
+      AND EXISTS (
+        SELECT 1 FROM employee_indexes
+        WHERE index_name = 'employees_company_employee_number_uidx'
+          AND is_unique AND is_valid
+          AND key_columns = ARRAY['company_id', 'employee_number']::name[]
+          AND regexp_replace(coalesce(predicate, ''), '[()\s]', '', 'g') = 'employee_numberISNOTNULL'
+      ),
     jsonb_build_object(
       'indexes', (SELECT jsonb_agg(to_jsonb(index_row) ORDER BY index_row.index_name) FROM employee_indexes AS index_row WHERE index_row.index_name IN (
         'employees_company_id_id_uidx', 'employees_company_employee_number_uidx'
@@ -307,6 +575,9 @@ checks(check_name, passed, details) AS (
       AND aggregate.canonical_active_count = 6
       AND aggregate.canonical_null_count = 0
       AND aggregate.canonical_other_count = 0
+      AND aggregate.lifecycle_effective_count = 6
+      AND aggregate.updated_at_at_or_after_lifecycle_count = 6
+      AND aggregate.version_one_count = 6
       AND aggregate.unexpected_version_count = 0
       AND aggregate.invalid_lifecycle_timestamp_count = 0,
     to_jsonb(aggregate)
@@ -377,9 +648,69 @@ checks(check_name, passed, details) AS (
   SELECT
     'exception_table_contract_complete',
     (SELECT count(*) FROM exception_columns) = 10
-      AND EXISTS (SELECT 1 FROM exception_constraints WHERE constraint_name = 'employee_migration_exceptions_pkey' AND validated)
-      AND EXISTS (SELECT 1 FROM exception_constraints WHERE constraint_name = 'employee_migration_exceptions_employee_field_key' AND validated)
-      AND EXISTS (SELECT 1 FROM exception_constraints WHERE constraint_name = 'employee_migration_exceptions_employee_company_fkey' AND validated),
+      AND (SELECT count(*) FROM exception_constraints WHERE constraint_name IN (
+        'employee_migration_exceptions_pkey',
+        'employee_migration_exceptions_employee_field_key',
+        'employee_migration_exceptions_employee_company_fkey',
+        'employee_migration_exceptions_reviewed_by_profile_id_fkey',
+        'employee_migration_exceptions_field_name_check',
+        'employee_migration_exceptions_source_value_hash_check',
+        'employee_migration_exceptions_resolution_status_check'
+      ) AND validated) = 7
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_pkey'
+          AND constraint_type = 'p' AND definition = 'PRIMARY KEY (id)'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_employee_field_key'
+          AND constraint_type = 'u' AND definition = 'UNIQUE (employee_id, field_name)'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_employee_company_fkey'
+          AND constraint_type = 'f'
+          AND referenced_schema = 'public' AND referenced_table = 'employees'
+          AND delete_action = 'r'
+          AND definition LIKE 'FOREIGN KEY (company_id, employee_id)%REFERENCES employees(company_id, id)%ON DELETE RESTRICT%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_reviewed_by_profile_id_fkey'
+          AND constraint_type = 'f'
+          AND referenced_schema = 'public' AND referenced_table = 'profiles'
+          AND delete_action = 'r'
+          AND definition LIKE 'FOREIGN KEY (reviewed_by_profile_id)%REFERENCES profiles(id)%ON DELETE RESTRICT%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_field_name_check'
+          AND constraint_type = 'c'
+          AND definition LIKE '%status%employment_type%role%department%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraint_literals
+        WHERE constraint_name = 'employee_migration_exceptions_field_name_check'
+          AND literal_values = ARRAY['department', 'employment_type', 'role', 'status']::text[]
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_source_value_hash_check'
+          AND constraint_type = 'c'
+          AND definition LIKE '%^[0-9a-f]{64}$%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraints
+        WHERE constraint_name = 'employee_migration_exceptions_resolution_status_check'
+          AND constraint_type = 'c'
+          AND definition LIKE '%pending%approved%rejected%'
+      )
+      AND EXISTS (
+        SELECT 1 FROM exception_constraint_literals
+        WHERE constraint_name = 'employee_migration_exceptions_resolution_status_check'
+          AND literal_values = ARRAY['approved', 'pending', 'rejected']::text[]
+      ),
     jsonb_build_object(
       'columns', (SELECT jsonb_agg(to_jsonb(column_row) ORDER BY column_row.column_name) FROM exception_columns AS column_row),
       'constraints', (SELECT jsonb_agg(to_jsonb(constraint_row) ORDER BY constraint_row.constraint_name) FROM exception_constraints AS constraint_row)

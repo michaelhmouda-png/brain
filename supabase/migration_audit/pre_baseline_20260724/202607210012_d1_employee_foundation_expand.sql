@@ -13,6 +13,13 @@
 --   * map only exact legacy status "active";
 --   * leave K1-K8, application authorization, and existing employee RLS alone.
 --
+-- updated_at policy (Revision 2):
+--   The reviewed public.employees BEFORE UPDATE trigger is intentionally left
+--   enabled. Its update_timestamp() function advances updated_at when the six
+--   lifecycle rows are backfilled. lifecycle_effective_at captures each row's
+--   pre-trigger updated_at value. This expected row-update metadata is the only
+--   permitted legacy-column change.
+--
 -- Deployment prerequisites:
 --   * migrations 010, 011, and 011a are deployed and validated;
 --   * the approved migration-012 SELECT-only preflight still passes;
@@ -199,6 +206,33 @@ BEGIN
     RAISE EXCEPTION 'D1_012_EMPLOYEE_STATUS_EVIDENCE_DRIFT';
   END IF;
 
+  IF (
+    SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+    FROM (
+      SELECT employee.employment_type AS value, count(*) AS row_count
+      FROM public.employees AS employee
+      GROUP BY employee.employment_type
+    ) AS grouped
+  ) IS DISTINCT FROM '{"full-time": 5, "full time": 1}'::jsonb
+    OR (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.role AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.role
+      ) AS grouped
+    ) IS DISTINCT FROM '{"employee": 1, "manager": 2, "owner": 2, "Owner": 1}'::jsonb
+    OR (
+      SELECT coalesce(jsonb_object_agg(grouped.value, grouped.row_count), '{}'::jsonb)
+      FROM (
+        SELECT employee.department AS value, count(*) AS row_count
+        FROM public.employees AS employee
+        GROUP BY employee.department
+      ) AS grouped
+    ) IS DISTINCT FROM '{"Floor": 1, "General": 2, "management": 2, "Waiter": 1}'::jsonb THEN
+    RAISE EXCEPTION 'D1_012_EMPLOYEE_VOCABULARY_EVIDENCE_DRIFT';
+  END IF;
+
   IF EXISTS (
     SELECT 1
     FROM public.employees AS employee
@@ -218,6 +252,42 @@ BEGIN
     WHERE company.id IS NULL
   ) THEN
     RAISE EXCEPTION 'D1_012_EMPLOYEE_IDENTITY_OR_TIMESTAMP_DRIFT';
+  END IF;
+
+  -- The backfill deliberately fires exactly this reviewed trigger. Fail closed
+  -- if it is absent, disabled, combines other events, or its body does anything
+  -- beyond advancing updated_at and returning NEW.
+  IF (
+    SELECT count(*)
+    FROM pg_catalog.pg_trigger AS trigger_row
+    WHERE trigger_row.tgrelid = 'public.employees'::regclass
+      AND NOT trigger_row.tgisinternal
+  ) <> 1 OR NOT EXISTS (
+    SELECT 1
+    FROM pg_catalog.pg_trigger AS trigger_row
+    JOIN pg_catalog.pg_proc AS procedure ON procedure.oid = trigger_row.tgfoid
+    JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = procedure.pronamespace
+    WHERE trigger_row.tgrelid = 'public.employees'::regclass
+      AND trigger_row.tgname = 'employees_update_timestamp'
+      AND NOT trigger_row.tgisinternal
+      AND trigger_row.tgenabled = 'O'
+      AND trigger_row.tgtype = 19
+      AND namespace.nspname = 'public'
+      AND procedure.proname = 'update_timestamp'
+      AND procedure.prorettype = 'trigger'::regtype
+      AND NOT procedure.prosecdef
+      AND regexp_replace(lower(procedure.prosrc), '\s+', '', 'g') =
+        'beginnew.updated_at=now();returnnew;end;'
+  ) THEN
+    RAISE EXCEPTION 'D1_012_EMPLOYEE_UPDATED_AT_TRIGGER_DRIFT';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM public.employees AS employee
+    WHERE employee.updated_at > CURRENT_TIMESTAMP
+  ) THEN
+    RAISE EXCEPTION 'D1_012_EMPLOYEE_UPDATED_AT_IN_FUTURE';
   END IF;
 
   SELECT role.oid INTO v_anon_oid
@@ -320,6 +390,40 @@ BEGIN
 END
 $d1_012_preflight$;
 
+-- Transaction-local evidence allows the postcondition to compare every legacy
+-- field without persisting personal data or identifiers in migration artifacts.
+CREATE TEMPORARY TABLE pg_temp.d1_012_employee_before
+ON COMMIT DROP
+AS
+SELECT
+  employee.id,
+  employee.company_id,
+  employee.location_id,
+  employee.department_id,
+  employee.first_name,
+  employee.last_name,
+  employee.role,
+  employee.department,
+  employee.phone,
+  employee.email,
+  employee.employment_type,
+  employee.salary,
+  employee.hire_date,
+  employee.status,
+  employee.notes,
+  employee.created_at,
+  employee.updated_at
+FROM public.employees AS employee;
+
+DO $d1_012_snapshot_postcondition$
+BEGIN
+  IF to_regclass('pg_temp.d1_012_employee_before') IS NULL
+    OR (SELECT count(*) FROM pg_temp.d1_012_employee_before) <> 6 THEN
+    RAISE EXCEPTION 'D1_012_EMPLOYEE_SNAPSHOT_UNAVAILABLE';
+  END IF;
+END
+$d1_012_snapshot_postcondition$;
+
 ALTER TABLE public.employees
   ADD COLUMN employee_number text,
   ADD COLUMN lifecycle_status text,
@@ -362,27 +466,34 @@ CREATE UNIQUE INDEX employees_company_employee_number_uidx
   WHERE employee_number IS NOT NULL;
 
 CREATE TABLE public.employee_migration_exceptions (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  id uuid NOT NULL DEFAULT gen_random_uuid(),
   employee_id uuid NOT NULL,
   company_id uuid NOT NULL,
-  field_name text NOT NULL
-    CHECK (field_name IN ('status', 'employment_type', 'role', 'department')),
-  source_value_hash text NOT NULL
-    CHECK (source_value_hash ~ '^[0-9a-f]{64}$'),
-  resolution_status text NOT NULL DEFAULT 'pending'
-    CHECK (resolution_status IN ('pending', 'approved', 'rejected')),
+  field_name text NOT NULL,
+  source_value_hash text NOT NULL,
+  resolution_status text NOT NULL DEFAULT 'pending',
   approved_canonical_value text,
-  reviewed_by_profile_id uuid
-    REFERENCES public.profiles(id)
-    ON DELETE RESTRICT,
+  reviewed_by_profile_id uuid,
   reviewed_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT clock_timestamp(),
+  CONSTRAINT employee_migration_exceptions_pkey
+    PRIMARY KEY (id),
   CONSTRAINT employee_migration_exceptions_employee_field_key
     UNIQUE (employee_id, field_name),
   CONSTRAINT employee_migration_exceptions_employee_company_fkey
     FOREIGN KEY (company_id, employee_id)
     REFERENCES public.employees(company_id, id)
-    ON DELETE RESTRICT
+    ON DELETE RESTRICT,
+  CONSTRAINT employee_migration_exceptions_reviewed_by_profile_id_fkey
+    FOREIGN KEY (reviewed_by_profile_id)
+    REFERENCES public.profiles(id)
+    ON DELETE RESTRICT,
+  CONSTRAINT employee_migration_exceptions_field_name_check
+    CHECK (field_name IN ('status', 'employment_type', 'role', 'department')),
+  CONSTRAINT employee_migration_exceptions_source_value_hash_check
+    CHECK (source_value_hash ~ '^[0-9a-f]{64}$'),
+  CONSTRAINT employee_migration_exceptions_resolution_status_check
+    CHECK (resolution_status IN ('pending', 'approved', 'rejected'))
 );
 
 ALTER TABLE public.employee_migration_exceptions ENABLE ROW LEVEL SECURITY;
@@ -398,7 +509,7 @@ GRANT SELECT, INSERT, UPDATE ON TABLE public.employee_migration_exceptions
 UPDATE public.employees AS employee
 SET
   lifecycle_status = 'active',
-  lifecycle_effective_at = coalesce(employee.updated_at, employee.created_at)
+  lifecycle_effective_at = employee.updated_at
 WHERE employee.status = 'active'
   AND employee.lifecycle_status IS NULL;
 
@@ -431,6 +542,36 @@ DO $d1_012_postcondition$
 DECLARE
   v_k8_function regprocedure;
 BEGIN
+  IF (SELECT count(*) FROM pg_temp.d1_012_employee_before) <> 6
+    OR (SELECT count(*) FROM public.employees) <> 6
+    OR EXISTS (
+      SELECT 1
+      FROM pg_temp.d1_012_employee_before AS before_row
+      FULL JOIN public.employees AS employee ON employee.id = before_row.id
+      WHERE before_row.id IS NULL
+        OR employee.id IS NULL
+        OR employee.company_id IS DISTINCT FROM before_row.company_id
+        OR employee.location_id IS DISTINCT FROM before_row.location_id
+        OR employee.department_id IS DISTINCT FROM before_row.department_id
+        OR employee.first_name IS DISTINCT FROM before_row.first_name
+        OR employee.last_name IS DISTINCT FROM before_row.last_name
+        OR employee.role IS DISTINCT FROM before_row.role
+        OR employee.department IS DISTINCT FROM before_row.department
+        OR employee.phone IS DISTINCT FROM before_row.phone
+        OR employee.email IS DISTINCT FROM before_row.email
+        OR employee.employment_type IS DISTINCT FROM before_row.employment_type
+        OR employee.salary IS DISTINCT FROM before_row.salary
+        OR employee.hire_date IS DISTINCT FROM before_row.hire_date
+        OR employee.status IS DISTINCT FROM before_row.status
+        OR employee.notes IS DISTINCT FROM before_row.notes
+        OR employee.created_at IS DISTINCT FROM before_row.created_at
+        OR employee.lifecycle_effective_at IS DISTINCT FROM before_row.updated_at
+        OR employee.updated_at < before_row.updated_at
+        OR employee.updated_at IS DISTINCT FROM CURRENT_TIMESTAMP
+    ) THEN
+    RAISE EXCEPTION 'D1_012_EMPLOYEE_LEGACY_PRESERVATION_FAILED';
+  END IF;
+
   IF (SELECT count(*) FROM public.employees) <> 6
     OR EXISTS (
       SELECT 1
@@ -502,6 +643,24 @@ BEGIN
       AND NOT constraint_row.convalidated
   ) THEN
     RAISE EXCEPTION 'D1_012_EMPLOYEE_CONSTRAINT_NOT_VALIDATED';
+  END IF;
+
+  IF (
+    SELECT count(*)
+    FROM pg_catalog.pg_constraint AS constraint_row
+    WHERE constraint_row.conrelid = 'public.employee_migration_exceptions'::regclass
+      AND constraint_row.conname IN (
+        'employee_migration_exceptions_pkey',
+        'employee_migration_exceptions_employee_field_key',
+        'employee_migration_exceptions_employee_company_fkey',
+        'employee_migration_exceptions_reviewed_by_profile_id_fkey',
+        'employee_migration_exceptions_field_name_check',
+        'employee_migration_exceptions_source_value_hash_check',
+        'employee_migration_exceptions_resolution_status_check'
+      )
+      AND constraint_row.convalidated
+  ) <> 7 THEN
+    RAISE EXCEPTION 'D1_012_EXCEPTION_CONSTRAINT_POSTCONDITION_FAILED';
   END IF;
 
   v_k8_function := to_regprocedure(

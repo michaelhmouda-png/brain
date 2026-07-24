@@ -240,7 +240,7 @@ test('assigned task list scope is passed as an immutable employee UUID', async (
 });
 
 test('migration grants managers company reads and linked users only their own same-company assignments', () => {
-  const sql = read('supabase/migrations/202607210006_task_assignee_select_visibility.sql');
+  const sql = read('supabase/migration_audit/pre_baseline_20260724/202607210006_task_assignee_select_visibility.sql');
   assert.match(sql, /DROP POLICY IF EXISTS tasks_select/);
   assert.match(sql, /FOR SELECT[\s\S]*TO authenticated/);
   assert.match(sql, /tasks\.company_id = private\.current_user_company_id\(\)/);
@@ -349,7 +349,7 @@ test('missing link, RLS drift, and zero assignments have distinct safe diagnosti
     assert.match(source, /NO_ASSIGNED_TASKS/);
   }
   assert.match(brain, /NO_MATCHING_ASSIGNED_TASKS/);
-  const sql = read('supabase/migrations/202607210006_task_assignee_select_visibility.sql');
+  const sql = read('supabase/migration_audit/pre_baseline_20260724/202607210006_task_assignee_select_visibility.sql');
   assert.match(sql, /get_my_task_visibility_diagnostic/);
   assert.match(sql, /WHERE t\.company_id = pr\.company_id[\s\S]*t\.assigned_employee_id = pr\.employee_id/);
 });

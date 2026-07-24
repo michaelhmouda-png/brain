@@ -1,0 +1,30 @@
+import { spawnSync } from 'node:child_process';
+import { mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import path from 'node:path';
+
+export type AgentState = { publicAgentId: string; baseUrl: string; encryptedCredential?: string; gatewayId?: string; locationId?: string; lastHeartbeatAt?: string; needsRepair?: boolean };
+const directory = process.platform === 'win32' && process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, 'HospiBrain') : path.join(homedir(), '.hospibrain');
+export const statePath = path.join(directory, 'brain-agent.json');
+const PROTECT = `$plain = ($input | Out-String).TrimEnd(); $secure = ConvertTo-SecureString $plain -AsPlainText -Force; ConvertFrom-SecureString $secure`;
+const UNPROTECT = `$cipher = ($input | Out-String).Trim(); $secure = ConvertTo-SecureString $cipher; $ptr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure); try {[Runtime.InteropServices.Marshal]::PtrToStringBSTR($ptr)} finally {[Runtime.InteropServices.Marshal]::ZeroFreeBSTR($ptr)}`;
+const HARDEN_ACL = `$target=$args[0];$user=$args[1];$container=$args[2] -eq 'directory';$identity=New-Object System.Security.Principal.NTAccount($user);if($container){$acl=New-Object System.Security.AccessControl.DirectorySecurity;$inherit=[System.Security.AccessControl.InheritanceFlags]'ContainerInherit,ObjectInherit'}else{$acl=New-Object System.Security.AccessControl.FileSecurity;$inherit=[System.Security.AccessControl.InheritanceFlags]::None};$acl.SetOwner($identity);$acl.SetAccessRuleProtection($true,$false);$rule=New-Object System.Security.AccessControl.FileSystemAccessRule($identity,[System.Security.AccessControl.FileSystemRights]::FullControl,$inherit,[System.Security.AccessControl.PropagationFlags]::None,[System.Security.AccessControl.AccessControlType]::Allow);$acl.AddAccessRule($rule);Set-Acl -LiteralPath $target -AclObject $acl;$actual=Get-Acl -LiteralPath $target;$rules=@($actual.Access);if($rules.Count -ne 1 -or $rules[0].IdentityReference.Value -ne $identity.Value -or $rules[0].AccessControlType -ne [System.Security.AccessControl.AccessControlType]::Allow -or -not ($rules[0].FileSystemRights -band [System.Security.AccessControl.FileSystemRights]::FullControl)){exit 23};'ACL_OK'`;
+
+function fixedProcess(program: string, args: string[], input?: string) { return spawnSync(program, args, { input, encoding: 'utf8', shell: false, windowsHide: true }); }
+function powershell(script: string, input: string): string { if (process.platform !== 'win32') throw new Error('WINDOWS_DPAPI_REQUIRED'); const result = fixedProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], input); if (result.status !== 0 || !result.stdout.trim()) throw new Error('WINDOWS_DPAPI_FAILED'); return result.stdout.trim(); }
+function currentWindowsUser(): string { const user = process.env.USERNAME; if (!user || !/^[A-Za-z0-9._ -]{1,128}$/.test(user)) throw new Error('WINDOWS_IDENTITY_UNAVAILABLE'); return user; }
+function hardenAcl(target: string, container: boolean) {
+  const result = fixedProcess('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', HARDEN_ACL, target, currentWindowsUser(), container ? 'directory' : 'file']);
+  if (result.status !== 0 || result.stdout.trim() !== 'ACL_OK') throw new Error('WINDOWS_ACL_VERIFICATION_FAILED');
+}
+
+export const protectCredential = (credential: string) => powershell(PROTECT, credential);
+export const unprotectCredential = (ciphertext: string) => powershell(UNPROTECT, ciphertext);
+export async function loadState(): Promise<AgentState | null> { try { return JSON.parse(await readFile(statePath, 'utf8')) as AgentState; } catch { return null; } }
+export async function saveState(state: AgentState) {
+  await mkdir(directory, { recursive: true, mode: 0o700 });
+  if (process.platform === 'win32') hardenAcl(directory, true);
+  await writeFile(statePath, JSON.stringify(state, null, 2), { encoding: 'utf8', mode: 0o600 });
+  if (process.platform === 'win32') { try { hardenAcl(statePath, false); } catch (error) { await rm(statePath, { force: true }); throw error; } }
+}
+export async function clearState() { await rm(statePath, { force: true }); }

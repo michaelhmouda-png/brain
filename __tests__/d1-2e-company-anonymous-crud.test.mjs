@@ -3,12 +3,12 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const migrationUrl = new URL(
-  '../supabase/migrations/202607210010_d1_security_close_anonymous_company_crud.sql',
+  '../supabase/migration_audit/pre_baseline_20260724/202607210010_d1_security_close_anonymous_company_crud.sql',
   import.meta.url,
 );
 const authSchemaUrl = new URL('../auth_schema.sql', import.meta.url);
 const k8MigrationUrl = new URL(
-  '../supabase/migrations/202607210001_stage_k8_create_task_transactional_outbox.sql',
+  '../supabase/migration_audit/pre_baseline_20260724/202607210001_stage_k8_create_task_transactional_outbox.sql',
   import.meta.url,
 );
 

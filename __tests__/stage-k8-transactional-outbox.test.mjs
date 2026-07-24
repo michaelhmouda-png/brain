@@ -7,7 +7,7 @@ import { createTaskCommand } from '../lib/brain/tasks/commands/create-task-comma
 import { createTaskCreatedEvent } from '../lib/brain/tasks/events/task-created-event.ts';
 import { createTaskCreatedOutboxDelivery } from '../lib/brain/events/outbox/task-created-outbox-delivery.ts';
 
-const migrationUrl = new URL('../supabase/migrations/202607210001_stage_k8_create_task_transactional_outbox.sql', import.meta.url);
+const migrationUrl = new URL('../supabase/migration_audit/pre_baseline_20260724/202607210001_stage_k8_create_task_transactional_outbox.sql', import.meta.url);
 const actor = Object.freeze({
   actorId: '11111111-1111-4111-8111-111111111111', authUserId: '11111111-1111-4111-8111-111111111111',
   profileId: '11111111-1111-4111-8111-111111111111', companyId: '22222222-2222-4222-8222-222222222222',
@@ -69,7 +69,7 @@ test('RPC fails closed on actor, profile, tenant, assignee, proposal, task, and 
 });
 
 test('corrective RPC migration qualifies every queried table column that can collide with output variables', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210002_fix_k8_create_task_rpc_ambiguous_columns.sql', import.meta.url), 'utf8');
   assert.match(sql, /CREATE OR REPLACE FUNCTION public\.create_task_with_outbox_event/);
   assert.match(sql, /FROM public\.profiles AS pr[\s\S]+pr\.id[\s\S]+pr\.company_id[\s\S]+pr\.status/);
   assert.match(sql, /FROM public\.brain_action_proposals AS bap[\s\S]+bap\.id[\s\S]+bap\.actor_id[\s\S]+bap\.profile_id[\s\S]+bap\.tenant_id[\s\S]+bap\.status/);
@@ -171,7 +171,7 @@ test('K8 adds no bus, workflow, saga, plugin, dynamic registry, scheduler, or co
   const files = await Promise.all([
     '../lib/brain/events/outbox/task-created-outbox-delivery.ts',
     '../lib/brain/tasks/infrastructure/create-task-record.server.ts',
-    '../supabase/migrations/202607210001_stage_k8_create_task_transactional_outbox.sql',
+    '../supabase/migration_audit/pre_baseline_20260724/202607210001_stage_k8_create_task_transactional_outbox.sql',
   ].map(path => readFile(new URL(path, import.meta.url), 'utf8')));
   assert.doesNotMatch(files.join('\n'), /messageBus|commandBus|workflow|saga|plugin|dynamic registry|scheduler|Brain Score|notification/i);
 });

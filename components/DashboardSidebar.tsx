@@ -205,7 +205,7 @@ export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
                     : 'text-slate-400 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <span>{item.label}</span>
+                <span>{item.href === '/dashboard/cameras' ? t.nav.cameras : item.label}</span>
               </Link>
             ))}
           </div>

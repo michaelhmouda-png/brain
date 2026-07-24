@@ -68,7 +68,7 @@ test('parallel admission cannot produce more than 100 accepted requests', async 
 });
 
 test('migration locks admission, handles parallel first inserts, and derives identity only from auth.uid()', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
   assert.match(sql, /v_user_id uuid := auth\.uid\(\)/);
   assert.match(sql, /FOR UPDATE/);
   assert.match(sql, /unique_violation/);
@@ -79,7 +79,7 @@ test('migration locks admission, handles parallel first inserts, and derives ide
 });
 
 test('table access is denied while only authenticated users can execute focused RPCs', async () => {
-  const sql = await readFile(new URL('../supabase/migrations/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
+  const sql = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
   assert.match(sql, /FORCE ROW LEVEL SECURITY/);
   assert.match(sql, /REVOKE ALL ON TABLE public\.brain_chat_user_quotas FROM public, anon, authenticated/);
   assert.match(sql, /SECURITY DEFINER[\s\S]*SET search_path = ''/);
@@ -101,7 +101,7 @@ test('chat admission occurs after validation and immediately before OpenAI initi
 
 test('an admitted upstream failure remains consumed and returns authoritative metadata', async () => {
   const route = await readFile(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
-  const migration = await readFile(new URL('../supabase/migrations/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
+  const migration = await readFile(new URL('../supabase/migration_audit/pre_baseline_20260724/202607210003_brain_chat_user_quota.sql', import.meta.url), 'utf8');
   assert.match(route, /let admittedQuota: BrainChatQuota \| null = null/);
   assert.match(route, /Internal server error'[\s\S]*admittedQuota[\s\S]*quota: admittedQuota/);
   assert.doesNotMatch(route, /refund|releaseQuota|decrementQuota/);

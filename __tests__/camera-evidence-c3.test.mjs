@@ -6,7 +6,7 @@ import { parseEvidenceVerificationResult, routeEvidenceVerdict } from '../lib/ta
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const migration = read('supabase/migrations/202607210007_camera_evidence_c3_ai_verification.sql');
+const migration = read('supabase/migration_audit/pre_baseline_20260724/202607210007_camera_evidence_c3_ai_verification.sql');
 
 test('C3 migration starts with valid SQL commentary and contains no uncommented prose headings', () => {
   assert.match(migration, /^\/\*[\s\S]*?\*\/\s*ALTER TABLE/);
@@ -99,7 +99,7 @@ test('successful C3 enqueue reports queued AI verification without claiming huma
 });
 
 test('C3 pilot scheduler uses pg_cron, pg_net, runtime Vault access, and exact idempotent replacement', () => {
-  const schedule = read('supabase/migrations/202607210008_camera_evidence_worker_schedule.sql');
+  const schedule = read('supabase/migration_audit/pre_baseline_20260724/202607210008_camera_evidence_worker_schedule.sql');
   assert.match(schedule, /CREATE EXTENSION IF NOT EXISTS pg_cron/);
   assert.match(schedule, /CREATE EXTENSION IF NOT EXISTS pg_net/);
   assert.match(schedule, /'camera-evidence-worker-every-minute',\s*'\* \* \* \* \*'/);
