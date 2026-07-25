@@ -18,6 +18,39 @@ export type TaskSnapshot = {
   deadlineRuleVersion: typeof TASK_DEADLINE_RULE_VERSION;
 };
 
+export type TaskSnapshotProvenance = {
+  evaluatedAt: string;
+  companyTimezone: string;
+  taskRuleVersion: typeof TASK_DEADLINE_RULE_VERSION;
+  activeCount: number;
+  overdueCount: number;
+};
+
+export function buildTaskSnapshot(
+  rows: TaskMetricRow[],
+  companyTimezone: string,
+  evaluatedAt = new Date(),
+): TaskSnapshot {
+  return {
+    rows,
+    metrics: calculateTaskMetrics(rows, evaluatedAt, companyTimezone),
+    companyTimezone,
+    evaluatedAt: evaluatedAt.toISOString(),
+    source: TASK_METRICS_SOURCE,
+    deadlineRuleVersion: TASK_DEADLINE_RULE_VERSION,
+  };
+}
+
+export function taskSnapshotProvenance(snapshot: TaskSnapshot): TaskSnapshotProvenance {
+  return {
+    evaluatedAt: snapshot.evaluatedAt,
+    companyTimezone: snapshot.companyTimezone,
+    taskRuleVersion: snapshot.deadlineRuleVersion,
+    activeCount: snapshot.metrics.active,
+    overdueCount: snapshot.metrics.overdue,
+  };
+}
+
 export async function loadTaskSnapshot(input: {
   supabase: SupabaseClient;
   companyId: string;
@@ -42,14 +75,7 @@ export async function loadTaskSnapshot(input: {
 
   const rows = taskResult.data as TaskMetricRow[];
   const evaluatedAt = input.now ?? new Date();
-  const snapshot: TaskSnapshot = {
-    rows,
-    metrics: calculateTaskMetrics(rows, evaluatedAt, company.timezone),
-    companyTimezone: company.timezone,
-    evaluatedAt: evaluatedAt.toISOString(),
-    source: TASK_METRICS_SOURCE,
-    deadlineRuleVersion: TASK_DEADLINE_RULE_VERSION,
-  };
+  const snapshot = buildTaskSnapshot(rows, company.timezone, evaluatedAt);
   if (process.env.NODE_ENV !== 'production') {
     console.info('[Task Metrics]', {
       companyId, activeCount: snapshot.metrics.active, overdueCount: snapshot.metrics.overdue,

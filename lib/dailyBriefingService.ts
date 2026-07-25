@@ -1,6 +1,12 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { BrainScoreService } from './brainScoreService';
-import { isTaskOverdue, loadTaskSnapshot, type TaskMetricRow } from './task-metrics.server';
+import {
+  isTaskOverdue,
+  loadTaskSnapshot,
+  taskSnapshotProvenance,
+  type TaskMetricRow,
+  type TaskSnapshotProvenance,
+} from './task-metrics.server';
 import {
   isEmployeeProfileComplete,
   loadActiveEmployeeProfileSnapshot,
@@ -33,6 +39,7 @@ export interface DailyBriefing {
   positive_updates: string[];
   recommended_actions: string[];
   unavailable_metrics: string[];
+  task_snapshot: TaskSnapshotProvenance;
 }
 
 export class DailyBriefingService {
@@ -46,16 +53,19 @@ export class DailyBriefingService {
    * Generate a complete daily briefing for the authenticated user's company
    */
   async generateBriefing(): Promise<DailyBriefing> {
-    const now = new Date();
+    const taskSnapshot = await loadTaskSnapshot({
+      supabase: this.supabase,
+      companyId: this.userCompanyId,
+    });
+    const now = new Date(taskSnapshot.evaluatedAt);
     const greeting = this.generateGreeting(now);
     const unavailableMetrics: string[] = [];
 
     // 1. Calculate Brain Score
-    const scoreService = new BrainScoreService(this.supabase, this.userCompanyId);
+    const scoreService = new BrainScoreService(this.supabase, this.userCompanyId, taskSnapshot);
     const scoreBreakdown = await scoreService.calculateBrainScore();
 
     // 2. Collect data for priorities
-    const taskSnapshot = await loadTaskSnapshot({ supabase: this.supabase, companyId: this.userCompanyId });
     const overdueTasks = taskSnapshot.rows.filter((task) =>
       isTaskOverdue(task, new Date(taskSnapshot.evaluatedAt), taskSnapshot.companyTimezone));
     const criticalTasks = taskSnapshot.rows.filter((task) =>
@@ -105,7 +115,7 @@ export class DailyBriefingService {
       greeting,
       brain_score: {
         total: scoreBreakdown.total_score,
-        change: null, // Could be calculated from brain_score_snapshots if needed
+        change: null, // No durable historical Brain Score snapshot source exists.
         categories: {
           operations: scoreBreakdown.operations_score,
           employees: scoreBreakdown.employees_score,
@@ -118,6 +128,7 @@ export class DailyBriefingService {
       positive_updates: positiveUpdates,
       recommended_actions: recommendedActions,
       unavailable_metrics: unavailableMetrics,
+      task_snapshot: taskSnapshotProvenance(taskSnapshot),
     };
   }
 

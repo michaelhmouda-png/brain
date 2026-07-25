@@ -1,5 +1,11 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { isTaskOverdue, loadTaskSnapshot, type TaskSnapshot } from './task-metrics.server';
+import {
+  isTaskOverdue,
+  loadTaskSnapshot,
+  taskSnapshotProvenance,
+  type TaskSnapshot,
+  type TaskSnapshotProvenance,
+} from './task-metrics.server';
 import {
   ACTIVE_EMPLOYEE_STATUS,
   isEmployeeProfileComplete,
@@ -50,14 +56,18 @@ export interface BrainScoreBreakdown {
   metrics: BrainScoreMetrics;
   top_issues: string[];
   recommended_actions: string[];
+  task_snapshot: TaskSnapshotProvenance;
 }
 
 export class BrainScoreService {
-  private taskSnapshot: TaskSnapshot | null = null;
+  private taskSnapshot: TaskSnapshot | null;
   constructor(
     private supabase: SupabaseClient,
-    private userCompanyId: string
-  ) {}
+    private userCompanyId: string,
+    taskSnapshot: TaskSnapshot | null = null,
+  ) {
+    this.taskSnapshot = taskSnapshot;
+  }
 
   /**
    * Calculate comprehensive Brain Score (0-100)
@@ -102,6 +112,7 @@ export class BrainScoreService {
       metrics,
       top_issues: topIssues,
       recommended_actions: recommendedActions,
+      task_snapshot: taskSnapshotProvenance(this.taskSnapshot!),
     };
   }
 
@@ -112,12 +123,8 @@ export class BrainScoreService {
     this.taskSnapshot = snapshot;
     const tasks = snapshot.rows;
 
-    if (!tasks || tasks.length === 0) {
-      return 100; // No tasks = no operational issues
-    }
-
     const completed = tasks.filter((task) => task.status === 'completed').length;
-    const completionRate = (completed / tasks.length) * 100;
+    const completionRate = tasks.length > 0 ? (completed / tasks.length) * 100 : 100;
 
     const now = new Date(snapshot.evaluatedAt);
     const overdue = snapshot.metrics.overdue;
@@ -132,6 +139,10 @@ export class BrainScoreService {
       overduePercentage: Math.round((overdue / tasks.length) * 100),
       totalTasks: tasks.length,
     };
+
+    if (tasks.length === 0) {
+      return 100; // No tasks = no operational issues
+    }
 
     // Score formula: completion rate (50%), no critical overdue (50%)
     let score = completionRate * 0.5;
