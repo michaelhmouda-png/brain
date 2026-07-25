@@ -185,6 +185,19 @@ export function createCameraInspectionAccess(
       return !error && data?.id === locationId && data.company_id === companyId;
     },
 
+    async loadSucceededForSnapshot(snapshotId, companyId) {
+      const { data, error } = await service
+        .from('camera_inspections')
+        .select(INSPECTION_COLUMNS)
+        .eq('snapshot_artifact_id', snapshotId)
+        .eq('company_id', companyId)
+        .eq('inspection_version', CAMERA_INSPECTION_VERSION)
+        .eq('status', 'succeeded')
+        .maybeSingle();
+      if (error) throw new Error('CAMERA_INSPECTION_LOOKUP_FAILED');
+      return data ? requiredInspection(data) : null;
+    },
+
     async createPending({ actor, snapshot }) {
       const { data, error } = await service
         .from('camera_inspections')

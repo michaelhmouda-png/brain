@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { CameraInspectionControl } from '@/components/camera-manager/CameraInspectionControl';
+import { CameraSkillControl } from '@/components/camera-manager/CameraSkillControl';
 
 type CommandState = {
   commandId: string;
@@ -167,7 +167,7 @@ export function CameraSnapshotControl({
               <p>Signed access expires {access.signedUrlExpiresAt}</p>
             </figcaption>
           </figure>
-          <CameraInspectionControl snapshotId={access.artifactId} />
+          <CameraSkillControl snapshotId={access.artifactId} />
         </>
       ) : null}
     </div>

@@ -61,6 +61,10 @@ export type CameraInspectionRecord = {
 export interface CameraInspectionAccess {
   loadAuthorizedSnapshot(snapshotId: string): Promise<CameraInspectionSnapshot | null>;
   locationIsAccessible(companyId: string, locationId: string): Promise<boolean>;
+  loadSucceededForSnapshot?(
+    snapshotId: string,
+    companyId: string,
+  ): Promise<CameraInspectionRecord | null>;
   createPending(input: {
     actor: CameraInspectionActor;
     snapshot: CameraInspectionSnapshot;
@@ -127,11 +131,13 @@ async function persistFailure(
 export async function executeCameraInspection({
   actor,
   snapshotId,
+  preloadedSnapshot,
   access,
   vision,
 }: {
   actor: CameraInspectionActor;
   snapshotId: string;
+  preloadedSnapshot?: CameraInspectionSnapshot;
   access: CameraInspectionAccess;
   vision: VisionService;
 }): Promise<CameraInspectionExecution> {
@@ -144,8 +150,16 @@ export async function executeCameraInspection({
     };
   }
 
-  const snapshot = await access.loadAuthorizedSnapshot(snapshotId);
+  const snapshot = preloadedSnapshot ?? await access.loadAuthorizedSnapshot(snapshotId);
   if (!snapshot) {
+    return {
+      ok: false,
+      errorCode: 'CAMERA_INSPECTION_SNAPSHOT_NOT_FOUND',
+      correlationId: actor.correlationId,
+      inspection: null,
+    };
+  }
+  if (snapshot.id !== snapshotId) {
     return {
       ok: false,
       errorCode: 'CAMERA_INSPECTION_SNAPSHOT_NOT_FOUND',
@@ -168,6 +182,19 @@ export async function executeCameraInspection({
       correlationId: actor.correlationId,
       inspection: null,
     };
+  }
+  if (access.loadSucceededForSnapshot) {
+    try {
+      const existing = await access.loadSucceededForSnapshot(snapshot.id, actor.companyId);
+      if (existing) return { ok: true, inspection: existing };
+    } catch {
+      return {
+        ok: false,
+        errorCode: 'CAMERA_INSPECTION_PERSISTENCE_FAILED',
+        correlationId: actor.correlationId,
+        inspection: null,
+      };
+    }
   }
 
   let pending: CameraInspectionRecord;
