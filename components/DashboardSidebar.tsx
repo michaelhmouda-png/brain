@@ -29,6 +29,7 @@ const navSections: NavSection[] = [
     title: 'BRAIN',
     items: [
       { href: '/dashboard/ai-assistant', label: 'AI Assistant' },
+      { href: '/dashboard/timeline', label: 'Timeline', reviewOnly: true },
     ],
   },
   {

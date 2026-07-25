@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
 import { ActorContextError } from '@/lib/brain/kernel/errors';
+import { createTimelinePersistence } from '@/lib/brain/timeline/persistence.server';
+import { createTimelineService } from '@/lib/brain/timeline/service.server';
+import { persistVisionSkillTimeline } from '@/lib/brain/timeline/vision-skill-integration.server';
 import { isUuid } from '@/lib/brain-agent/contracts';
 import {
   canRunCameraInspection,
@@ -31,13 +34,23 @@ const HEADERS = {
 const failure = (code: string, status: number, data?: Record<string, unknown>) =>
   NextResponse.json(data ? { error: code, data } : { error: code }, { status, headers: HEADERS });
 
-function parseRequest(value: unknown): { snapshotId: string; skill: VisionSkillName } | null {
+function parseRequest(value: unknown): {
+  snapshotId: string;
+  skill: VisionSkillName;
+  persistTimeline: boolean;
+} | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
   const input = value as Record<string, unknown>;
-  if (Object.keys(input).sort().join(',') !== 'skill,snapshotId'
+  const keys = Object.keys(input).sort().join(',');
+  if (!['persistTimeline,skill,snapshotId', 'skill,snapshotId'].includes(keys)
       || !isUuid(input.snapshotId)
-      || !isVisionSkillName(input.skill)) return null;
-  return { snapshotId: input.snapshotId, skill: input.skill };
+      || !isVisionSkillName(input.skill)
+      || input.persistTimeline !== undefined && typeof input.persistTimeline !== 'boolean') return null;
+  return {
+    snapshotId: input.snapshotId,
+    skill: input.skill,
+    persistTimeline: input.persistTimeline === true,
+  };
 }
 
 function safeInspection(inspection: CameraInspectionRecord) {
@@ -84,7 +97,8 @@ export async function POST(request: Request) {
     const input = parseRequest(await request.json().catch(() => null));
     if (!input) return failure('CAMERA_SKILL_INVALID', 400);
 
-    const access = createCameraInspectionAccess(authenticated, createSupabaseServer());
+    const serviceRole = createSupabaseServer();
+    const access = createCameraInspectionAccess(authenticated, serviceRole);
     const snapshot = await access.loadAuthorizedSnapshot(input.snapshotId);
     if (!snapshot) return failure('CAMERA_INSPECTION_SNAPSHOT_NOT_FOUND', 404);
     if (snapshot.companyId !== actor.companyId) return failure('CAMERA_INSPECTION_TENANT_MISMATCH', 403);
@@ -116,31 +130,41 @@ export async function POST(request: Request) {
       return failure('CAMERA_SKILL_INSPECTION_INVALID', 503);
     }
 
+    const skillInput = {
+      inspection: execution.inspection.result,
+      snapshot: {
+        id: snapshot.id,
+        channelNumber: snapshot.channelNumber,
+        byteSize: snapshot.byteSize,
+        width: snapshot.width,
+        height: snapshot.height,
+        expiresAt: snapshot.expiresAt,
+      },
+      ...entities,
+      context: {
+        correlationId: actor.correlationId,
+        inspectionId: execution.inspection.id,
+        inspectionModel: execution.inspection.model,
+        requestedAt: new Date().toISOString(),
+      },
+    };
     const skill = createVisionSkillService().execute({
       skill: input.skill,
-      data: {
-        inspection: execution.inspection.result,
-        snapshot: {
-          id: snapshot.id,
-          channelNumber: snapshot.channelNumber,
-          byteSize: snapshot.byteSize,
-          width: snapshot.width,
-          height: snapshot.height,
-          expiresAt: snapshot.expiresAt,
-        },
-        ...entities,
-        context: {
-          correlationId: actor.correlationId,
-          inspectionId: execution.inspection.id,
-          inspectionModel: execution.inspection.model,
-          requestedAt: new Date().toISOString(),
-        },
-      },
+      data: skillInput,
     });
+    const timeline = input.persistTimeline
+      ? await persistVisionSkillTimeline(
+        createTimelineService(createTimelinePersistence(serviceRole)),
+        actor,
+        skillInput,
+        skill,
+      )
+      : null;
     return NextResponse.json({
       data: {
         inspection: safeInspection(execution.inspection),
         skill,
+        timeline,
       },
     }, { headers: HEADERS });
   } catch (error) {
