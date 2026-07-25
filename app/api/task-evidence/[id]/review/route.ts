@@ -1,3 +1,4 @@
+import { revalidatePath } from 'next/cache';
 import { NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
@@ -20,5 +21,24 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   const { data, error } = await supabase.rpc('review_task_evidence', { p_evidence_id: id, p_decision: input.decision, p_note: input.note ?? '', p_confirm: true });
   if (error) return NextResponse.json({ error: 'Evidence could not be reviewed' }, { status: 409, headers: HEADERS });
   const row = Array.isArray(data) ? data[0] : data;
-  return NextResponse.json({ evidence: row, message: 'Evidence reviewed; task status was not changed.' }, { headers: HEADERS });
+  if (!row || typeof row !== 'object') return NextResponse.json({ error: 'Evidence review returned no result' }, { status: 503, headers: HEADERS });
+  if (row.review_outcome === 'failed' || row.task_completion_outcome === 'not_completable') {
+    return NextResponse.json({
+      error: 'The linked task cannot be completed',
+      code: 'TASK_NOT_COMPLETABLE',
+    }, { status: 409, headers: HEADERS });
+  }
+
+  revalidatePath('/dashboard/evidence-review');
+  if (input.decision === 'approved') {
+    revalidatePath('/dashboard/tasks');
+    revalidatePath('/dashboard');
+  }
+
+  const message = input.decision === 'rejected'
+    ? 'Evidence rejected; the linked task remains unchanged.'
+    : row.task_completion_outcome === 'already_completed'
+      ? 'Evidence approved; the linked task was already completed.'
+      : 'Evidence approved and linked task completed.';
+  return NextResponse.json({ evidence: row, message }, { headers: HEADERS });
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import Image from 'next/image';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
 
 type Evidence = Record<string, unknown> & { evidence_id: string; evidence_status: string; task_title: string };
@@ -12,12 +13,14 @@ function evidenceRows(value: unknown): Evidence[] {
 }
 
 export default function EvidenceReviewPage() {
+  const router = useRouter();
   const [rows, setRows] = useState<Evidence[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [urls, setUrls] = useState<Record<string, string>>({});
   const [confirming, setConfirming] = useState<{ id: string; decision: 'approved' | 'rejected' } | null>(null);
   const [note, setNote] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true); setError(null);
@@ -53,10 +56,27 @@ export default function EvidenceReviewPage() {
   }
 
   async function review() {
-    if (!confirming) return;
-    const response = await fetch(`/api/task-evidence/${confirming.id}/review`, { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: confirming.decision, note, confirm: true }) });
-    if (!response.ok) { setError('The review could not be saved. Please retry.'); return; }
-    setConfirming(null); setNote(''); await load();
+    if (!confirming || saving) return;
+    setSaving(true);
+    try {
+      const response = await fetch(`/api/task-evidence/${confirming.id}/review`, { method: 'POST', cache: 'no-store', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ decision: confirming.decision, note, confirm: true }) });
+      const data: unknown = await response.json().catch(() => null);
+      if (!response.ok) {
+        const message = typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string'
+          ? data.error
+          : 'The review could not be saved. Please retry.';
+        setError(message);
+        return;
+      }
+      setConfirming(null);
+      setNote('');
+      await load();
+      router.refresh();
+    } catch {
+      setError('The review could not be saved. Please retry.');
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function retryVerification(id: string) {
@@ -65,7 +85,7 @@ export default function EvidenceReviewPage() {
     await load();
   }
 
-  return <main className="space-y-5 text-white"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Evidence review</h1><p className="text-sm text-slate-400">AI results support a human decision. Reviews never change task status.</p></div><button onClick={() => void load()} className="min-h-11 rounded-xl border border-white/10 px-4">Refresh</button></div>
+  return <main className="space-y-5 text-white"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Evidence review</h1><p className="text-sm text-slate-400">AI results support a human decision. Manager approval completes the linked active task; AI verification alone never changes task status.</p></div><button onClick={() => void load()} className="min-h-11 rounded-xl border border-white/10 px-4">Refresh</button></div>
     {loading && <p className="text-slate-300">Loading evidence…</p>}{error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">{error} <button onClick={() => void load()} className="ml-2 min-h-11 underline">Retry</button></div>}
     {!loading && !error && rows.length === 0 && <div className="rounded-2xl border border-white/10 p-6 text-slate-300">No evidence is awaiting or has completed review.</div>}
     <div className="grid gap-4 xl:grid-cols-2">{rows.map((row) => { const observations = Array.isArray(row.visible_observations) ? row.visible_observations.filter((item): item is string => typeof item === 'string') : []; const codes = Array.isArray(row.reason_codes) ? row.reason_codes.filter((item): item is string => typeof item === 'string') : []; return <article key={row.evidence_id} className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex justify-between gap-3"><div><h2 className="font-semibold">{row.task_title}</h2><p className="text-xs text-slate-400">Submitted by {typeof row.submitter_name === 'string' ? row.submitter_name : 'Team member'}</p></div><span className="h-fit rounded-full bg-cyan-500/10 px-2 py-1 text-xs text-cyan-200">{row.evidence_status.replaceAll('_', ' ')}</span></div>
@@ -74,6 +94,6 @@ export default function EvidenceReviewPage() {
       {row.evidence_status === 'verification_failed' && <button onClick={() => void retryVerification(row.evidence_id)} className="mt-4 min-h-11 w-full rounded-xl border border-amber-500/30 text-amber-200">Retry AI analysis</button>}
       {['ai_verified','ai_rejected','needs_human_review','verification_failed'].includes(row.evidence_status) && <div className="mt-2 grid grid-cols-2 gap-2"><button onClick={() => setConfirming({ id: row.evidence_id, decision: 'rejected' })} className="min-h-11 rounded-xl border border-red-500/30 text-red-200">Reject</button><button onClick={() => setConfirming({ id: row.evidence_id, decision: 'approved' })} className="min-h-11 rounded-xl bg-cyan-600 font-semibold">Approve</button></div>}
     </article>; })}</div>
-    {confirming && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4" role="dialog" aria-modal="true"><div className="w-full rounded-t-3xl bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl"><h2 className="text-lg font-bold">Confirm {confirming.decision}</h2><p className="mt-2 text-sm text-slate-300">This records an append-only human decision. The task status will not change.</p><label className="mt-4 block text-sm">Optional note<textarea value={note} maxLength={1000} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-24 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-base" /></label><div className="mt-4 grid grid-cols-2 gap-2"><button onClick={() => setConfirming(null)} className="min-h-11 rounded-xl border border-white/10">Cancel</button><button onClick={() => void review()} className="min-h-11 rounded-xl bg-cyan-600 font-semibold">Confirm</button></div></div></div>}
+    {confirming && <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4" role="dialog" aria-modal="true"><div className="w-full rounded-t-3xl bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-md sm:rounded-2xl"><h2 className="text-lg font-bold">Confirm {confirming.decision}</h2><p className="mt-2 text-sm text-slate-300">{confirming.decision === 'approved' ? 'Approve evidence and complete this task?' : 'Reject evidence and leave this task unchanged?'}</p><label className="mt-4 block text-sm">Optional note<textarea value={note} maxLength={1000} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-24 w-full rounded-xl border border-slate-700 bg-slate-900 p-3 text-base" /></label><div className="mt-4 grid grid-cols-2 gap-2"><button disabled={saving} onClick={() => setConfirming(null)} className="min-h-11 rounded-xl border border-white/10 disabled:opacity-60">Cancel</button><button disabled={saving} onClick={() => void review()} className="min-h-11 rounded-xl bg-cyan-600 font-semibold disabled:opacity-60">{saving ? 'Saving…' : 'Confirm'}</button></div></div></div>}
   </main>;
 }
