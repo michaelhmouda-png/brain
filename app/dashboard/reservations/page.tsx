@@ -47,8 +47,9 @@ export default function ReservationsPage() {
   }, [tab]);
 
   useEffect(() => {
-    void fetch('/api/locations', { cache: 'no-store' }).then((r) => r.json()).then((payload) => {
-      const list = Array.isArray(payload?.locations) ? payload.locations : Array.isArray(payload?.data) ? payload.data : [];
+    void fetch('/api/locations', { cache: 'no-store' }).then(async (response) => {
+      const payload = await response.json().catch(() => null);
+      const list = response.ok && Array.isArray(payload?.data?.locations) ? payload.data.locations : [];
       setLocations(list); if (list[0]?.id) setForm((current) => ({ ...current, locationId: current.locationId || list[0].id }));
     });
   }, []);

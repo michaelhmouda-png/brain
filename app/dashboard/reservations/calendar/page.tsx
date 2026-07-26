@@ -21,8 +21,9 @@ export default function ReservationCalendarPage() {
     if (view === 'month') { from.setUTCDate(1); to.setUTCMonth(from.getUTCMonth() + 1, 0); }
     return { from: iso(from), to: iso(to) };
   }, [date, view]);
-  useEffect(() => { void fetch('/api/locations', { cache: 'no-store' }).then((r) => r.json()).then((payload) => {
-    const rows = Array.isArray(payload?.locations) ? payload.locations : Array.isArray(payload?.data) ? payload.data : [];
+  useEffect(() => { void fetch('/api/locations', { cache: 'no-store' }).then(async (response) => {
+    const payload = await response.json().catch(() => null);
+    const rows = response.ok && Array.isArray(payload?.data?.locations) ? payload.data.locations : [];
     setLocations(rows); if (rows[0]?.id) setLocationId(rows[0].id);
   }); }, []);
   useEffect(() => {

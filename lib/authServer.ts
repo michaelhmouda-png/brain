@@ -7,6 +7,8 @@
  */
 
 import { createSupabase } from './supabaseClient';
+import type { SupabaseClient } from '@supabase/supabase-js';
+import type { ActorContext } from './brain/kernel/actor-context';
 import type { Profile } from './types';
 
 /**
@@ -134,28 +136,22 @@ export async function getAccessibleCompanies() {
 /**
  * Fetch locations for the current user's company
  */
-export async function getAccessibleLocations() {
-  const supabase = createSupabase();
-  const companyId = await getCurrentUserCompanyId();
+export async function getAccessibleLocations(
+  supabase: SupabaseClient,
+  actor: Pick<ActorContext, 'companyId'>,
+) {
+  const { data, error } = await supabase
+    .from('locations')
+    .select('id,name')
+    .eq('company_id', actor.companyId)
+    .eq('status', 'active')
+    .order('name', { ascending: true });
 
-  try {
-    let query = supabase.from('locations').select('*');
-
-    if (companyId) {
-      query = query.eq('company_id', companyId);
-    }
-
-    const { data, error } = await query.order('name', { ascending: true });
-
-    if (error) {
-      throw new Error(error.message);
-    }
-
-    return data || [];
-  } catch (error) {
-    console.error('Failed to fetch locations:', error);
-    return [];
+  if (error) {
+    throw new Error('LOCATION_LIST_UNAVAILABLE');
   }
+
+  return data ?? [];
 }
 
 /**

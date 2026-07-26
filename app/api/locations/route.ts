@@ -1,5 +1,33 @@
 import { NextResponse } from "next/server";
+import { resolveActorContext } from "../../../lib/brain/kernel/actor-context.server";
+import { ActorContextError } from "../../../lib/brain/kernel/errors";
+import { getAccessibleLocations } from "../../../lib/authServer";
+import { canManageReservations } from "../../../lib/reservations/service.server";
 import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
+
+const HEADERS = { "Cache-Control": "private, no-store, max-age=0", Vary: "Cookie, Authorization" };
+
+export async function GET() {
+  try {
+    const supabaseAuth = await createSupabaseServerAuth();
+    const actor = await resolveActorContext(supabaseAuth);
+
+    if (!canManageReservations(actor.role)) {
+      return NextResponse.json({ error: "LOCATION_LIST_FORBIDDEN" }, { status: 403, headers: HEADERS });
+    }
+
+    const locations = await getAccessibleLocations(supabaseAuth, actor);
+    return NextResponse.json({ data: { locations } }, { headers: HEADERS });
+  } catch (error) {
+    if (error instanceof ActorContextError) {
+      return NextResponse.json(
+        { error: error.code },
+        { status: error.code === "UNAUTHENTICATED" ? 401 : 403, headers: HEADERS },
+      );
+    }
+    return NextResponse.json({ error: "LOCATION_LIST_UNAVAILABLE" }, { status: 503, headers: HEADERS });
+  }
+}
 
 export async function POST(request: Request) {
   const body = await request.json();

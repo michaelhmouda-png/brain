@@ -10,6 +10,10 @@ const migration = read('supabase/migrations/202607250004_reservation_os_foundati
 const service = read('lib/reservations/service.server.ts');
 const calendarRoute = read('app/api/reservations/calendar/route.ts');
 const historyRoute = read('app/api/reservations/history/route.ts');
+const locationsRoute = read('app/api/locations/route.ts');
+const locationService = read('lib/authServer.ts');
+const reservationsPage = read('app/dashboard/reservations/page.tsx');
+const reservationCalendarPage = read('app/dashboard/reservations/calendar/page.tsx');
 const routes = [
   read('app/api/reservations/route.ts'), read('app/api/reservations/[id]/route.ts'),
   read('app/api/reservations/[id]/status/route.ts'), calendarRoute, historyRoute,
@@ -129,6 +133,28 @@ test('calendar and history preserve typed authentication failures as 401 or 403'
   }
   assert.match(calendarRoute, /RESERVATION_UNAVAILABLE[\s\S]+status: 503/);
   assert.match(historyRoute, /RESERVATION_HISTORY_UNAVAILABLE[\s\S]+status: 503/);
+});
+
+test('reservation location loading uses one canonical active company-scoped query', () => {
+  assert.match(locationsRoute, /export async function GET\(\)/);
+  assert.match(locationsRoute, /resolveActorContext\(supabaseAuth\)/);
+  assert.match(locationsRoute, /canManageReservations\(actor\.role\)/);
+  assert.match(locationsRoute, /getAccessibleLocations\(supabaseAuth, actor\)/);
+  assert.match(locationsRoute, /\{ data: \{ locations \} \}/);
+  assert.match(locationsRoute, /LOCATION_LIST_FORBIDDEN/);
+
+  const accessibleLocationFunction = locationService.match(
+    /export async function getAccessibleLocations[\s\S]+?\n}\n/,
+  )?.[0] ?? '';
+  assert.match(accessibleLocationFunction, /\.select\('id,name'\)/);
+  assert.match(accessibleLocationFunction, /\.eq\('company_id', actor\.companyId\)/);
+  assert.match(accessibleLocationFunction, /\.eq\('status', 'active'\)/);
+  assert.equal((accessibleLocationFunction.match(/\.from\('locations'\)/g) ?? []).length, 1);
+
+  for (const page of [reservationsPage, reservationCalendarPage]) {
+    assert.equal((page.match(/fetch\('\/api\/locations'/g) ?? []).length, 1);
+    assert.match(page, /response\.ok && Array\.isArray\(payload\?\.data\?\.locations\)/);
+  }
 });
 
 test('same-date and comparable-weekday historical helpers are factual', () => {
