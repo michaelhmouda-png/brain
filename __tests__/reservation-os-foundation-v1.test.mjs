@@ -8,9 +8,11 @@ import { MockTelephonyProviderAdapter, handleIncomingCall } from '../lib/reserva
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const migration = read('supabase/migrations/202607250004_reservation_os_foundation_v1.sql');
 const service = read('lib/reservations/service.server.ts');
+const calendarRoute = read('app/api/reservations/calendar/route.ts');
+const historyRoute = read('app/api/reservations/history/route.ts');
 const routes = [
   read('app/api/reservations/route.ts'), read('app/api/reservations/[id]/route.ts'),
-  read('app/api/reservations/[id]/status/route.ts'), read('app/api/reservations/calendar/route.ts'),
+  read('app/api/reservations/[id]/status/route.ts'), calendarRoute, historyRoute,
 ].join('\n');
 
 test('phone normalization produces strict E.164 and strips one national trunk prefix', () => {
@@ -116,6 +118,17 @@ test('API derives tenant and actor context and rejects unauthorized employees', 
   assert.match(routes, /canManageReservations\(actor\.role\)/);
   assert.doesNotMatch(routes, /params\.get\(['"]company|row\.company|input\.company/);
   assert.match(routes, /RESERVATION_FORBIDDEN/);
+});
+
+test('calendar and history preserve typed authentication failures as 401 or 403', () => {
+  for (const route of [calendarRoute, historyRoute]) {
+    assert.match(route, /import \{ ActorContextError \} from '@\/lib\/brain\/kernel\/errors'/);
+    assert.match(route, /error instanceof ActorContextError/);
+    assert.match(route, /error\.code === 'UNAUTHENTICATED' \? 401 : 403/);
+    assert.match(route, /resolveActorContext\(client\)[\s\S]+canManageReservations\(actor\.role\)/);
+  }
+  assert.match(calendarRoute, /RESERVATION_UNAVAILABLE[\s\S]+status: 503/);
+  assert.match(historyRoute, /RESERVATION_HISTORY_UNAVAILABLE[\s\S]+status: 503/);
 });
 
 test('same-date and comparable-weekday historical helpers are factual', () => {

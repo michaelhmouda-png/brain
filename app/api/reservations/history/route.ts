@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { ActorContextError } from '@/lib/brain/kernel/errors';
 import { isDate, isUuid } from '@/lib/reservations/contracts';
 import { comparableWeekdayLastYear } from '@/lib/reservations/history';
 import { queryHistoricalMetrics } from '@/lib/reservations/history.server';
@@ -20,5 +21,13 @@ export async function GET(request: Request) {
       queryHistoricalMetrics(client, actor.companyId, locationId, comparableDate, comparableDate),
     ]);
     return NextResponse.json({ data: { date, comparableDate, current, comparable, sufficientHistoricalData: comparable.reservationCount > 0 } }, { headers: HEADERS });
-  } catch { return NextResponse.json({ error: 'RESERVATION_HISTORY_UNAVAILABLE' }, { status: 503, headers: HEADERS }); }
+  } catch (error) {
+    if (error instanceof ActorContextError) {
+      return NextResponse.json(
+        { error: error.code },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403, headers: HEADERS },
+      );
+    }
+    return NextResponse.json({ error: 'RESERVATION_HISTORY_UNAVAILABLE' }, { status: 503, headers: HEADERS });
+  }
 }

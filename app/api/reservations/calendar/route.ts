@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { ActorContextError } from '@/lib/brain/kernel/errors';
 import { RESERVATION_PURPOSES, RESERVATION_SOURCES, RESERVATION_STATUSES, isDate, isUuid, oneOf } from '@/lib/reservations/contracts';
 import { maskPhone } from '@/lib/reservations/phone';
 import { canManageReservations } from '@/lib/reservations/service.server';
@@ -24,5 +25,13 @@ export async function GET(request: Request) {
       return { ...row, guest: guest ? { name: `${guest.first_name ?? ''} ${guest.last_name ?? ''}`.trim(), phone: maskPhone(guest.phone_e164 ?? '') } : null, hasNotes: Boolean(row.notes), notes: undefined };
     });
     return NextResponse.json({ data: { view, from, to, timezone: location.timezone, reservations, waitlist: waiting ?? [] } }, { headers: HEADERS });
-  } catch { return NextResponse.json({ error: 'RESERVATION_UNAVAILABLE' }, { status: 503, headers: HEADERS }); }
+  } catch (error) {
+    if (error instanceof ActorContextError) {
+      return NextResponse.json(
+        { error: error.code },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403, headers: HEADERS },
+      );
+    }
+    return NextResponse.json({ error: 'RESERVATION_UNAVAILABLE' }, { status: 503, headers: HEADERS });
+  }
 }
