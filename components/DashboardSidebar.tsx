@@ -30,6 +30,7 @@ const navSections: NavSection[] = [
     items: [
       { href: '/dashboard/ai-assistant', label: 'AI Assistant' },
       { href: '/dashboard/timeline', label: 'Timeline', reviewOnly: true },
+      { href: '/dashboard/reservations', label: 'Reservations', reviewOnly: true },
     ],
   },
   {
