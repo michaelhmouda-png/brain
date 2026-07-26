@@ -7,6 +7,7 @@ import { MockTelephonyProviderAdapter, handleIncomingCall } from '../lib/reserva
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const migration = read('supabase/migrations/202607250004_reservation_os_foundation_v1.sql');
+const timezoneRepair = read('supabase/migrations/202607250005_fix_reservation_location_timezone_validation.sql');
 const service = read('lib/reservations/service.server.ts');
 const calendarRoute = read('app/api/reservations/calendar/route.ts');
 const historyRoute = read('app/api/reservations/history/route.ts');
@@ -92,6 +93,40 @@ test('shared reservation trigger isolates table-specific NEW fields for every at
     for (const reference of expectedReferences) {
       assert.match(branch, new RegExp(reference.replace('.', '\\.')));
     }
+  }
+});
+
+test('reservation local-time validation uses the selected active location timezone', () => {
+  assert.match(timezoneRepair, /^--[^\n]+\nBEGIN;/);
+  assert.match(timezoneRepair, /CREATE OR REPLACE FUNCTION private\.validate_reservation_context\(\)/);
+  assert.match(timezoneRepair, /RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path = ''/);
+  assert.match(
+    timezoneRepair,
+    /SELECT l\.timezone\s+INTO v_timezone\s+FROM public\.locations l\s+WHERE l\.id = NEW\.location_id\s+AND l\.company_id = NEW\.company_id\s+AND l\.status = 'active'/,
+  );
+  assert.match(timezoneRepair, /NEW\.starts_at AT TIME ZONE v_timezone[\s\S]+NEW\.reservation_date/);
+  assert.match(timezoneRepair, /NEW\.starts_at AT TIME ZONE v_timezone[\s\S]+NEW\.reservation_time/);
+  assert.doesNotMatch(timezoneRepair, /SELECT c\.timezone[\s\S]+FROM public\.companies/);
+  assert.match(timezoneRepair, /ALTER FUNCTION private\.validate_reservation_context\(\) OWNER TO postgres/);
+  assert.match(timezoneRepair, /REVOKE ALL ON FUNCTION private\.validate_reservation_context\(\) FROM PUBLIC, anon, authenticated, service_role/);
+  assert.match(timezoneRepair, /COMMIT;\s*$/);
+});
+
+test('timezone repair replaces only the shared trigger function and preserves every protected branch', () => {
+  assert.equal((timezoneRepair.match(/CREATE OR REPLACE FUNCTION/g) ?? []).length, 1);
+  assert.doesNotMatch(timezoneRepair, /\b(?:CREATE|ALTER|DROP)\s+(?:TABLE|POLICY|TRIGGER|INDEX)\b/i);
+  for (const protection of [
+    'RESERVATION_HISTORY_APPEND_ONLY',
+    'RESERVATION_HISTORY_RETAINED',
+    'RESERVATION_ACTOR_INVALID',
+    'RESERVATION_TRIGGER_TABLE_INVALID',
+    'RESERVATION_LOCATION_INVALID',
+    'RESERVATION_GUEST_INVALID',
+    'RESERVATION_LOCAL_TIME_INVALID',
+    'RESERVATION_WAITLIST_CONVERSION_INVALID',
+    'RESERVATION_HISTORY_CONTEXT_INVALID',
+  ]) {
+    assert.match(timezoneRepair, new RegExp(protection));
   }
 });
 
