@@ -14,6 +14,7 @@ const historyRoute = read('app/api/reservations/history/route.ts');
 const locationsRoute = read('app/api/locations/route.ts');
 const locationService = read('lib/authServer.ts');
 const reservationsPage = read('app/dashboard/reservations/page.tsx');
+const reservationConsole = read('components/reservations/ReservationConsole.tsx');
 const reservationCalendarPage = read('app/dashboard/reservations/calendar/page.tsx');
 const routes = [
   read('app/api/reservations/route.ts'), read('app/api/reservations/[id]/route.ts'),
@@ -186,10 +187,26 @@ test('reservation location loading uses one canonical active company-scoped quer
   assert.match(accessibleLocationFunction, /\.eq\('status', 'active'\)/);
   assert.equal((accessibleLocationFunction.match(/\.from\('locations'\)/g) ?? []).length, 1);
 
-  for (const page of [reservationsPage, reservationCalendarPage]) {
+  assert.match(reservationsPage, /ReservationConsole/);
+  for (const page of [reservationConsole, reservationCalendarPage]) {
     assert.equal((page.match(/fetch\('\/api\/locations'/g) ?? []).length, 1);
     assert.match(page, /response\.ok && Array\.isArray\(payload\?\.data\?\.locations\)/);
   }
+});
+
+test('Reservation OS V2 is a single-call operator console over the existing secured APIs', () => {
+  assert.match(reservationConsole, /Reservation desk/);
+  assert.match(reservationConsole, /Call mode/);
+  assert.match(reservationConsole, /Quick booking/);
+  assert.match(reservationConsole, /Returning guest/);
+  assert.match(reservationConsole, /Availability unknown/);
+  assert.match(reservationConsole, /submittingRef\.current/);
+  assert.match(reservationConsole, /Enter to save/);
+  assert.match(reservationConsole, /fetch\(`\/api\/reservations\?\$\{params\}`/);
+  assert.match(reservationConsole, /fetch\('\/api\/reservations', \{\s*method: 'POST'/);
+  assert.match(reservationConsole, /fetch\(`\/api\/reservations\/\$\{row\.id\}\/status`, \{\s*method: 'PATCH'/);
+  assert.match(reservationConsole, /fetch\(`\/api\/reservations\/history\?\$\{params\}`/);
+  assert.doesNotMatch(reservationConsole, /\/api\/(?:cameras|ai)|snapshot|nvr|openai/i);
 });
 
 test('same-date and comparable-weekday historical helpers are factual', () => {
