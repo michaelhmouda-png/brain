@@ -40,6 +40,23 @@ export type ManualReservationInput = {
   latestTime?: string;
 };
 
+export type ReservationUpdateInput = {
+  firstName: string;
+  lastName: string;
+  countryCallingCode: string;
+  phoneNumber: string;
+  guestCount: number;
+  purpose: ReservationPurpose;
+  purposeDetails?: string;
+  date: string;
+  time: string;
+  expectedDurationMinutes: number;
+  notes?: string;
+  seatingPreference: SeatingPreference;
+  status: ReservationStatus;
+  statusReason?: string;
+};
+
 export type ReservationSafeRecord = {
   id: string;
   locationId: string;

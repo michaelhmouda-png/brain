@@ -14,6 +14,7 @@ import {
   oneOf,
   type ManualReservationInput,
   type ReservationStatus,
+  type ReservationUpdateInput,
 } from './contracts.ts';
 import { normalizePhone } from './phone.ts';
 
@@ -61,6 +62,37 @@ export function parseManualReservation(value: unknown): ManualReservationInput {
     waitlist: row.waitlist,
     earliestTime,
     latestTime,
+  };
+}
+
+export function parseReservationUpdate(value: unknown): ReservationUpdateInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('RESERVATION_INPUT_INVALID');
+  const row = value as Record<string, unknown>;
+  const allowed = new Set([
+    'firstName','lastName','countryCallingCode','phoneNumber','guestCount','purpose','purposeDetails',
+    'date','time','expectedDurationMinutes','notes','seatingPreference','status','statusReason',
+  ]);
+  if (Object.keys(row).some((key) => !allowed.has(key))
+      || !isDate(row.date) || !isTime(row.time)
+      || !Number.isInteger(row.guestCount) || Number(row.guestCount) < 1 || Number(row.guestCount) > 100
+      || !Number.isInteger(row.expectedDurationMinutes) || Number(row.expectedDurationMinutes) < 15 || Number(row.expectedDurationMinutes) > 720
+      || !oneOf(RESERVATION_PURPOSES, row.purpose) || !oneOf(SEATING_PREFERENCES, row.seatingPreference)
+      || !oneOf(RESERVATION_STATUSES, row.status)) throw new Error('RESERVATION_INPUT_INVALID');
+  return {
+    firstName: bounded(row.firstName, 1, 80)!,
+    lastName: bounded(row.lastName, 1, 80)!,
+    countryCallingCode: bounded(row.countryCallingCode, 2, 5)!,
+    phoneNumber: bounded(row.phoneNumber, 4, 24)!,
+    guestCount: Number(row.guestCount),
+    purpose: row.purpose,
+    purposeDetails: bounded(row.purposeDetails, 1, 500, true),
+    date: row.date,
+    time: row.time,
+    expectedDurationMinutes: Number(row.expectedDurationMinutes),
+    notes: bounded(row.notes, 1, 2000, true),
+    seatingPreference: row.seatingPreference,
+    status: row.status,
+    statusReason: bounded(row.statusReason, 1, 500, true),
   };
 }
 
@@ -117,6 +149,64 @@ export async function transitionReservation(
   return { ...data[0], correlationId: actor.correlationId };
 }
 
+export async function updateReservation(
+  authenticated: SupabaseClient,
+  serviceRole: SupabaseClient,
+  actor: ActorContext,
+  reservationId: string,
+  input: ReservationUpdateInput,
+) {
+  if (!canManageReservations(actor.role) || !isUuid(reservationId)) throw new Error('RESERVATION_FORBIDDEN');
+  const { data: reservation, error: reservationError } = await authenticated
+    .from('reservations')
+    .select('id,location_id')
+    .eq('id', reservationId)
+    .eq('company_id', actor.companyId)
+    .maybeSingle();
+  if (reservationError) throw new Error('RESERVATION_UNAVAILABLE');
+  if (!reservation) throw new Error('RESERVATION_NOT_FOUND');
+
+  const phone = normalizePhone(input.countryCallingCode, input.phoneNumber);
+  const timezone = await loadTimezone(authenticated, actor.companyId, reservation.location_id);
+  const startsAt = localDateTimeToInstant(`${input.date}T${input.time}`, timezone).dueAt;
+  const expectedEndAt = new Date(Date.parse(startsAt) + input.expectedDurationMinutes * 60_000).toISOString();
+  const { data, error } = await serviceRole.rpc('update_manual_reservation', {
+    p_actor_profile_id: actor.profileId,
+    p_company_id: actor.companyId,
+    p_reservation_id: reservationId,
+    p_first_name: input.firstName,
+    p_last_name: input.lastName,
+    p_country_calling_code: phone.countryCallingCode,
+    p_national_phone_number: phone.nationalPhoneNumber,
+    p_phone_e164: phone.phoneE164,
+    p_guest_count: input.guestCount,
+    p_reservation_date: input.date,
+    p_reservation_time: input.time,
+    p_starts_at: startsAt,
+    p_expected_end_at: expectedEndAt,
+    p_purpose: input.purpose,
+    p_purpose_details: input.purposeDetails ?? null,
+    p_notes: input.notes ?? null,
+    p_seating_preference: input.seatingPreference,
+    p_new_status: input.status,
+    p_status_reason: input.statusReason ?? null,
+    p_correlation_id: actor.correlationId,
+  });
+  if (error || !Array.isArray(data) || data.length !== 1) {
+    if (error?.message?.includes('reservation_guests_company_phone_uidx')) {
+      throw new Error('RESERVATION_PHONE_ALREADY_EXISTS');
+    }
+    throw new Error(error?.message?.includes('RESERVATION_STATUS_TRANSITION_INVALID')
+      ? 'RESERVATION_STATUS_TRANSITION_INVALID'
+      : 'RESERVATION_UPDATE_FAILED');
+  }
+  return {
+    ...data[0],
+    phoneE164: phone.phoneE164,
+    correlationId: actor.correlationId,
+  };
+}
+
 export async function convertWaitlist(
   serviceRole: SupabaseClient, actor: ActorContext, waitlistId: string,
   startsAt: string, expectedEndAt: string, source: string,
@@ -135,6 +225,6 @@ export async function convertWaitlist(
 
 export function normalizeReservationError(error: unknown) {
   const message = error instanceof Error ? error.message : '';
-  const allowed = ['RESERVATION_INPUT_INVALID','RESERVATION_PHONE_INVALID','RESERVATION_CALLING_CODE_INVALID','RESERVATION_WAITLIST_WINDOW_INVALID','RESERVATION_LOCATION_INVALID','RESERVATION_TIMEZONE_INVALID','RESERVATION_FORBIDDEN','RESERVATION_NOT_FOUND','RESERVATION_STATUS_TRANSITION_INVALID'];
+  const allowed = ['RESERVATION_INPUT_INVALID','RESERVATION_PHONE_INVALID','RESERVATION_CALLING_CODE_INVALID','RESERVATION_PHONE_ALREADY_EXISTS','RESERVATION_WAITLIST_WINDOW_INVALID','RESERVATION_LOCATION_INVALID','RESERVATION_TIMEZONE_INVALID','RESERVATION_FORBIDDEN','RESERVATION_NOT_FOUND','RESERVATION_STATUS_TRANSITION_INVALID'];
   return allowed.find((code) => message.includes(code)) ?? 'RESERVATION_UNAVAILABLE';
 }

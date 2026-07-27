@@ -3,11 +3,29 @@ import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
 import { ActorContextError } from '@/lib/brain/kernel/errors';
 import { RESERVATION_PURPOSES, RESERVATION_SOURCES, RESERVATION_STATUSES, isDate, isUuid, oneOf } from '@/lib/reservations/contracts';
 import { maskPhone } from '@/lib/reservations/phone';
+import { aggregateReservationMetrics, isUpcomingArrivalStatus } from '@/lib/reservations/metrics';
 import { canManageReservations } from '@/lib/reservations/service.server';
 import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0' };
+const venueNow = (timezone: string) => {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: timezone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).formatToParts(new Date());
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? '';
+  return {
+    date: `${value('year')}-${value('month')}-${value('day')}`,
+    time: `${value('hour')}:${value('minute')}`,
+  };
+};
 export async function GET(request: Request) {
   try {
     const client = await createSupabaseServerAuth(); const actor = await resolveActorContext(client);
@@ -22,9 +40,49 @@ export async function GET(request: Request) {
     if (error || waitingError || !location) throw new Error();
     const reservations = (data ?? []).map((row: Record<string, unknown>) => {
       const guest = row.guest as unknown as { first_name?: string; last_name?: string; phone_e164?: string } | null;
-      return { ...row, guest: guest ? { name: `${guest.first_name ?? ''} ${guest.last_name ?? ''}`.trim(), phone: maskPhone(guest.phone_e164 ?? '') } : null, hasNotes: Boolean(row.notes), notes: undefined };
+      return {
+        id: String(row.id),
+        reservation_date: String(row.reservation_date),
+        reservation_time: String(row.reservation_time),
+        guest_count: Number(row.guest_count),
+        purpose: String(row.purpose),
+        status: String(row.status),
+        source: String(row.source),
+        seating_preference: String(row.seating_preference),
+        guest: guest ? { name: `${guest.first_name ?? ''} ${guest.last_name ?? ''}`.trim(), phone: maskPhone(guest.phone_e164 ?? '') } : null,
+        hasNotes: Boolean(row.notes),
+      };
     });
-    return NextResponse.json({ data: { view, from, to, timezone: location.timezone, reservations, waitlist: waiting ?? [] } }, { headers: HEADERS });
+    const summary = aggregateReservationMetrics(
+      (data ?? []).map((row) => ({ guest_count: row.guest_count, status: row.status })),
+      waiting ?? [],
+    );
+    const currentAtVenue = venueNow(location.timezone);
+    const nextArrival = reservations.find((row) =>
+      isUpcomingArrivalStatus(String(row.status))
+      && (row.reservation_date > currentAtVenue.date
+        || row.reservation_date === currentAtVenue.date
+          && String(row.reservation_time).slice(0, 5) >= currentAtVenue.time),
+    );
+    return NextResponse.json({
+      data: {
+        view,
+        from,
+        to,
+        timezone: location.timezone,
+        reservations,
+        waitlist: waiting ?? [],
+        summary,
+        nextArrival: nextArrival
+          ? {
+              id: nextArrival.id,
+              time: String(nextArrival.reservation_time).slice(0, 5),
+              guestName: nextArrival.guest?.name ?? 'Guest',
+              guestCount: nextArrival.guest_count,
+            }
+          : null,
+      },
+    }, { headers: HEADERS });
   } catch (error) {
     if (error instanceof ActorContextError) {
       return NextResponse.json(

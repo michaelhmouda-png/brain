@@ -1,5 +1,6 @@
 import 'server-only';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { aggregateReservationMetrics } from './metrics.ts';
 export { aggregateCalendar, comparableWeekdayLastYear, sameDateLastYear } from './history.ts';
 
 export type HistoricalMetrics = {
@@ -23,16 +24,17 @@ const increment = (target: Record<string, number>, key: string) => { target[key]
 export async function queryHistoricalMetrics(client: SupabaseClient, companyId: string, locationId: string, from: string, to: string): Promise<HistoricalMetrics> {
   const [{ data: reservations, error }, { data: waitlist, error: waitlistError }] = await Promise.all([
     client.from('reservations').select('guest_count,status,source,purpose,reservation_time').eq('company_id', companyId).eq('location_id', locationId).gte('reservation_date', from).lte('reservation_date', to),
-    client.from('reservation_waitlist_entries').select('status').eq('company_id', companyId).eq('location_id', locationId).gte('requested_date', from).lte('requested_date', to),
+    client.from('reservation_waitlist_entries').select('status,guest_count').eq('company_id', companyId).eq('location_id', locationId).gte('requested_date', from).lte('requested_date', to),
   ]);
   if (error || waitlistError) throw new Error('RESERVATION_HISTORY_UNAVAILABLE');
   const rows = reservations ?? []; const waiting = waitlist ?? [];
+  const daily = aggregateReservationMetrics(rows, waiting);
   const cancellationCount = rows.filter((row) => row.status === 'cancelled').length;
   const noShowCount = rows.filter((row) => row.status === 'no_show').length;
   const sourceDistribution: Record<string, number> = {}; const purposeDistribution: Record<string, number> = {}; const hourlyDistribution: Record<string, number> = {};
   rows.forEach((row) => { increment(sourceDistribution, row.source); increment(purposeDistribution, row.purpose); increment(hourlyDistribution, String(row.reservation_time).slice(0, 2)); });
   return {
-    reservationCount: rows.length, expectedGuestCount: rows.reduce((sum, row) => sum + row.guest_count, 0),
+    reservationCount: daily.activeReservations, expectedGuestCount: daily.expectedGuests,
     seatedGuestCount: rows.filter((row) => ['seated','completed'].includes(row.status)).reduce((sum, row) => sum + row.guest_count, 0),
     cancellationCount, cancellationRate: rows.length ? cancellationCount / rows.length : 0,
     noShowCount, noShowRate: rows.length ? noShowCount / rows.length : 0,

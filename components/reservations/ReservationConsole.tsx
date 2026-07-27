@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import {
   Armchair,
+  Bot,
   CalendarDays,
   Check,
   ChevronDown,
@@ -10,7 +11,6 @@ import {
   ListFilter,
   LoaderCircle,
   MapPin,
-  Minus,
   NotebookPen,
   Phone,
   Plus,
@@ -22,7 +22,15 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { ReservationEditPanel, type EditableReservation } from '@/components/reservations/ReservationEditPanel';
+import {
+  GuestCountInput,
+  ReservationDatePicker,
+  ReservationTimeInput,
+} from '@/components/reservations/ReservationInputs';
+import type { ReservationDailyMetrics } from '@/lib/reservations/metrics';
 import { normalizePhone } from '@/lib/reservations/phone';
+import { venueDate } from '@/lib/reservations/time';
 
 const PURPOSES = ['regular', 'birthday', 'anniversary', 'business', 'engagement', 'bachelor', 'bachelorette', 'family', 'event', 'other'] as const;
 const QUICK_PURPOSES = ['regular', 'birthday', 'business', 'event'] as const;
@@ -40,16 +48,19 @@ const COUNTRY_CODES = [
   ['United States / Canada', '+1'],
 ] as const;
 const TABS = ['Today', 'Upcoming', 'Waiting List', 'Seated', 'Completed', 'Cancelled', 'No-shows'] as const;
-const QUICK_TIMES = ['18:00', '19:00', '20:00', '21:00'];
-const QUICK_PARTIES = [2, 4, 6, 8];
 
 type Tab = typeof TABS[number];
 type ReservationRow = {
   id: string;
+  location_id: string;
+  guest_id: string;
   reservation_date: string;
   reservation_time: string;
+  starts_at: string;
+  expected_end_at: string | null;
   guest_count: number;
   purpose: string;
+  purpose_details: string | null;
   seating_preference: string;
   status: string;
   source: string;
@@ -80,6 +91,33 @@ type Comparison = {
   current: { reservationCount: number; expectedGuestCount: number; cancellationCount: number; noShowCount: number };
   comparable: { reservationCount: number; expectedGuestCount: number; cancellationCount: number; noShowCount: number };
 };
+type DailyArrival = {
+  id: string;
+  time: string;
+  guestName: string;
+  guestCount: number;
+};
+type DailyReservation = {
+  id: string;
+  reservation_time: string;
+  guest_count: number;
+  status: string;
+  guest: { name: string; phone: string } | null;
+};
+
+const EMPTY_METRICS: ReservationDailyMetrics = {
+  activeReservations: 0,
+  expectedGuests: 0,
+  confirmedReservations: 0,
+  pendingReservations: 0,
+  waitingListCount: 0,
+  waitingListGuests: 0,
+  seatedReservations: 0,
+  seatedGuests: 0,
+  cancelledReservations: 0,
+  noShowReservations: 0,
+  completedReservations: 0,
+};
 
 const localDate = (date = new Date()) => {
   const year = date.getFullYear();
@@ -87,8 +125,8 @@ const localDate = (date = new Date()) => {
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
 };
-const offsetDate = (days: number) => {
-  const date = new Date();
+const offsetDate = (days: number, base = localDate()) => {
+  const date = new Date(`${base}T12:00:00`);
   date.setDate(date.getDate() + days);
   return localDate(date);
 };
@@ -102,7 +140,25 @@ const formatDay = (value: string) => new Intl.DateTimeFormat(undefined, {
 const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-[15px] text-white transition placeholder:text-slate-600 hover:border-white/20 focus:border-cyan-400/60 focus:bg-white/[0.075] focus:outline-none';
 const labelClass = 'text-xs font-semibold uppercase tracking-[0.12em] text-slate-400';
 
-function createInitialForm(locationId = '') {
+function createInitialForm(locationId = ''): {
+  firstName: string;
+  lastName: string;
+  countryCallingCode: string;
+  phoneNumber: string;
+  guestCount: number | '';
+  purpose: string;
+  purposeDetails: string;
+  date: string;
+  time: string;
+  expectedDurationMinutes: number;
+  notes: string;
+  seatingPreference: string;
+  source: string;
+  locationId: string;
+  waitlist: boolean;
+  earliestTime: string;
+  latestTime: string;
+} {
   return {
     firstName: '',
     lastName: '',
@@ -200,12 +256,19 @@ function Metric({
 export function ReservationConsole() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState('');
+  const [selectedDate, setSelectedDate] = useState(() => localDate());
+  const [timezone, setTimezone] = useState('');
   const [form, setForm] = useState(() => createInitialForm());
   const [rows, setRows] = useState<ReservationRow[]>([]);
   const [waitlistRows, setWaitlistRows] = useState<WaitlistRow[]>([]);
+  const [dailyReservations, setDailyReservations] = useState<DailyReservation[]>([]);
+  const [dailyMetrics, setDailyMetrics] = useState<ReservationDailyMetrics>(EMPTY_METRICS);
+  const [nextArrival, setNextArrival] = useState<DailyArrival | null>(null);
   const [tab, setTab] = useState<Tab>('Today');
   const [search, setSearch] = useState('');
+  const [guestSearchMode, setGuestSearchMode] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [editingRow, setEditingRow] = useState<ReservationRow | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -215,6 +278,7 @@ export function ReservationConsole() {
   const [guestLookupLoading, setGuestLookupLoading] = useState(false);
   const submittingRef = useRef(false);
   const phoneRef = useRef<HTMLInputElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const set = (key: keyof ReturnType<typeof createInitialForm>, value: string | number | boolean) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -227,8 +291,8 @@ export function ReservationConsole() {
       if (tab === 'Waiting List') {
         const calendarParams = new URLSearchParams({
           locationId,
-          from: localDate(),
-          to: offsetDate(30),
+          from: selectedDate,
+          to: offsetDate(30, selectedDate),
           view: 'month',
         });
         const response = await fetch(`/api/reservations/calendar?${calendarParams}`, { cache: 'no-store' });
@@ -239,7 +303,7 @@ export function ReservationConsole() {
         return;
       }
       const params = new URLSearchParams({ limit: '100', locationId });
-      if (tab === 'Today') params.set('date', localDate());
+      if (tab === 'Today') params.set('date', selectedDate);
       if (['Seated', 'Completed', 'Cancelled'].includes(tab)) params.set('status', tab.toLowerCase());
       if (tab === 'No-shows') params.set('status', 'no_show');
       const response = await fetch(`/api/reservations?${params}`, { cache: 'no-store' });
@@ -256,7 +320,39 @@ export function ReservationConsole() {
     } finally {
       setListLoading(false);
     }
-  }, [locationId, tab]);
+  }, [locationId, selectedDate, tab]);
+
+  const loadDailySummary = useCallback(async () => {
+    if (!locationId || !selectedDate) return;
+    try {
+      const params = new URLSearchParams({
+        locationId,
+        from: selectedDate,
+        to: selectedDate,
+        view: 'day',
+      });
+      const response = await fetch(`/api/reservations/calendar?${params}`, { cache: 'no-store' });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.data) throw new Error('summary');
+      setDailyMetrics(payload.data.summary ?? EMPTY_METRICS);
+      setDailyReservations(Array.isArray(payload.data.reservations) ? payload.data.reservations : []);
+      setNextArrival(payload.data.nextArrival ?? null);
+      const nextTimezone = typeof payload.data.timezone === 'string' ? payload.data.timezone : '';
+      setTimezone(nextTimezone);
+      const todayAtVenue = venueDate(nextTimezone);
+      if (nextTimezone && selectedDate === localDate() && todayAtVenue !== selectedDate) {
+        setSelectedDate(todayAtVenue);
+        setForm((current) => ({
+          ...current,
+          date: current.date === localDate() ? todayAtVenue : current.date,
+        }));
+      }
+    } catch {
+      setDailyMetrics(EMPTY_METRICS);
+      setDailyReservations([]);
+      setNextArrival(null);
+    }
+  }, [locationId, selectedDate]);
 
   useEffect(() => {
     let active = true;
@@ -277,6 +373,11 @@ export function ReservationConsole() {
     const timer = window.setTimeout(() => void loadReservations(), 0);
     return () => window.clearTimeout(timer);
   }, [loadReservations]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadDailySummary(), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadDailySummary]);
 
   useEffect(() => {
     if (!form.locationId || !form.date) return;
@@ -384,17 +485,19 @@ export function ReservationConsole() {
     return waitlistRows.filter((row) => `${row.requested_date} ${row.preferred_time} ${row.purpose} ${row.status} ${row.seating_preference}`.toLowerCase().includes(needle));
   }, [search, waitlistRows]);
 
-  const metrics = useMemo(() => ({
-    reservations: tab === 'Waiting List' ? waitlistRows.length : rows.length,
-    guests: tab === 'Waiting List'
-      ? waitlistRows.reduce((sum, row) => sum + row.guest_count, 0)
-      : rows.reduce((sum, row) => sum + row.guest_count, 0),
-    confirmed: rows.filter((row) => row.status === 'confirmed').length,
-    pending: tab === 'Waiting List' ? waitlistRows.length : rows.filter((row) => row.status === 'pending').length,
-  }), [rows, tab, waitlistRows]);
+  const upcomingDaily = useMemo(
+    () => dailyReservations
+      .filter((row) => row.status === 'pending' || row.status === 'confirmed')
+      .slice(0, 4),
+    [dailyReservations],
+  );
 
   function openComposer() {
-    setForm((current) => ({ ...current, locationId: locationId || current.locationId }));
+    setForm((current) => ({
+      ...current,
+      date: selectedDate || current.date,
+      locationId: locationId || current.locationId,
+    }));
     setMessage(null);
     setComposerOpen(true);
   }
@@ -409,12 +512,17 @@ export function ReservationConsole() {
   async function submit(event: React.FormEvent) {
     event.preventDefault();
     if (submittingRef.current) return;
+    if (form.guestCount === '' || form.guestCount < 1 || form.guestCount > 100 || !form.date || !form.time) {
+      setMessage({ kind: 'error', text: 'Enter a valid date, time, and guest count from 1 to 100.' });
+      return;
+    }
     submittingRef.current = true;
     setSaving(true);
     setMessage(null);
     try {
       const body = {
         ...form,
+        guestCount: Number(form.guestCount),
         purposeDetails: form.purposeDetails || undefined,
         notes: form.notes || undefined,
         earliestTime: form.waitlist && form.earliestTime || undefined,
@@ -434,7 +542,7 @@ export function ReservationConsole() {
       setComposerOpen(false);
       setForm(createInitialForm(locationId));
       setGuestMemory(null);
-      await loadReservations();
+      await Promise.all([loadReservations(), loadDailySummary()]);
     } catch (error) {
       setMessage({
         kind: 'error',
@@ -460,13 +568,25 @@ export function ReservationConsole() {
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.error ?? 'Status update failed.');
       setMessage({ kind: 'success', text: `Reservation marked ${title(nextStatus).toLowerCase()}.` });
-      await loadReservations();
+      await Promise.all([loadReservations(), loadDailySummary()]);
     } catch (error) {
       setMessage({ kind: 'error', text: error instanceof Error ? title(error.message) : 'Status update failed.' });
     } finally {
       setUpdatingId(null);
     }
   }
+
+  const selectOperatorView = (view: 'today' | 'reservations' | 'guests') => {
+    setGuestSearchMode(view === 'guests');
+    if (view === 'today') {
+      const today = venueDate(timezone);
+      setSelectedDate(today);
+      setTab('Today');
+    } else {
+      setTab('Upcoming');
+    }
+    if (view === 'guests') window.setTimeout(() => searchRef.current?.focus(), 0);
+  };
 
   return (
     <main className="min-h-[calc(100dvh-6rem)] px-3 pb-24 sm:px-5 lg:px-0 lg:pb-10">
@@ -478,8 +598,8 @@ export function ReservationConsole() {
                 <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
                 Reservation desk
               </div>
-              <h1 className="mt-1.5 truncate text-2xl font-black tracking-tight sm:text-3xl">Today at a glance</h1>
-              <p className="mt-1 text-sm text-slate-400">{formatDay(localDate())} · Availability stays staff-confirmed</p>
+              <h1 className="mt-1.5 truncate text-2xl font-black tracking-tight sm:text-3xl">Reception overview</h1>
+              <p className="mt-1 text-sm text-slate-400">{timezone || 'Venue local time'} · Availability stays staff-confirmed</p>
             </div>
             <div className="flex w-full items-center gap-2 sm:w-auto">
               <label className="relative min-w-0 flex-1 sm:w-56">
@@ -515,13 +635,40 @@ export function ReservationConsole() {
               </button>
             </div>
           </div>
+          <div className="mt-4 max-w-md">
+            <ReservationDatePicker
+              value={selectedDate}
+              onChange={(value) => {
+                if (!value) return;
+                setSelectedDate(value);
+                setTab('Today');
+              }}
+              timezone={timezone}
+              allowClear={false}
+              label="Dashboard date"
+            />
+          </div>
         </header>
 
-        <section className="flex gap-2 overflow-x-auto border-b border-white/[0.07] px-4 py-3 sm:px-6">
-          <Metric label="On the books" value={metrics.reservations} hint={tab} />
-          <Metric label="Expected guests" value={metrics.guests} hint="covers" />
-          <Metric label="Confirmed" value={metrics.confirmed} hint="ready" />
-          <Metric label="Needs attention" value={metrics.pending} hint="pending" />
+        <section className="flex gap-2 overflow-x-auto border-b border-white/[0.07] px-4 py-3 sm:grid sm:grid-cols-4 sm:px-6 xl:grid-cols-8">
+          <Metric label="Active reservations" value={dailyMetrics.activeReservations} hint="arrivals" />
+          <Metric label="Expected guests" value={dailyMetrics.expectedGuests} hint="active covers" />
+          <Metric label="Confirmed" value={dailyMetrics.confirmedReservations} hint="ready" />
+          <Metric label="Pending" value={dailyMetrics.pendingReservations} hint="attention" />
+          <Metric label="Waiting list" value={dailyMetrics.waitingListCount} hint={`${dailyMetrics.waitingListGuests} guests`} />
+          <Metric label="Seated guests" value={dailyMetrics.seatedGuests} hint="in venue" />
+          <Metric label="Cancelled" value={dailyMetrics.cancelledReservations} hint="excluded" />
+          <Metric label="No-shows" value={dailyMetrics.noShowReservations} hint="excluded" />
+        </section>
+
+        <section className="border-b border-white/[0.07] px-4 py-3 sm:px-6 lg:hidden">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Next arrival</p>
+              <strong className="mt-1 block text-sm">{nextArrival ? `${nextArrival.time} · ${nextArrival.guestName}` : 'No active arrival'}</strong>
+            </div>
+            {nextArrival ? <span className="text-xs text-slate-400">{nextArrival.guestCount} guests</span> : null}
+          </div>
         </section>
 
         <div className="grid min-h-[600px] lg:grid-cols-[minmax(0,1fr)_310px]">
@@ -546,9 +693,10 @@ export function ReservationConsole() {
                   <span className="sr-only">Search reservations</span>
                   <Search aria-hidden className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
+                    ref={searchRef}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder="Guest or phone"
+                    placeholder={guestSearchMode ? 'Search guest history by name or phone' : 'Guest or phone'}
                     className="min-h-10 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] pl-9 pr-3 text-sm placeholder:text-slate-600 focus:border-cyan-300/40 focus:outline-none"
                   />
                 </label>
@@ -610,7 +758,20 @@ export function ReservationConsole() {
                 const guestName = row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : 'Guest';
                 const actions = statusActions[row.status] ?? [];
                 return (
-                  <article key={row.id} className="group px-4 py-4 transition hover:bg-white/[0.025] sm:px-6">
+                  <article
+                    key={row.id}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`Open ${guestName} reservation`}
+                    onClick={() => setEditingRow(row)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        setEditingRow(row);
+                      }
+                    }}
+                    className="group cursor-pointer px-4 py-4 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:px-6"
+                  >
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
                         <p className="text-xl font-black tracking-tight text-white">{shortTime(row.reservation_time)}</p>
@@ -637,7 +798,7 @@ export function ReservationConsole() {
                           </span>
                         </div>
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <a href={`tel:${row.guest?.phone_e164 ?? ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm text-slate-400 hover:text-cyan-200">
+                          <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm text-slate-400 hover:text-cyan-200">
                             <Phone className="h-3.5 w-3.5" /> {row.guest?.phone_e164 ?? 'No phone'}
                           </a>
                           {actions.length ? (
@@ -646,7 +807,10 @@ export function ReservationConsole() {
                                 <button
                                   type="button"
                                   key={action.status}
-                                  onClick={() => void transition(row, action.status)}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void transition(row, action.status);
+                                  }}
                                   disabled={updatingId === row.id}
                                   className={`min-h-9 rounded-lg px-3 text-xs font-bold transition disabled:opacity-50 ${
                                     action.primary
@@ -658,7 +822,7 @@ export function ReservationConsole() {
                                 </button>
                               ))}
                             </div>
-                          ) : null}
+                          ) : <span className="text-xs text-slate-600">Tap to view</span>}
                         </div>
                       </div>
                     </div>
@@ -685,6 +849,27 @@ export function ReservationConsole() {
               <h2 className="text-sm font-bold">Brain context</h2>
             </div>
             <p className="mt-1 text-xs leading-relaxed text-slate-500">Facts from reservation history only. No AI decision or automatic availability.</p>
+
+            <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4">
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/60">Next arrival</p>
+              {nextArrival ? (
+                <>
+                  <strong className="mt-2 block text-lg text-cyan-50">{nextArrival.time} · {nextArrival.guestName}</strong>
+                  <span className="mt-1 block text-xs text-cyan-100/55">{nextArrival.guestCount} guests</span>
+                </>
+              ) : <p className="mt-2 text-sm text-slate-500">No pending or confirmed arrival.</p>}
+              {upcomingDaily.length ? (
+                <div className="mt-4 space-y-2 border-t border-cyan-300/10 pt-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Upcoming reservations</p>
+                  {upcomingDaily.map((arrival) => (
+                    <div key={arrival.id} className="flex items-center justify-between gap-2 text-xs">
+                      <span className="truncate text-slate-300">{shortTime(arrival.reservation_time)} · {arrival.guest?.name ?? 'Guest'}</span>
+                      <span className="shrink-0 text-slate-500">{arrival.guest_count}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
 
             <div className="mt-5 rounded-2xl border border-white/[0.08] bg-white/[0.035] p-4">
               <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-slate-500">
@@ -733,10 +918,28 @@ export function ReservationConsole() {
       <button
         type="button"
         onClick={openComposer}
-        className="fixed bottom-[max(1rem,env(safe-area-inset-bottom))] left-1/2 z-30 flex min-h-13 -translate-x-1/2 items-center gap-2 rounded-2xl bg-cyan-300 px-6 font-black text-slate-950 shadow-[0_18px_50px_rgba(0,0,0,0.55)] sm:hidden"
+        className="fixed bottom-[calc(5.25rem+env(safe-area-inset-bottom))] left-1/2 z-30 flex min-h-13 -translate-x-1/2 items-center gap-2 rounded-2xl bg-cyan-300 px-6 font-black text-slate-950 shadow-[0_18px_50px_rgba(0,0,0,0.55)] sm:hidden"
       >
         <Plus className="h-5 w-5" /> New booking
       </button>
+
+      <nav className="fixed bottom-2 left-2 z-30 grid w-[calc(100vw-1rem)] grid-cols-5 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0e14]/95 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur sm:hidden" aria-label="Reservation operator navigation">
+        <button type="button" onClick={() => selectOperatorView('today')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${tab === 'Today' ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
+          <CalendarDays className="h-4 w-4" />Today
+        </button>
+        <button type="button" onClick={() => selectOperatorView('reservations')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${tab === 'Upcoming' && !guestSearchMode ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
+          <NotebookPen className="h-4 w-4" />Reservations
+        </button>
+        <Link href="/dashboard/reservations/calendar" className="grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight text-slate-400">
+          <CalendarDays className="h-4 w-4" />Calendar
+        </Link>
+        <button type="button" onClick={() => selectOperatorView('guests')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${guestSearchMode ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
+          <UserRound className="h-4 w-4" />Guests
+        </button>
+        <Link href="/dashboard/ai-assistant" className="grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-medium leading-tight text-slate-600">
+          <Bot className="h-4 w-4" />Brain
+        </Link>
+      </nav>
 
       {composerOpen ? (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" role="presentation">
@@ -744,7 +947,7 @@ export function ReservationConsole() {
             role="dialog"
             aria-modal="true"
             aria-label="New reservation"
-            className="absolute inset-0 flex flex-col border-white/10 bg-[#0a0e14] shadow-2xl sm:inset-y-3 sm:left-auto sm:right-3 sm:w-[min(560px,calc(100vw-1.5rem))] sm:rounded-[28px] sm:border"
+            className="absolute inset-0 flex w-full min-w-0 max-w-full flex-col border-white/10 bg-[#0a0e14] shadow-2xl sm:inset-y-3 sm:left-auto sm:right-3 sm:w-[min(560px,calc(100vw-1.5rem))] sm:rounded-[28px] sm:border"
           >
             <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-5">
               <div>
@@ -765,7 +968,7 @@ export function ReservationConsole() {
               onKeyDown={(event) => {
                 if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') event.currentTarget.requestSubmit();
               }}
-              className="mobile-scroll-region flex-1 overflow-y-auto"
+              className="mobile-scroll-region min-w-0 flex-1 overflow-y-auto"
             >
               <div className="space-y-6 px-4 py-5 sm:px-5">
                 <section>
@@ -844,32 +1047,24 @@ export function ReservationConsole() {
 
                 <section className="border-t border-white/[0.07] pt-5">
                   <h3 className="flex items-center gap-2 text-sm font-bold"><UsersRound className="h-4 w-4 text-cyan-300" /> Party</h3>
-                  <div className="mt-3 flex items-center gap-2">
-                    <button type="button" aria-label="Remove one guest" onClick={() => set('guestCount', Math.max(1, form.guestCount - 1))} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"><Minus className="h-4 w-4" /></button>
-                    <div className="min-w-[68px] text-center"><strong className="text-2xl font-black">{form.guestCount}</strong><p className="text-[10px] uppercase tracking-wide text-slate-500">guests</p></div>
-                    <button type="button" aria-label="Add one guest" onClick={() => set('guestCount', Math.min(100, form.guestCount + 1))} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"><Plus className="h-4 w-4" /></button>
-                    <div className="ml-1 flex min-w-0 gap-1.5 overflow-x-auto">
-                      {QUICK_PARTIES.map((count) => <Choice key={count} active={form.guestCount === count} onClick={() => set('guestCount', count)}>{count}</Choice>)}
-                    </div>
+                  <div className="mt-3">
+                    <GuestCountInput value={form.guestCount} onChange={(value) => set('guestCount', value)} />
                   </div>
                 </section>
 
                 <section className="border-t border-white/[0.07] pt-5">
                   <h3 className="flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-cyan-300" /> When</h3>
-                  <div className="mt-3 flex gap-2">
-                    <Choice active={form.date === localDate()} onClick={() => set('date', localDate())}>Today</Choice>
-                    <Choice active={form.date === offsetDate(1)} onClick={() => set('date', offsetDate(1))}>Tomorrow</Choice>
-                    <label className="min-w-0 flex-1">
-                      <span className="sr-only">Reservation date</span>
-                      <input type="date" required value={form.date} onChange={(event) => set('date', event.target.value)} className="min-h-10 w-full rounded-xl border border-white/10 bg-white/[0.055] px-2 text-sm" />
-                    </label>
-                  </div>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    {QUICK_TIMES.map((time) => <Choice key={time} active={form.time === time} onClick={() => set('time', time)}>{time}</Choice>)}
-                    <label className="min-w-[118px]">
-                      <span className="sr-only">Reservation time</span>
-                      <input type="time" required value={form.time} onChange={(event) => set('time', event.target.value)} className="min-h-10 w-full rounded-xl border border-white/10 bg-white/[0.055] px-2 text-sm" />
-                    </label>
+                  <div className="mt-3 space-y-3">
+                    <ReservationDatePicker
+                      value={form.date}
+                      onChange={(value) => set('date', value)}
+                      timezone={timezone}
+                    />
+                    <ReservationTimeInput
+                      value={form.time}
+                      onChange={(value) => set('time', value)}
+                      timezone={timezone}
+                    />
                   </div>
                   <div className="mt-3">
                     <span className={labelClass}>Duration</span>
@@ -950,13 +1145,13 @@ export function ReservationConsole() {
 
             <footer className="shrink-0 border-t border-white/[0.08] bg-[#0a0e14]/95 p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] backdrop-blur sm:rounded-b-[28px] sm:px-5">
               <div className="mb-3 flex items-center justify-between gap-3 text-xs">
-                <span className="truncate text-slate-400">{form.guestCount} guests · {formatDay(form.date)} at {form.time}</span>
+                <span className="truncate text-slate-400">{form.guestCount || '—'} guests · {form.date ? formatDay(form.date) : 'Choose date'} at {form.time || '—'}</span>
                 <span className="shrink-0 text-amber-200/70">Availability unknown</span>
               </div>
               <button
                 type="submit"
                 form="reservation-quick-form"
-                disabled={saving || !form.locationId}
+                disabled={saving || !form.locationId || form.guestCount === '' || !form.date || !form.time}
                 className={`flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl font-black text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-50 ${
                   form.waitlist ? 'bg-violet-300 hover:bg-violet-200' : 'bg-cyan-300 hover:bg-cyan-200'
                 }`}
@@ -967,6 +1162,18 @@ export function ReservationConsole() {
             </footer>
           </aside>
         </div>
+      ) : null}
+
+      {editingRow ? (
+        <ReservationEditPanel
+          row={editingRow as EditableReservation}
+          timezone={timezone}
+          onClose={() => setEditingRow(null)}
+          onSaved={async () => {
+            setMessage({ kind: 'success', text: 'Reservation updated.' });
+            await Promise.all([loadReservations(), loadDailySummary()]);
+          }}
+        />
       ) : null}
     </main>
   );

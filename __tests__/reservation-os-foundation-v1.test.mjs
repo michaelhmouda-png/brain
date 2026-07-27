@@ -2,12 +2,15 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { aggregateCalendar, comparableWeekdayLastYear, sameDateLastYear } from '../lib/reservations/history.ts';
+import { aggregateReservationMetrics } from '../lib/reservations/metrics.ts';
 import { normalizePhone } from '../lib/reservations/phone.ts';
+import { venueDate } from '../lib/reservations/time.ts';
 import { MockTelephonyProviderAdapter, handleIncomingCall } from '../lib/reservations/telephony.ts';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const migration = read('supabase/migrations/202607250004_reservation_os_foundation_v1.sql');
 const timezoneRepair = read('supabase/migrations/202607250005_fix_reservation_location_timezone_validation.sql');
+const experienceMigration = read('supabase/migrations/202607250006_reservation_experience_v2_1_edit_contract.sql');
 const service = read('lib/reservations/service.server.ts');
 const calendarRoute = read('app/api/reservations/calendar/route.ts');
 const historyRoute = read('app/api/reservations/history/route.ts');
@@ -16,6 +19,10 @@ const locationService = read('lib/authServer.ts');
 const reservationsPage = read('app/dashboard/reservations/page.tsx');
 const reservationConsole = read('components/reservations/ReservationConsole.tsx');
 const reservationCalendarPage = read('app/dashboard/reservations/calendar/page.tsx');
+const reservationInputs = read('components/reservations/ReservationInputs.tsx');
+const reservationEditor = read('components/reservations/ReservationEditPanel.tsx');
+const metrics = read('lib/reservations/metrics.ts');
+const reservationDetailRoute = read('app/api/reservations/[id]/route.ts');
 const routes = [
   read('app/api/reservations/route.ts'), read('app/api/reservations/[id]/route.ts'),
   read('app/api/reservations/[id]/status/route.ts'), calendarRoute, historyRoute,
@@ -219,7 +226,125 @@ test('calendar aggregation is stable across day, week, and month consumers', () 
     { reservation_date: '2026-07-26', guest_count: 4, status: 'confirmed' },
     { reservation_date: '2026-07-26', guest_count: 2, status: 'cancelled' },
   ]);
-  assert.deepEqual(result['2026-07-26'], { reservationCount: 2, expectedGuests: 6, confirmed: 1, waiting: 0, cancelled: 1, noShows: 0 });
+  assert.deepEqual(result['2026-07-26'], {
+    activeReservations: 1,
+    expectedGuests: 4,
+    confirmedReservations: 1,
+    pendingReservations: 0,
+    waitingListCount: 0,
+    waitingListGuests: 0,
+    seatedReservations: 0,
+    seatedGuests: 0,
+    cancelledReservations: 1,
+    noShowReservations: 0,
+    completedReservations: 0,
+  });
+});
+
+test('canonical daily metrics exclude cancelled, no-show, completed, and waitlisted covers', () => {
+  const rows = [
+    { guest_count: 3, status: 'pending' },
+    { guest_count: 5, status: 'confirmed' },
+    { guest_count: 2, status: 'seated' },
+    { guest_count: 11, status: 'cancelled' },
+    { guest_count: 27, status: 'no_show' },
+    { guest_count: 7, status: 'completed' },
+    { guest_count: 4, status: 'waitlisted' },
+  ];
+  const result = aggregateReservationMetrics(rows, [
+    { guest_count: 6, status: 'waiting' },
+    { guest_count: 9, status: 'converted' },
+  ]);
+  assert.equal(result.activeReservations, 3);
+  assert.equal(result.expectedGuests, 10);
+  assert.equal(result.waitingListCount, 2);
+  assert.equal(result.waitingListGuests, 10);
+  assert.equal(result.cancelledReservations, 1);
+  assert.equal(result.noShowReservations, 1);
+  assert.equal(result.completedReservations, 1);
+});
+
+test('cancelling a pending reservation immediately removes it from expected guests', () => {
+  const pending = aggregateReservationMetrics([{ guest_count: 4, status: 'pending' }]);
+  const cancelled = aggregateReservationMetrics([{ guest_count: 4, status: 'cancelled' }]);
+  assert.equal(pending.activeReservations, 1);
+  assert.equal(pending.expectedGuests, 4);
+  assert.equal(cancelled.activeReservations, 0);
+  assert.equal(cancelled.expectedGuests, 0);
+});
+
+test('dashboard and calendar consume the same server-side canonical aggregation', () => {
+  assert.match(calendarRoute, /aggregateReservationMetrics/);
+  assert.match(calendarRoute, /summary/);
+  assert.match(reservationConsole, /setDailyMetrics\(payload\.data\.summary/);
+  assert.match(reservationCalendarPage, /setSummary\(payload\.data\.summary/);
+  assert.match(reservationConsole, /Promise\.all\(\[loadReservations\(\), loadDailySummary\(\)\]\)/);
+  assert.match(metrics, /ACTIVE_EXPECTED_RESERVATION_STATUSES = \['pending', 'confirmed', 'seated'\]/);
+});
+
+test('guest count accepts arbitrary valid whole numbers without fixed presets', () => {
+  assert.match(reservationInputs, /type="number"/);
+  assert.match(reservationInputs, /inputMode="numeric"/);
+  assert.match(reservationInputs, /min=\{minimum\}/);
+  assert.match(reservationInputs, /max=\{maximum\}/);
+  assert.match(reservationInputs, /onChange\(event\.target\.value === '' \? '' : Number/);
+  assert.doesNotMatch(reservationConsole, /QUICK_PARTIES|2,\s*4,\s*6,\s*8/);
+});
+
+test('date and time controls support direct venue-local selection without preset lock-in', () => {
+  assert.match(reservationInputs, /Array\.from\(\{ length: 42 \}/);
+  assert.match(reservationInputs, /Previous month/);
+  assert.match(reservationInputs, /Next month/);
+  assert.match(reservationInputs, /onTouchStart/);
+  assert.match(reservationInputs, /Today\s*<\/button>/);
+  assert.match(reservationInputs, /Clear\s*<\/button>/);
+  assert.match(reservationInputs, /type="time"/);
+  assert.match(reservationInputs, /step=\{60\}/);
+  assert.match(reservationInputs, /Venue-local time[\s\S]+any minute accepted/);
+  assert.match(reservationConsole, /venueDate\(nextTimezone\)/);
+  assert.doesNotMatch(reservationConsole, /QUICK_TIMES/);
+});
+
+test('venue-local date remains correct across UTC date boundaries', () => {
+  const instant = new Date('2026-07-26T22:30:00.000Z');
+  assert.equal(venueDate('Asia/Beirut', instant), '2026-07-27');
+  assert.equal(venueDate('America/New_York', instant), '2026-07-26');
+});
+
+test('reservation editor is an in-place sheet with discard and duplicate-submit protection', () => {
+  for (const field of ['firstName','lastName','phoneNumber','guestCount','date','time','expectedDurationMinutes','purpose','seatingPreference','notes','status']) {
+    assert.match(reservationEditor, new RegExp(field));
+  }
+  assert.match(reservationEditor, /sm:justify-end/);
+  assert.match(reservationEditor, /rounded-t-\[28px\]/);
+  assert.match(reservationEditor, /Discard your unsaved reservation changes/);
+  assert.match(reservationEditor, /beforeunload/);
+  assert.match(reservationEditor, /submittingRef\.current/);
+  assert.match(reservationEditor, /method: 'PATCH'/);
+  assert.match(reservationConsole, /setEditingRow\(row\)/);
+});
+
+test('reservation update contract is atomic, tenant-safe, and service-role-only', () => {
+  assert.match(experienceMigration, /^--[^\n]+\nBEGIN;/);
+  assert.match(experienceMigration, /CREATE FUNCTION public\.update_manual_reservation/);
+  assert.match(experienceMigration, /SECURITY DEFINER SET search_path = ''/);
+  assert.match(experienceMigration, /p\.id = p_actor_profile_id[\s\S]+p\.company_id = p_company_id[\s\S]+p\.status = 'active'/);
+  assert.match(experienceMigration, /r\.id = p_reservation_id[\s\S]+r\.company_id = p_company_id[\s\S]+FOR UPDATE/);
+  assert.match(experienceMigration, /UPDATE public\.reservation_guests[\s\S]+UPDATE public\.reservations/);
+  assert.match(experienceMigration, /IF v_previous_status IS DISTINCT FROM p_new_status THEN[\s\S]+INSERT INTO public\.reservation_status_history/);
+  assert.match(experienceMigration, /REVOKE ALL ON FUNCTION public\.update_manual_reservation[\s\S]+FROM PUBLIC, anon, authenticated/);
+  assert.match(experienceMigration, /GRANT EXECUTE ON FUNCTION public\.update_manual_reservation[\s\S]+TO service_role/);
+  assert.doesNotMatch(experienceMigration, /UPDATE\s+public\.reservations[\s\S]+SET\s+company_id|SET\s+source|SET\s+guest_id/i);
+  assert.match(experienceMigration, /COMMIT;\s*$/);
+  assert.match(reservationDetailRoute, /resolveActorContext\(authenticated\)/);
+  assert.match(reservationDetailRoute, /canManageReservations\(actor\.role\)/);
+  assert.match(service, /serviceRole\.rpc\('update_manual_reservation'/);
+});
+
+test('reservation-focused mobile navigation keeps Brain secondary', () => {
+  assert.match(reservationConsole, /Reservation operator navigation/);
+  for (const label of ['Today','Reservations','Calendar','Guests','Brain']) assert.match(reservationConsole, new RegExp(`${label}\\s*</`));
+  assert.match(reservationConsole, /text-slate-600[\s\S]+Brain/);
 });
 
 test('incoming-call workflow verifies signature, scopes destination, and never creates a reservation', async () => {

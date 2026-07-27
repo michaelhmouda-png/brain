@@ -15,6 +15,9 @@ import {
   UsersRound,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { ReservationDatePicker } from '@/components/reservations/ReservationInputs';
+import { aggregateReservationMetrics, type ReservationDailyMetrics } from '@/lib/reservations/metrics';
+import { venueDate } from '@/lib/reservations/time';
 
 type View = 'day' | 'week' | 'month';
 type CalendarReservation = {
@@ -39,6 +42,19 @@ type Waitlist = {
   seating_preference: string;
 };
 type Location = { id: string; name: string };
+const EMPTY_METRICS: ReservationDailyMetrics = {
+  activeReservations: 0,
+  expectedGuests: 0,
+  confirmedReservations: 0,
+  pendingReservations: 0,
+  waitingListCount: 0,
+  waitingListGuests: 0,
+  seatedReservations: 0,
+  seatedGuests: 0,
+  cancelledReservations: 0,
+  noShowReservations: 0,
+  completedReservations: 0,
+};
 
 const localDate = (date = new Date()) => {
   const year = date.getFullYear();
@@ -101,6 +117,7 @@ export default function ReservationCalendarPage() {
   const [reservations, setReservations] = useState<CalendarReservation[]>([]);
   const [waitlist, setWaitlist] = useState<Waitlist[]>([]);
   const [timezone, setTimezone] = useState('');
+  const [summary, setSummary] = useState<ReservationDailyMetrics>(EMPTY_METRICS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const range = useMemo(() => rangeFor(date, view), [date, view]);
@@ -129,9 +146,11 @@ export default function ReservationCalendarPage() {
       setReservations(Array.isArray(payload.data.reservations) ? payload.data.reservations : []);
       setWaitlist(Array.isArray(payload.data.waitlist) ? payload.data.waitlist : []);
       setTimezone(typeof payload.data.timezone === 'string' ? payload.data.timezone : '');
+      setSummary(payload.data.summary ?? EMPTY_METRICS);
     } catch {
       setReservations([]);
       setWaitlist([]);
+      setSummary(EMPTY_METRICS);
       setError('The calendar could not be loaded. Try again.');
     } finally {
       setLoading(false);
@@ -142,13 +161,6 @@ export default function ReservationCalendarPage() {
     const timer = window.setTimeout(() => void load(), 0);
     return () => window.clearTimeout(timer);
   }, [load]);
-
-  const totals = useMemo(() => ({
-    reservations: reservations.length,
-    guests: reservations.reduce((sum, row) => sum + row.guest_count, 0),
-    confirmed: reservations.filter((row) => row.status === 'confirmed').length,
-    waiting: waitlist.length,
-  }), [reservations, waitlist]);
 
   const days = useMemo(() => {
     const all = daysBetween(range.from, range.to);
@@ -219,22 +231,31 @@ export default function ReservationCalendarPage() {
             <button type="button" onClick={() => move(-1)} className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05]" aria-label={`Previous ${view}`}>
               <ChevronLeft className="h-4 w-4" />
             </button>
-            <button type="button" onClick={() => setDate(localDate())} className="min-w-0 text-center">
-              <strong className="block truncate text-base sm:text-lg">{periodLabel}</strong>
-              <span className="text-[11px] uppercase tracking-wider text-cyan-300">Tap for today</span>
-            </button>
+            <div className="min-w-0 flex-1 sm:max-w-md">
+              <ReservationDatePicker
+                value={date}
+                onChange={setDate}
+                timezone={timezone}
+                allowClear={false}
+                label="Calendar date"
+              />
+              <p className="mt-1 text-center text-[11px] text-slate-500">{periodLabel}</p>
+            </div>
             <button type="button" onClick={() => move(1)} className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05]" aria-label={`Next ${view}`}>
               <ChevronRight className="h-4 w-4" />
             </button>
           </div>
+          <button type="button" onClick={() => setDate(venueDate(timezone))} className="mx-auto mt-2 block min-h-9 rounded-lg px-3 text-xs font-bold text-cyan-300 hover:bg-cyan-300/10">
+            Jump to today
+          </button>
         </section>
 
         <section className="grid grid-cols-2 gap-px border-b border-white/[0.07] bg-white/[0.07] sm:grid-cols-4">
           {[
-            ['Reservations', totals.reservations],
-            ['Expected guests', totals.guests],
-            ['Confirmed', totals.confirmed],
-            ['Waiting', totals.waiting],
+            ['Active reservations', summary.activeReservations],
+            ['Expected guests', summary.expectedGuests],
+            ['Confirmed', summary.confirmedReservations],
+            ['Waiting', summary.waitingListCount],
           ].map(([label, value]) => (
             <div key={String(label)} className="bg-[#080c12] px-4 py-3 text-center">
               <strong className="text-xl font-black">{value}</strong>
@@ -254,13 +275,13 @@ export default function ReservationCalendarPage() {
             {days.map((day) => {
               const booked = reservations.filter((row) => row.reservation_date === day);
               const waiting = waitlist.filter((row) => row.requested_date === day);
-              const expected = booked.reduce((sum, row) => sum + row.guest_count, 0);
+              const dayMetrics = aggregateReservationMetrics(booked, waiting);
               return (
                 <article key={day} className="min-w-0 bg-[#080c12] p-4 sm:p-5">
                   <div className="flex items-start justify-between gap-3">
                     <div>
                       <h2 className="font-black">{formatDay(day, view === 'day')}</h2>
-                      <p className="mt-0.5 text-xs text-slate-500">{booked.length} bookings · {expected} guests · {waiting.length} waiting</p>
+                      <p className="mt-0.5 text-xs text-slate-500">{dayMetrics.activeReservations} active · {dayMetrics.expectedGuests} expected guests · {dayMetrics.waitingListCount} waiting</p>
                     </div>
                     {day === localDate() ? <span className="rounded-full bg-cyan-300/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-cyan-200">Today</span> : null}
                   </div>
@@ -305,8 +326,8 @@ export default function ReservationCalendarPage() {
                   ) : (
                     <div className="mt-4 flex items-center gap-3 text-xs text-slate-400">
                       <span className="inline-flex items-center gap-1"><CalendarDays className="h-3.5 w-3.5" />{booked.length}</span>
-                      <span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{expected}</span>
-                      <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{waiting.length} waiting</span>
+                      <span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{dayMetrics.expectedGuests}</span>
+                      <span className="inline-flex items-center gap-1"><Clock3 className="h-3.5 w-3.5" />{dayMetrics.waitingListCount} waiting</span>
                     </div>
                   )}
                 </article>
