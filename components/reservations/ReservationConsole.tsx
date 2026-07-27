@@ -3,7 +3,6 @@
 import Link from 'next/link';
 import {
   Armchair,
-  Bot,
   CalendarDays,
   Check,
   ChevronDown,
@@ -266,7 +265,6 @@ export function ReservationConsole() {
   const [nextArrival, setNextArrival] = useState<DailyArrival | null>(null);
   const [tab, setTab] = useState<Tab>('Today');
   const [search, setSearch] = useState('');
-  const [guestSearchMode, setGuestSearchMode] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<ReservationRow | null>(null);
   const [listLoading, setListLoading] = useState(true);
@@ -279,6 +277,16 @@ export function ReservationConsole() {
   const submittingRef = useRef(false);
   const phoneRef = useRef<HTMLInputElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const selectedLocation = locations.find((item) => item.id === locationId);
+    window.dispatchEvent(new CustomEvent('brain:context', {
+      detail: {
+        view: tab === 'Today' ? `Today · ${selectedDate}` : tab,
+        location: selectedLocation?.name || 'All authorized locations',
+      },
+    }));
+  }, [locationId, locations, selectedDate, tab]);
 
   const set = (key: keyof ReturnType<typeof createInitialForm>, value: string | number | boolean) => {
     setForm((current) => ({ ...current, [key]: value }));
@@ -576,18 +584,6 @@ export function ReservationConsole() {
     }
   }
 
-  const selectOperatorView = (view: 'today' | 'reservations' | 'guests') => {
-    setGuestSearchMode(view === 'guests');
-    if (view === 'today') {
-      const today = venueDate(timezone);
-      setSelectedDate(today);
-      setTab('Today');
-    } else {
-      setTab('Upcoming');
-    }
-    if (view === 'guests') window.setTimeout(() => searchRef.current?.focus(), 0);
-  };
-
   return (
     <main className="min-h-[calc(100dvh-6rem)] px-3 pb-24 sm:px-5 lg:px-0 lg:pb-10">
       <div className="overflow-hidden rounded-[28px] border border-white/[0.09] bg-[#080c12]/95 shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
@@ -696,7 +692,7 @@ export function ReservationConsole() {
                     ref={searchRef}
                     value={search}
                     onChange={(event) => setSearch(event.target.value)}
-                    placeholder={guestSearchMode ? 'Search guest history by name or phone' : 'Guest or phone'}
+                    placeholder="Guest or phone"
                     className="min-h-10 w-full rounded-xl border border-white/[0.08] bg-white/[0.035] pl-9 pr-3 text-sm placeholder:text-slate-600 focus:border-cyan-300/40 focus:outline-none"
                   />
                 </label>
@@ -922,24 +918,6 @@ export function ReservationConsole() {
       >
         <Plus className="h-5 w-5" /> New booking
       </button>
-
-      <nav className="fixed bottom-2 left-2 z-30 grid w-[calc(100vw-1rem)] grid-cols-5 overflow-hidden rounded-2xl border border-white/10 bg-[#0a0e14]/95 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-2xl backdrop-blur sm:hidden" aria-label="Reservation operator navigation">
-        <button type="button" onClick={() => selectOperatorView('today')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${tab === 'Today' ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
-          <CalendarDays className="h-4 w-4" />Today
-        </button>
-        <button type="button" onClick={() => selectOperatorView('reservations')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${tab === 'Upcoming' && !guestSearchMode ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
-          <NotebookPen className="h-4 w-4" />Reservations
-        </button>
-        <Link href="/dashboard/reservations/calendar" className="grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight text-slate-400">
-          <CalendarDays className="h-4 w-4" />Calendar
-        </Link>
-        <button type="button" onClick={() => selectOperatorView('guests')} className={`grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-bold leading-tight ${guestSearchMode ? 'bg-white text-slate-950' : 'text-slate-400'}`}>
-          <UserRound className="h-4 w-4" />Guests
-        </button>
-        <Link href="/dashboard/ai-assistant" className="grid min-h-12 min-w-0 place-items-center rounded-xl text-[9px] font-medium leading-tight text-slate-600">
-          <Bot className="h-4 w-4" />Brain
-        </Link>
-      </nav>
 
       {composerOpen ? (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" role="presentation">

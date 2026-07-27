@@ -129,13 +129,14 @@ export default function OperationsDashboard() {
         </div>
       </div>
 
-      {/* AI Assistant Card */}
-      <div className="bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg shadow-lg p-6 text-white">
-        <h2 className="text-xl font-bold mb-2">Need Help?</h2>
-        <p className="mb-4">Ask the AI Assistant to schedule shifts, create tasks, and manage operations</p>
-        <Link href="/dashboard/ai-assistant" className="inline-block bg-white text-indigo-600 px-4 py-2 rounded font-medium hover:bg-gray-100">
-          Open AI Assistant
-        </Link>
+      <div className="flex flex-col items-start justify-between gap-4 rounded-2xl border border-slate-200 bg-white p-6 sm:flex-row sm:items-center">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Need a quick answer?</h2>
+          <p className="mt-1 text-sm text-slate-500">Brain already has the context from this operations view.</p>
+        </div>
+        <button type="button" onClick={() => window.dispatchEvent(new Event('brain:open'))} className="brain-button-primary">
+          Ask Brain
+        </button>
       </div>
     </div>
   );

@@ -119,8 +119,8 @@ test('unavailable enforcement fails closed and unauthenticated status requests a
 });
 
 test('UI reload and device state comes from the authoritative status endpoint', async () => {
-  const page = await readFile(new URL('../app/dashboard/ai-assistant/page.tsx', import.meta.url), 'utf8');
+  const page = await readFile(new URL('../components/brain-experience/BrainAssistant.tsx', import.meta.url), 'utf8');
   assert.match(page, /fetch\('\/api\/brain\/quota'/);
-  assert.match(page, /Requests remaining: \{quota\.remaining\} \/ \{quota\.limit\}/);
+  assert.match(page, /\$\{quota\.remaining\} requests left/);
   assert.doesNotMatch(page, /useState\(10\)|setRateLimitRemaining/);
 });

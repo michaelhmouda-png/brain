@@ -75,7 +75,7 @@ test('API uses authenticated authorization and never a service-role client', () 
 test('mobile composer provides explicit camera, gallery, preview, progress, remove, and confirmation controls', () => {
   const component = read('components/brain/TaskEvidenceAttachment.tsx');
   const i18n = read('lib/i18n.ts');
-  const page = read('app/dashboard/ai-assistant/page.tsx');
+  const page = read('components/brain-experience/BrainAssistant.tsx');
   assert.match(component, /capture="environment"/);
   assert.match(component, /t\.evidence\.chooseGallery/);
   assert.match(component, /t\.evidence\.preview/);

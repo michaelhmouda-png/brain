@@ -341,10 +341,13 @@ test('reservation update contract is atomic, tenant-safe, and service-role-only'
   assert.match(service, /serviceRole\.rpc\('update_manual_reservation'/);
 });
 
-test('reservation-focused mobile navigation keeps Brain secondary', () => {
-  assert.match(reservationConsole, /Reservation operator navigation/);
-  for (const label of ['Today','Reservations','Calendar','Guests','Brain']) assert.match(reservationConsole, new RegExp(`${label}\\s*</`));
-  assert.match(reservationConsole, /text-slate-600[\s\S]+Brain/);
+test('reservation experience uses the one shared authenticated navigation and Brain entry point', () => {
+  assert.doesNotMatch(reservationConsole, /Reservation operator navigation/);
+  assert.doesNotMatch(reservationConsole, /href="\/dashboard\/ai-assistant"/);
+  const shell = read('components/brain-experience/BrainExperienceShell.tsx');
+  const sidebar = read('components/DashboardSidebar.tsx');
+  assert.match(shell, /className="brain-orb"/);
+  assert.match(sidebar, /aria-label="Quick navigation"/);
 });
 
 test('incoming-call workflow verifies signature, scopes destination, and never creates a reservation', async () => {

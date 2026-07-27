@@ -35,6 +35,16 @@ export default function CamerasPage() {
   const [saving, setSaving] = useState(false);
   const canManageNvrs = role === 'owner' || role === 'super_admin';
 
+  useEffect(() => {
+    const selectedLocation = locations.find((item) => item.id === locationId);
+    window.dispatchEvent(new CustomEvent('brain:context', {
+      detail: {
+        view: 'Camera Manager',
+        location: selectedLocation?.name || 'All authorized locations',
+      },
+    }));
+  }, [locationId, locations]);
+
   const load = useCallback(async () => {
     setLoading(true); setError(null);
     try {

@@ -63,16 +63,11 @@ export function DailyBriefingWidget() {
   };
 
   useEffect(() => {
-    loadBriefing();
+    void Promise.resolve().then(loadBriefing);
   }, []);
 
   const openBrainChat = () => {
-    // Store the briefing context in sessionStorage for the chat to use
-    if (briefing) {
-      sessionStorage.setItem('briefingContext', JSON.stringify(briefing));
-    }
-    // Navigate to AI Assistant or open chat modal
-    window.location.href = '/dashboard/ai-assistant?briefing=true';
+    window.dispatchEvent(new Event('brain:open'));
   };
 
   const getSeverityColor = (severity: string) => {
@@ -225,7 +220,7 @@ export function DailyBriefingWidget() {
       {/* Priorities */}
       {briefing?.priorities && briefing.priorities.length > 0 && (
         <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-          <h2 className="text-sm font-semibold text-gray-300 mb-4">Today's Priorities</h2>
+          <h2 className="text-sm font-semibold text-gray-300 mb-4">Today&apos;s Priorities</h2>
           <div className="space-y-3">
             {briefing.priorities.map((priority, idx) => (
               <div

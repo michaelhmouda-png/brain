@@ -23,8 +23,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#020202",
-  colorScheme: "dark",
+  themeColor: "#f4f3ef",
+  colorScheme: "light",
 };
 
 export default function RootLayout({
@@ -37,7 +37,7 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full overflow-x-hidden bg-black text-white">{children}</body>
+      <body className="min-h-full overflow-x-hidden bg-[#f4f3ef] text-slate-950">{children}</body>
     </html>
   );
 }

@@ -111,7 +111,7 @@ test('stored payload hash mismatch fails closed and marks failed', async () => {
 });
 
 test('client protocol exposes only opaque proposal display data', async () => {
-  const page=await readFile(new URL('../app/dashboard/ai-assistant/page.tsx',import.meta.url),'utf8');
+  const page=await readFile(new URL('../components/brain-experience/BrainAssistant.tsx',import.meta.url),'utf8');
   assert.match(page,/proposalId = pendingAction\.id/); assert.match(page,/decision = 'approve'/);
   assert.doesNotMatch(page,/requestBody\.pendingAction|requestBody\.confirmed/);
   const route=await readFile(new URL('../app/api/brain/chat/route.ts',import.meta.url),'utf8');

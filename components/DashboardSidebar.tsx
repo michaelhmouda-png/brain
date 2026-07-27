@@ -1,378 +1,245 @@
 'use client';
 
 import Link from 'next/link';
+import { usePathname, useRouter } from 'next/navigation';
+import {
+  BarChart3,
+  Bell,
+  Building2,
+  CalendarDays,
+  Camera,
+  CheckSquare2,
+  ChevronDown,
+  CircleUserRound,
+  ClipboardCheck,
+  Clock3,
+  Home,
+  Hotel,
+  LayoutGrid,
+  LogOut,
+  Megaphone,
+  Menu,
+  PackageOpen,
+  Search,
+  Settings,
+  ShieldAlert,
+  Sparkles,
+  Users,
+  Wrench,
+  X,
+  type LucideIcon,
+} from 'lucide-react';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
-import { Menu, X } from 'lucide-react';
 import { logoutUser } from '@/lib/auth';
 import type { Profile } from '@/lib/types';
-import { NotificationBell } from '@/components/NotificationBell';
 import { useLocale } from '@/components/LocaleProvider';
+import { BrainMark } from '@/components/brain-experience/BrainMark';
 
-interface NavSection {
-  title: string;
-  items: Array<{
-    href: string;
-    label: string;
-    reviewOnly?: boolean;
-  }>;
-}
+type Role = Profile['role'];
 
-const navSections: NavSection[] = [
-  {
-    title: 'DASHBOARD',
-    items: [
-      { href: '/dashboard', label: 'Dashboard' },
-    ],
-  },
-  {
-    title: 'BRAIN',
-    items: [
-      { href: '/dashboard/ai-assistant', label: 'AI Assistant' },
-      { href: '/dashboard/timeline', label: 'Timeline', reviewOnly: true },
-      { href: '/dashboard/reservations', label: 'Reservations', reviewOnly: true },
-    ],
-  },
-  {
-    title: 'OPERATIONS',
-    items: [
-      { href: '/dashboard/operations', label: 'Operations' },
-      { href: '/dashboard/tasks', label: 'Tasks' },
-      { href: '/dashboard/evidence-review', label: 'Evidence Review', reviewOnly: true },
-      { href: '/dashboard/shifts', label: 'Shifts' },
-      { href: '/dashboard/maintenance', label: 'Maintenance' },
-      { href: '/dashboard/inventory', label: 'Inventory' },
-      { href: '/dashboard/incidents', label: 'Incidents' },
-      { href: '/dashboard/announcements', label: 'Announcements' },
-    ],
-  },
-  {
-    title: 'PEOPLE',
-    items: [
-      { href: '/dashboard/employees', label: 'Employees' },
-      { href: '/dashboard/customers', label: 'Customers' },
-    ],
-  },
-  {
-    title: 'ORGANIZATION',
-    items: [
-      { href: '/dashboard/companies', label: 'Companies' },
-      { href: '/dashboard/locations', label: 'Locations' },
-      { href: '/dashboard/departments', label: 'Departments' },
-    ],
-  },
-  {
-    title: 'SYSTEM',
-    items: [
-      { href: '/dashboard/analytics', label: 'Analytics' },
-      { href: '/dashboard/cameras', label: 'Cameras' },
-      { href: '/dashboard/settings', label: 'Settings' },
-    ],
-  },
-];
-
-type DashboardSidebarProps = {
-  profile: Profile | null;
-  userName: string | null;
+export type DashboardDestination = {
+  href: string;
+  label: string;
+  description: string;
+  keywords: string[];
+  icon: LucideIcon;
+  group: 'primary' | 'operations' | 'organization';
+  roles: Role[];
 };
 
-export function DashboardSidebar({ profile, userName }: DashboardSidebarProps) {
+const managementRoles: Role[] = ['manager', 'owner', 'super_admin'];
+const everyRole: Role[] = ['employee', ...managementRoles];
+
+export const dashboardDestinations: DashboardDestination[] = [
+  { href: '/dashboard', label: 'Home', description: 'Today’s briefing and priorities', keywords: ['briefing', 'score', 'today'], icon: Home, group: 'primary', roles: everyRole },
+  { href: '/dashboard/operations', label: 'Operations', description: 'Live operational work', keywords: ['overview', 'command center'], icon: LayoutGrid, group: 'primary', roles: managementRoles },
+  { href: '/dashboard/reservations', label: 'Reservations', description: 'Bookings, waitlist, and service calendar', keywords: ['booking', 'calendar', 'waiting list', 'calls'], icon: CalendarDays, group: 'primary', roles: managementRoles },
+  { href: '/dashboard/customers', label: 'Guests', description: 'Guest profiles and memory', keywords: ['customers', 'people', 'profiles'], icon: CircleUserRound, group: 'primary', roles: managementRoles },
+  { href: '/dashboard/tasks', label: 'Tasks', description: 'Assigned and overdue work', keywords: ['to do', 'overdue', 'work'], icon: CheckSquare2, group: 'operations', roles: everyRole },
+  { href: '/dashboard/shifts', label: 'Schedule', description: 'Team shifts and coverage', keywords: ['roster', 'employees', 'hours'], icon: Clock3, group: 'operations', roles: everyRole },
+  { href: '/dashboard/notifications', label: 'Notifications', description: 'Updates that need your attention', keywords: ['alerts', 'inbox'], icon: Bell, group: 'operations', roles: everyRole },
+  { href: '/dashboard/evidence-review', label: 'Evidence review', description: 'Manager review queue', keywords: ['task proof', 'approvals'], icon: ClipboardCheck, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/inventory', label: 'Inventory', description: 'Stock health and alerts', keywords: ['stock', 'supplies', 'low stock'], icon: PackageOpen, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/maintenance', label: 'Maintenance', description: 'Issues, repairs, and equipment', keywords: ['tickets', 'repair'], icon: Wrench, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/incidents', label: 'Incidents', description: 'Operational incident records', keywords: ['reports', 'safety'], icon: ShieldAlert, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/cameras', label: 'Cameras', description: 'Camera Manager and inspections', keywords: ['nvr', 'vision', 'agent'], icon: Camera, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/timeline', label: 'Timeline', description: 'Durable operational history', keywords: ['events', 'history'], icon: Sparkles, group: 'operations', roles: managementRoles },
+  { href: '/dashboard/employees', label: 'Team', description: 'Employees and profiles', keywords: ['staff', 'employees', 'people'], icon: Users, group: 'organization', roles: managementRoles },
+  { href: '/dashboard/announcements', label: 'Announcements', description: 'Company updates', keywords: ['news', 'posts'], icon: Megaphone, group: 'organization', roles: managementRoles },
+  { href: '/dashboard/companies', label: 'Companies', description: 'Hospitality business profiles', keywords: ['brands', 'tenant'], icon: Building2, group: 'organization', roles: ['owner', 'super_admin'] },
+  { href: '/dashboard/locations', label: 'Locations', description: 'Venues and service settings', keywords: ['venues', 'branches'], icon: Hotel, group: 'organization', roles: managementRoles },
+  { href: '/dashboard/departments', label: 'Departments', description: 'Team structure', keywords: ['areas', 'organization'], icon: LayoutGrid, group: 'organization', roles: managementRoles },
+  { href: '/dashboard/analytics', label: 'Analytics', description: 'Performance overview', keywords: ['reports', 'metrics'], icon: BarChart3, group: 'organization', roles: managementRoles },
+  { href: '/dashboard/settings', label: 'Settings', description: 'Preferences and notifications', keywords: ['account', 'language'], icon: Settings, group: 'organization', roles: everyRole },
+];
+
+function dispatch(name: 'brain:open' | 'brain:search') {
+  window.dispatchEvent(new Event(name));
+}
+
+export function DashboardSidebar({
+  profile,
+  userName,
+}: {
+  profile: Profile;
+  userName: string | null;
+}) {
   const { messages: t } = useLocale();
-  const router = useRouter();
   const pathname = usePathname();
-  const [isPending, startTransition] = useTransition();
-  const [showMenu, setShowMenu] = useState(false);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
-  const drawerRef = useRef<HTMLElement>(null);
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [pending, startTransition] = useTransition();
+  const closeRef = useRef<HTMLButtonElement>(null);
+
+  const available = dashboardDestinations.filter((item) => item.roles.includes(profile.role));
+  const primary = available.filter((item) => item.group === 'primary');
+  const operations = available.filter((item) => item.group === 'operations');
+  const organization = available.filter((item) => item.group === 'organization');
+  const mobileQuick = profile.role === 'employee'
+    ? available.filter((item) => ['/dashboard', '/dashboard/tasks', '/dashboard/shifts', '/dashboard/notifications'].includes(item.href))
+    : primary.slice(0, 4);
+
+  const active = (href: string) => href === '/dashboard'
+    ? pathname === href
+    : pathname.startsWith(href);
 
   useEffect(() => {
-    if (!showMenu) return;
-    const scrollY = window.scrollY;
-    const previousHtmlOverflow = document.documentElement.style.overflow;
-    const previousOverflow = document.body.style.overflow;
-    const previousPosition = document.body.style.position;
-    const previousTop = document.body.style.top;
-    const previousWidth = document.body.style.width;
-    document.documentElement.style.overflow = 'hidden';
-    document.body.style.overflow = 'hidden';
-    document.body.style.position = 'fixed';
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.width = '100%';
-    closeButtonRef.current?.focus();
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        setShowMenu(false);
-        menuButtonRef.current?.focus();
-        return;
-      }
-      if (event.key === 'Tab' && drawerRef.current) {
-        const focusable = Array.from(
-          drawerRef.current.querySelectorAll<HTMLElement>(
-            'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-          )
-        );
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (!first || !last) return;
-        if (event.shiftKey && document.activeElement === first) {
-          event.preventDefault();
-          last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-          event.preventDefault();
-          first.focus();
-        }
-      }
+    if (!menuOpen) return;
+    closeRef.current?.focus();
+    const keydown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
     };
-    document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.documentElement.style.overflow = previousHtmlOverflow;
-      document.body.style.overflow = previousOverflow;
-      document.body.style.position = previousPosition;
-      document.body.style.top = previousTop;
-      document.body.style.width = previousWidth;
-      document.removeEventListener('keydown', handleKeyDown);
-      window.scrollTo(0, scrollY);
-    };
-  }, [showMenu]);
+    document.addEventListener('keydown', keydown);
+    return () => document.removeEventListener('keydown', keydown);
+  }, [menuOpen]);
 
-  const handleLogout = () => {
+  const signOut = () => {
     startTransition(async () => {
-      try {
-        await logoutUser();
-        router.push('/login');
-        router.refresh();
-      } catch (error) {
-        console.error('Logout failed:', error);
-      }
+      await logoutUser();
+      router.push('/login');
+      router.refresh();
     });
   };
 
-  const isActive = (href: string): boolean => {
-    if (href === '/dashboard') {
-      return pathname === '/dashboard';
-    }
-    return pathname.startsWith(href);
-  };
-
-  const roleColors: Record<string, string> = {
-    super_admin: 'bg-purple-500/20 text-purple-300 ring-purple-400/20',
-    owner: 'bg-cyan-500/20 text-cyan-300 ring-cyan-400/20',
-    manager: 'bg-blue-500/20 text-blue-300 ring-blue-400/20',
-    employee: 'bg-slate-500/20 text-slate-300 ring-slate-400/20',
-  };
-
-  const roleLabel: Record<string, string> = t.role;
-
-  const localizedSections: NavSection[] = profile?.role === 'employee' ? [
-    { title: '', items: [
-      { href: '/dashboard', label: t.nav.dashboard },
-      { href: '/dashboard/tasks', label: t.nav.tasks },
-      { href: '/dashboard/notifications', label: t.nav.notifications },
-      { href: '/dashboard/shifts', label: t.nav.shifts },
-      { href: '/dashboard/ai-assistant', label: t.nav.brain },
-      { href: '/dashboard/settings', label: t.nav.settings },
-    ] },
-  ] : navSections;
-
-  const brand = (
-    <div className="flex items-center gap-4">
-      <div className="flex h-14 w-14 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
-        <span className="text-2xl font-black tracking-[0.25em]">B</span>
-      </div>
-      <div>
-        <p className="text-sm uppercase tracking-[0.35em] text-cyan-300">Brain</p>
-        <p className="text-xs text-slate-400">Hospitality OS</p>
-      </div>
-    </div>
-  );
-
-  const navigationLinks = (
-    <>
-      {localizedSections.map((section) => (
-        <div key={section.title}>
-          {section.title && <p className="mb-1 px-2 text-[0.65rem] font-semibold uppercase tracking-wider text-gray-500 lg:mb-2 lg:text-xs">
-            {section.title}
-          </p>}
-          <div className="space-y-0.5 lg:space-y-1">
-            {section.items.filter((item) => !item.reviewOnly || (profile && ['manager', 'owner', 'super_admin'].includes(profile.role))).map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                onClick={() => setShowMenu(false)}
-                className={`flex min-h-11 items-center rounded-lg px-3 py-2 text-sm font-medium transition-all lg:px-4 lg:py-2.5 ${
-                  isActive(item.href)
-                    ? 'border border-cyan-500/20 bg-cyan-500/10 text-cyan-300'
-                    : 'text-slate-400 hover:bg-white/5 hover:text-white'
-                }`}
-              >
-                <span>{item.href === '/dashboard/cameras' ? t.nav.cameras : item.label}</span>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-
-  const mobileAccount = profile ? (
-    <div className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-3">
-      <div className="flex min-w-0 items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-white">
-            {profile.full_name || 'User'}
-          </div>
-          {userName && <div className="truncate text-xs text-slate-400">{userName}</div>}
-        </div>
-        <span
-          className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[0.65rem] font-semibold ring-1 ${
-            roleColors[profile.role] || roleColors.employee
-          }`}
-        >
-          {roleLabel[profile.role] || t.role.employee}
-        </span>
-      </div>
-      <button
-        onClick={handleLogout}
-        disabled={isPending}
-        className="mt-2 min-h-11 w-full rounded-xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+  const navLink = (item: DashboardDestination, mobile = false) => {
+    const Icon = item.icon;
+    return (
+      <Link
+        key={item.href}
+        href={item.href}
+        onClick={() => setMenuOpen(false)}
+        className={mobile ? `brain-mobile-nav-item ${active(item.href) ? 'is-active' : ''}` : `brain-nav-item ${active(item.href) ? 'is-active' : ''}`}
+        aria-current={active(item.href) ? 'page' : undefined}
       >
-        {isPending ? t.nav.signingOut : t.nav.signOut}
-      </button>
-    </div>
-  ) : null;
-
-  const desktopAccount = profile ? (
-    <div className="overflow-hidden rounded-3xl border border-white/10 bg-slate-950/60 p-4">
-      <p className="text-xs uppercase tracking-[0.28em] text-cyan-300">{t.nav.account}</p>
-      <div className="mt-3 space-y-2">
-        <div className="truncate text-sm font-medium text-white">
-          {userName || profile.full_name || 'User'}
-        </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
-              roleColors[profile.role] || roleColors.employee
-            }`}
-          >
-            {roleLabel[profile.role] || t.role.employee}
-          </span>
-        </div>
-        {profile.status !== 'active' && (
-          <div className="text-xs text-yellow-400">
-            Status: <span className="capitalize">{profile.status}</span>
-          </div>
-        )}
-      </div>
-      <button
-        onClick={handleLogout}
-        disabled={isPending}
-        className="mt-3 min-h-11 w-full rounded-2xl border border-white/10 px-3 py-2 text-sm font-semibold text-slate-300 transition hover:bg-white/5 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
-      >
-        {isPending ? t.nav.signingOut : t.nav.signOut}
-      </button>
-    </div>
-  ) : null;
-
-  const desktopNavigation = (
-    <>
-      <div className="mb-8 flex items-center justify-between gap-3">{brand}<NotificationBell /></div>
-      <nav className="flex-1 space-y-4 overflow-y-auto">
-        {navigationLinks}
-      </nav>
-      <div className="mt-4">{desktopAccount}</div>
-    </>
-  );
+        <Icon className="h-[18px] w-[18px] shrink-0" />
+        <span>{item.href === '/dashboard/cameras' ? t.nav.cameras : item.label}</span>
+      </Link>
+    );
+  };
 
   return (
     <>
-      <header className="safe-area-x safe-area-top fixed inset-x-0 top-0 z-40 border-b border-white/10 bg-[#050505]/95 backdrop-blur-xl lg:hidden">
-        <div className="flex min-h-16 items-center justify-between gap-3">
-          <Link href="/dashboard" className="flex min-h-11 items-center gap-3 rounded-xl" aria-label="Brain dashboard">
-            <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-cyan-400/10 font-black tracking-[0.2em] text-cyan-300 ring-1 ring-cyan-400/20">B</span>
-            <span>
-              <span className="block text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Brain</span>
-              <span className="block text-xs text-slate-400">Hospitality OS</span>
-            </span>
-          </Link>
-          <div className="flex items-center gap-2">
-          <NotificationBell />
-          <button
-            ref={menuButtonRef}
-            type="button"
-            onClick={() => setShowMenu(true)}
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/5 text-white"
-            aria-label={t.nav.open}
-            aria-expanded={showMenu}
-            aria-controls="mobile-dashboard-navigation"
-          >
-            <Menu aria-hidden="true" className="h-5 w-5" />
-          </button>
+      <aside className="brain-sidebar">
+        <Link href="/dashboard" className="brain-brand" aria-label="Brain home">
+          <span className="brain-logo-tile"><BrainMark className="h-7 w-7" /></span>
+          <span>
+            <span className="block text-[15px] font-semibold tracking-[-0.02em] text-slate-950">Brain</span>
+            <span className="block text-[11px] text-slate-500">Hospitality OS</span>
+          </span>
+        </Link>
+
+        <button type="button" onClick={() => dispatch('brain:search')} className="brain-sidebar-search">
+          <Search className="h-4 w-4" />
+          <span>Search</span>
+          <kbd>⌘K</kbd>
+        </button>
+
+        <nav className="mobile-scroll-region min-h-0 flex-1 overflow-y-auto" aria-label="Primary navigation">
+          <div className="space-y-1">{primary.map((item) => navLink(item))}</div>
+          <div className="brain-nav-section">
+            <p className="brain-nav-label">Workspace</p>
+            <div className="space-y-1">{operations.map((item) => navLink(item))}</div>
           </div>
+          <div className="brain-nav-section">
+            <button type="button" onClick={() => setMoreOpen((value) => !value)} className="brain-nav-section-toggle" aria-expanded={moreOpen}>
+              <span>Organization</span>
+              <ChevronDown className={`h-4 w-4 transition ${moreOpen ? 'rotate-180' : ''}`} />
+            </button>
+            {moreOpen ? <div className="mt-1 space-y-1">{organization.map((item) => navLink(item))}</div> : null}
+          </div>
+        </nav>
+
+        <div className="brain-account">
+          <div className="brain-account-avatar">{(profile.full_name || userName || 'B').charAt(0).toUpperCase()}</div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium text-slate-900">{profile.full_name || userName || 'Brain operator'}</p>
+            <p className="truncate text-xs capitalize text-slate-500">{profile.role.replaceAll('_', ' ')}</p>
+          </div>
+          <button type="button" disabled={pending} onClick={signOut} className="brain-account-action" aria-label={t.nav.signOut}>
+            <LogOut className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+
+      <header className="brain-mobile-header">
+        <Link href="/dashboard" className="brain-brand" aria-label="Brain home">
+          <span className="brain-logo-tile"><BrainMark className="h-6 w-6" /></span>
+          <span className="text-sm font-semibold text-slate-950">Brain</span>
+        </Link>
+        <div className="flex items-center gap-1">
+          <button type="button" onClick={() => dispatch('brain:search')} className="brain-icon-button" aria-label="Search Brain">
+            <Search className="h-5 w-5" />
+          </button>
+          <button type="button" onClick={() => setMenuOpen(true)} className="brain-icon-button" aria-label={t.nav.open} aria-expanded={menuOpen}>
+            <Menu className="h-5 w-5" />
+          </button>
         </div>
       </header>
 
-      {showMenu && (
-        <div className="fixed inset-0 z-50 h-[100dvh] overflow-hidden lg:hidden" role="presentation">
-          <button
-            type="button"
-            className="absolute inset-0 h-full w-full bg-black/70 backdrop-blur-sm"
-            onClick={() => setShowMenu(false)}
-            aria-label={t.nav.close}
-          />
-          <aside
-            ref={drawerRef}
-            id="mobile-dashboard-navigation"
-            role="dialog"
-            aria-modal="true"
-            aria-label={t.nav.open}
-            className="absolute inset-y-0 left-0 flex h-[100dvh] max-h-[100dvh] w-[min(88vw,380px)] flex-col overflow-hidden border-r border-white/10 bg-[#080b12] shadow-2xl"
-          >
-            <header className="flex shrink-0 items-center justify-between gap-3 border-b border-white/10 px-4 pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
-              <Link
-                href="/dashboard"
-                onClick={() => setShowMenu(false)}
-                className="flex min-h-11 min-w-0 items-center gap-3 rounded-xl"
-                aria-label="Brain dashboard"
-              >
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-cyan-400/10 font-black tracking-[0.2em] text-cyan-300 ring-1 ring-cyan-400/20">B</span>
-                <span className="min-w-0">
-                  <span className="block text-sm font-semibold uppercase tracking-[0.2em] text-cyan-300">Brain</span>
-                  <span className="block truncate text-xs text-slate-400">Hospitality OS</span>
-                </span>
-              </Link>
-              <button
-                ref={closeButtonRef}
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  menuButtonRef.current?.focus();
-                }}
-                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-white/10 text-slate-200"
-                aria-label={t.nav.close}
-              >
-                <X aria-hidden="true" className="h-5 w-5" />
+      <nav className="brain-mobile-nav" aria-label="Quick navigation">
+        {mobileQuick.map((item) => navLink(item, true))}
+        <button type="button" onClick={() => dispatch('brain:open')} className="brain-mobile-nav-item">
+          <BrainMark className="h-[18px] w-[18px]" />
+          <span>Brain</span>
+        </button>
+      </nav>
+
+      {menuOpen ? (
+        <div className="brain-overlay z-[80]" role="presentation">
+          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setMenuOpen(false)} aria-label={t.nav.close} />
+          <aside className="brain-mobile-menu" role="dialog" aria-modal="true" aria-label="Navigation">
+            <header className="flex items-center justify-between border-b border-slate-200 p-4">
+              <span className="brain-brand">
+                <span className="brain-logo-tile"><BrainMark className="h-6 w-6" /></span>
+                <span className="font-semibold text-slate-950">Brain</span>
+              </span>
+              <button ref={closeRef} type="button" onClick={() => setMenuOpen(false)} className="brain-icon-button" aria-label={t.nav.close}>
+                <X className="h-5 w-5" />
               </button>
             </header>
-            <nav
-              className="mobile-scroll-region min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain px-4 py-3"
-              aria-label="Mobile dashboard navigation"
-            >
-              {navigationLinks}
+            <nav className="mobile-scroll-region min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
+              <div>
+                <p className="brain-nav-label">Navigate</p>
+                <div className="mt-2 space-y-1">{primary.map((item) => navLink(item))}</div>
+              </div>
+              <div>
+                <p className="brain-nav-label">Workspace</p>
+                <div className="mt-2 space-y-1">{operations.map((item) => navLink(item))}</div>
+              </div>
+              <div>
+                <p className="brain-nav-label">Organization</p>
+                <div className="mt-2 space-y-1">{organization.map((item) => navLink(item))}</div>
+              </div>
             </nav>
-            {mobileAccount && (
-              <footer className="shrink-0 border-t border-white/10 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2">
-                {mobileAccount}
-              </footer>
-            )}
+            <footer className="border-t border-slate-200 p-4">
+              <button type="button" onClick={signOut} disabled={pending} className="brain-button-secondary w-full">
+                <LogOut className="h-4 w-4" /> {pending ? t.nav.signingOut : t.nav.signOut}
+              </button>
+            </footer>
           </aside>
         </div>
-      )}
-
-      <aside className="hidden w-full max-w-[300px] shrink-0 flex-col rounded-[36px] border border-white/10 bg-white/5 p-6 shadow-[0_40px_120px_rgba(0,0,0,0.45)] backdrop-blur-xl lg:flex">
-        {desktopNavigation}
-      </aside>
+      ) : null}
     </>
   );
 }
