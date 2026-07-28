@@ -29,7 +29,7 @@ export async function GET(_request: Request, context: { params: Promise<{ id: st
     const { id } = await context.params; if (!isUuid(id)) return fail('RESERVATION_INPUT_INVALID', 400);
     const client = await createSupabaseServerAuth(); const actor = await resolveActorContext(client);
     if (!canManageReservations(actor.role)) return fail('RESERVATION_FORBIDDEN', 403);
-    const { data, error } = await client.from('reservations').select('*,guest:reservation_guests(id,first_name,last_name,phone_e164,preferred_language,marketing_consent),history:reservation_status_history(id,previous_status,new_status,reason,changed_at)').eq('id', id).eq('company_id', actor.companyId).maybeSingle();
+    const { data, error } = await client.from('reservations').select('*,guest:reservation_guests(id,first_name,last_name,phone_e164,preferred_language,marketing_consent,notes),history:reservation_status_history(id,previous_status,new_status,reason,changed_at)').eq('id', id).eq('company_id', actor.companyId).maybeSingle();
     if (error) return fail('RESERVATION_UNAVAILABLE', 503);
     if (!data) return fail('RESERVATION_NOT_FOUND', 404);
     return NextResponse.json({ data }, { headers: HEADERS });

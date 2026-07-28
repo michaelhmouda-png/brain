@@ -296,8 +296,8 @@ test('date and time controls support direct venue-local selection without preset
   assert.match(reservationInputs, /Previous month/);
   assert.match(reservationInputs, /Next month/);
   assert.match(reservationInputs, /onTouchStart/);
-  assert.match(reservationInputs, /Today\s*<\/button>/);
-  assert.match(reservationInputs, /Clear\s*<\/button>/);
+  assert.match(reservationInputs, /copy\?\.today \?\? 'Today'/);
+  assert.match(reservationInputs, /copy\?\.clear \?\? 'Clear'/);
   assert.match(reservationInputs, /type="time"/);
   assert.match(reservationInputs, /step=\{60\}/);
   assert.match(reservationInputs, /Venue-local time[\s\S]+any minute accepted/);

@@ -13,6 +13,7 @@ import {
   isUuid,
   oneOf,
   type ManualReservationInput,
+  type ReservationRebookInput,
   type ReservationStatus,
   type ReservationUpdateInput,
 } from './contracts.ts';
@@ -96,6 +97,38 @@ export function parseReservationUpdate(value: unknown): ReservationUpdateInput {
   };
 }
 
+export function parseReservationRebook(value: unknown): ReservationRebookInput {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('RESERVATION_REBOOK_INPUT_INVALID');
+  const row = value as Record<string, unknown>;
+  const allowed = new Set([
+    'idempotencyKey','locationId','guestCount','purpose','purposeDetails','date','time',
+    'expectedDurationMinutes','notes','seatingPreference','source',
+  ]);
+  if (Object.keys(row).some((key) => !allowed.has(key))
+      || !isUuid(row.idempotencyKey) || !isUuid(row.locationId)
+      || !isDate(row.date) || !isTime(row.time)
+      || !Number.isInteger(row.guestCount) || Number(row.guestCount) < 1 || Number(row.guestCount) > 100
+      || !Number.isInteger(row.expectedDurationMinutes) || Number(row.expectedDurationMinutes) < 15 || Number(row.expectedDurationMinutes) > 720
+      || !oneOf(RESERVATION_PURPOSES, row.purpose)
+      || !oneOf(SEATING_PREFERENCES, row.seatingPreference)
+      || !oneOf(RESERVATION_SOURCES, row.source)) {
+    throw new Error('RESERVATION_REBOOK_INPUT_INVALID');
+  }
+  return {
+    idempotencyKey: row.idempotencyKey,
+    locationId: row.locationId,
+    guestCount: Number(row.guestCount),
+    purpose: row.purpose,
+    purposeDetails: bounded(row.purposeDetails, 1, 500, true),
+    date: row.date,
+    time: row.time,
+    expectedDurationMinutes: Number(row.expectedDurationMinutes),
+    notes: bounded(row.notes, 1, 2000, true),
+    seatingPreference: row.seatingPreference,
+    source: row.source,
+  };
+}
+
 async function loadTimezone(authenticated: SupabaseClient, companyId: string, locationId: string) {
   const [{ data: company }, { data: location }] = await Promise.all([
     authenticated.from('companies').select('timezone').eq('id', companyId).single(),
@@ -131,6 +164,62 @@ export async function createManualReservation(
   });
   if (error || !Array.isArray(data) || data.length !== 1) throw new Error('RESERVATION_CREATE_FAILED');
   return { ...data[0], phoneE164: phone.phoneE164, correlationId: actor.correlationId, availability: { state: 'unknown', reason: 'CAPACITY_RULES_NOT_CONFIGURED' } };
+}
+
+export async function rebookReservation(
+  authenticated: SupabaseClient,
+  serviceRole: SupabaseClient,
+  actor: ActorContext,
+  originalReservationId: string,
+  input: ReservationRebookInput,
+) {
+  if (!canManageReservations(actor.role) || !isUuid(originalReservationId)) throw new Error('RESERVATION_FORBIDDEN');
+  const timezone = await loadTimezone(authenticated, actor.companyId, input.locationId);
+  let startsAt: string;
+  try {
+    startsAt = localDateTimeToInstant(`${input.date}T${input.time}`, timezone).dueAt;
+  } catch (error) {
+    const code = error instanceof Error ? error.message : '';
+    if (['INVALID_BATCH_DUE_TIME', 'NONEXISTENT_BATCH_DUE_TIME', 'AMBIGUOUS_BATCH_DUE_TIME'].includes(code)) {
+      throw new Error('RESERVATION_REBOOK_INPUT_INVALID');
+    }
+    throw error;
+  }
+  const expectedEndAt = new Date(Date.parse(startsAt) + input.expectedDurationMinutes * 60_000).toISOString();
+  const { data, error } = await serviceRole.rpc('rebook_reservation', {
+    p_actor_profile_id: actor.profileId,
+    p_company_id: actor.companyId,
+    p_original_reservation_id: originalReservationId,
+    p_idempotency_key: input.idempotencyKey,
+    p_location_id: input.locationId,
+    p_guest_count: input.guestCount,
+    p_reservation_date: input.date,
+    p_reservation_time: input.time,
+    p_starts_at: startsAt,
+    p_expected_end_at: expectedEndAt,
+    p_purpose: input.purpose,
+    p_purpose_details: input.purposeDetails ?? null,
+    p_notes: input.notes ?? null,
+    p_seating_preference: input.seatingPreference,
+    p_booking_source: input.source,
+    p_correlation_id: actor.correlationId,
+  });
+  if (error || !Array.isArray(data) || data.length !== 1) throw new Error('RESERVATION_REBOOK_FAILED');
+  const result = data[0] as {
+    reservation_id: string | null;
+    guest_id: string | null;
+    status: string | null;
+    replayed: boolean;
+    outcome_code: string;
+  };
+  if (!result.reservation_id || !['RESERVATION_REBOOK_COMPLETED', 'RESERVATION_REBOOK_REPLAYED'].includes(result.outcome_code)) {
+    throw new Error(result.outcome_code || 'RESERVATION_REBOOK_FAILED');
+  }
+  return {
+    ...result,
+    correlationId: actor.correlationId,
+    availability: { state: 'unknown', reason: 'CAPACITY_RULES_NOT_CONFIGURED' } as const,
+  };
 }
 
 export async function transitionReservation(
@@ -225,6 +314,13 @@ export async function convertWaitlist(
 
 export function normalizeReservationError(error: unknown) {
   const message = error instanceof Error ? error.message : '';
-  const allowed = ['RESERVATION_INPUT_INVALID','RESERVATION_PHONE_INVALID','RESERVATION_CALLING_CODE_INVALID','RESERVATION_PHONE_ALREADY_EXISTS','RESERVATION_WAITLIST_WINDOW_INVALID','RESERVATION_LOCATION_INVALID','RESERVATION_TIMEZONE_INVALID','RESERVATION_FORBIDDEN','RESERVATION_NOT_FOUND','RESERVATION_STATUS_TRANSITION_INVALID'];
+  const allowed = [
+    'RESERVATION_INPUT_INVALID','RESERVATION_PHONE_INVALID','RESERVATION_CALLING_CODE_INVALID',
+    'RESERVATION_PHONE_ALREADY_EXISTS','RESERVATION_WAITLIST_WINDOW_INVALID','RESERVATION_LOCATION_INVALID',
+    'RESERVATION_TIMEZONE_INVALID','RESERVATION_FORBIDDEN','RESERVATION_NOT_FOUND',
+    'RESERVATION_STATUS_TRANSITION_INVALID','RESERVATION_REBOOK_INPUT_INVALID',
+    'RESERVATION_REBOOK_IDEMPOTENCY_REQUIRED','RESERVATION_REBOOK_IDEMPOTENCY_CONFLICT',
+    'RESERVATION_REBOOK_SOURCE_INVALID','RESERVATION_ALREADY_REBOOKED',
+  ];
   return allowed.find((code) => message.includes(code)) ?? 'RESERVATION_UNAVAILABLE';
 }

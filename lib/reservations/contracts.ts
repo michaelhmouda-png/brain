@@ -57,6 +57,20 @@ export type ReservationUpdateInput = {
   statusReason?: string;
 };
 
+export type ReservationRebookInput = {
+  idempotencyKey: string;
+  locationId: string;
+  guestCount: number;
+  purpose: ReservationPurpose;
+  purposeDetails?: string;
+  date: string;
+  time: string;
+  expectedDurationMinutes: number;
+  notes?: string;
+  seatingPreference: SeatingPreference;
+  source: ReservationSource;
+};
+
 export type ReservationSafeRecord = {
   id: string;
   locationId: string;

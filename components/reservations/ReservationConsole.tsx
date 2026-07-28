@@ -21,12 +21,17 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocale } from '@/components/LocaleProvider';
 import { ReservationEditPanel, type EditableReservation } from '@/components/reservations/ReservationEditPanel';
 import {
   GuestCountInput,
   ReservationDatePicker,
   ReservationTimeInput,
 } from '@/components/reservations/ReservationInputs';
+import {
+  ReservationRebookPanel,
+  type RebookableReservation,
+} from '@/components/reservations/ReservationRebookPanel';
 import type { ReservationDailyMetrics } from '@/lib/reservations/metrics';
 import { normalizePhone } from '@/lib/reservations/phone';
 import { venueDate } from '@/lib/reservations/time';
@@ -253,6 +258,8 @@ function Metric({
 }
 
 export function ReservationConsole() {
+  const { messages: translations } = useLocale();
+  const rebookCopy = translations.reservationRebook;
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState('');
   const [selectedDate, setSelectedDate] = useState(() => localDate());
@@ -267,6 +274,8 @@ export function ReservationConsole() {
   const [search, setSearch] = useState('');
   const [composerOpen, setComposerOpen] = useState(false);
   const [editingRow, setEditingRow] = useState<ReservationRow | null>(null);
+  const [rebookingRow, setRebookingRow] = useState<RebookableReservation | null>(null);
+  const [preparingRebookId, setPreparingRebookId] = useState<string | null>(null);
   const [listLoading, setListLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
@@ -584,6 +593,24 @@ export function ReservationConsole() {
     }
   }
 
+  async function prepareRebook(row: ReservationRow) {
+    if (!['cancelled', 'no_show'].includes(row.status) || preparingRebookId) return;
+    setPreparingRebookId(row.id);
+    setMessage(null);
+    try {
+      const response = await fetch(`/api/reservations/${row.id}`, { cache: 'no-store' });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.data || !['cancelled', 'no_show'].includes(payload.data.status)) {
+        throw new Error(rebookCopy.failed);
+      }
+      setRebookingRow(payload.data as RebookableReservation);
+    } catch (failure) {
+      setMessage({ kind: 'error', text: failure instanceof Error ? failure.message : rebookCopy.failed });
+    } finally {
+      setPreparingRebookId(null);
+    }
+  }
+
   return (
     <main className="min-h-[calc(100dvh-6rem)] px-3 pb-24 sm:px-5 lg:px-0 lg:pb-10">
       <div className="overflow-hidden rounded-[28px] border border-white/[0.09] bg-[#080c12]/95 shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
@@ -797,7 +824,7 @@ export function ReservationConsole() {
                           <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm text-slate-400 hover:text-cyan-200">
                             <Phone className="h-3.5 w-3.5" /> {row.guest?.phone_e164 ?? 'No phone'}
                           </a>
-                          {actions.length ? (
+                          {actions.length || ['cancelled', 'no_show'].includes(row.status) ? (
                             <div className="flex flex-wrap gap-1.5">
                               {actions.map((action) => (
                                 <button
@@ -817,6 +844,19 @@ export function ReservationConsole() {
                                   {updatingId === row.id ? 'Saving…' : action.label}
                                 </button>
                               ))}
+                              {['cancelled', 'no_show'].includes(row.status) ? (
+                                <button
+                                  type="button"
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    void prepareRebook(row);
+                                  }}
+                                  disabled={preparingRebookId === row.id}
+                                  className="min-h-9 rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/20 focus:outline-none focus:ring-2 focus:ring-cyan-300 disabled:opacity-50"
+                                >
+                                  {preparingRebookId === row.id ? rebookCopy.preparing : rebookCopy.action}
+                                </button>
+                              ) : null}
                             </div>
                           ) : <span className="text-xs text-slate-600">Tap to view</span>}
                         </div>
@@ -1149,6 +1189,26 @@ export function ReservationConsole() {
           onClose={() => setEditingRow(null)}
           onSaved={async () => {
             setMessage({ kind: 'success', text: 'Reservation updated.' });
+            await Promise.all([loadReservations(), loadDailySummary()]);
+          }}
+        />
+      ) : null}
+
+      {rebookingRow ? (
+        <ReservationRebookPanel
+          row={rebookingRow}
+          locations={locations}
+          timezone={timezone}
+          onClose={() => setRebookingRow(null)}
+          onCreated={async ({ reservationId, date, locationId: replacementLocationId }) => {
+            setRebookingRow(null);
+            setLocationId(replacementLocationId);
+            setSelectedDate(date);
+            setTab('Upcoming');
+            setMessage({ kind: 'success', text: rebookCopy.success });
+            const response = await fetch(`/api/reservations/${reservationId}`, { cache: 'no-store' });
+            const payload = await response.json().catch(() => null);
+            if (response.ok && payload?.data) setEditingRow(payload.data as ReservationRow);
             await Promise.all([loadReservations(), loadDailySummary()]);
           }}
         />

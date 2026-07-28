@@ -20,9 +20,9 @@ const isoDate = (date: Date) => {
 
 const dateFromIso = (value: string) => new Date(`${value}T12:00:00`);
 
-export function formatVenueDate(value: string) {
-  if (!value) return 'Choose a date';
-  return new Intl.DateTimeFormat(undefined, {
+export function formatVenueDate(value: string, locale?: string, emptyLabel = 'Choose a date') {
+  if (!value) return emptyLabel;
+  return new Intl.DateTimeFormat(locale, {
     weekday: 'short',
     month: 'short',
     day: 'numeric',
@@ -47,12 +47,27 @@ export function ReservationDatePicker({
   timezone,
   allowClear = true,
   label = 'Reservation date',
+  tone = 'dark',
+  locale,
+  copy,
 }: {
   value: string;
   onChange(value: string): void;
   timezone?: string;
   allowClear?: boolean;
   label?: string;
+  tone?: 'dark' | 'light';
+  locale?: string;
+  copy?: {
+    chooseDate: string;
+    venueDate: string;
+    previousMonth: string;
+    nextMonth: string;
+    weekdays: readonly string[];
+    today: string;
+    clear: string;
+    close: string;
+  };
 }) {
   const today = venueDate(timezone);
   const [open, setOpen] = useState(false);
@@ -82,13 +97,17 @@ export function ReservationDatePicker({
       <button
         type="button"
         onClick={openPicker}
-        className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-left transition hover:border-white/20 focus:border-cyan-400/60 focus:outline-none"
+        className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3.5 transition focus:outline-none ${
+          tone === 'light'
+            ? 'border-slate-300 bg-white text-start text-slate-950 hover:border-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+            : 'border-white/10 bg-white/[0.055] text-left hover:border-white/20 focus:border-cyan-400/60'
+        }`}
         aria-label={label}
       >
-        <CalendarDays className="h-4 w-4 shrink-0 text-cyan-300" />
+        <CalendarDays className={`h-4 w-4 shrink-0 ${tone === 'light' ? 'text-cyan-700' : 'text-cyan-300'}`} />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold text-white">{formatVenueDate(value)}</span>
-          <span className="block text-[11px] text-slate-500">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
+          <span className={`block truncate text-sm font-bold ${tone === 'light' ? 'text-slate-950' : 'text-white'}`}>{formatVenueDate(value, locale, copy?.chooseDate)}</span>
+          <span className={`block text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>{timezone ? `${timezone} · ${copy?.venueDate ?? 'venue date'}` : copy?.venueDate ?? 'Venue-local date'}</span>
         </span>
       </button>
 
@@ -98,7 +117,9 @@ export function ReservationDatePicker({
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="w-full max-w-md rounded-t-[28px] border border-white/10 bg-[#0b1018] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-5"
+            className={`w-full max-w-md rounded-t-[28px] border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-5 ${
+              tone === 'light' ? 'border-slate-200 bg-[#fbfbf8] text-slate-950' : 'border-white/10 bg-[#0b1018]'
+            }`}
             onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientX ?? null; }}
             onTouchEnd={(event) => {
               const end = event.changedTouches[0]?.clientX;
@@ -110,19 +131,19 @@ export function ReservationDatePicker({
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
             <div className="flex items-center justify-between gap-2">
-              <button type="button" onClick={() => moveMonth(-1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Previous month">
-                <ChevronLeft className="h-4 w-4" />
+              <button type="button" onClick={() => moveMonth(-1)} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 hover:bg-slate-100' : 'border-white/10'}`} aria-label={copy?.previousMonth ?? 'Previous month'}>
+                <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
               </button>
               <strong className="text-base">
-                {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month)}
+                {new Intl.DateTimeFormat(locale, { month: 'long', year: 'numeric' }).format(month)}
               </strong>
-              <button type="button" onClick={() => moveMonth(1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Next month">
-                <ChevronRight className="h-4 w-4" />
+              <button type="button" onClick={() => moveMonth(1)} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 hover:bg-slate-100' : 'border-white/10'}`} aria-label={copy?.nextMonth ?? 'Next month'}>
+                <ChevronRight className="h-4 w-4 rtl:rotate-180" />
               </button>
             </div>
 
             <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase text-slate-500">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-1">{day}</span>)}
+              {(copy?.weekdays ?? ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']).map((day) => <span key={day} className="py-1">{day}</span>)}
             </div>
             <div className="mt-1 grid grid-cols-7 gap-1">
               {days.map((day) => {
@@ -140,8 +161,8 @@ export function ReservationDatePicker({
                       selected
                         ? 'bg-cyan-300 text-slate-950'
                         : muted
-                          ? 'text-slate-700 hover:bg-white/[0.04]'
-                          : 'text-slate-200 hover:bg-white/[0.08]'
+                          ? tone === 'light' ? 'text-slate-400 hover:bg-slate-100' : 'text-slate-700 hover:bg-white/[0.04]'
+                          : tone === 'light' ? 'text-slate-800 hover:bg-slate-100' : 'text-slate-200 hover:bg-white/[0.08]'
                     }`}
                   >
                     {day.getDate()}
@@ -155,16 +176,16 @@ export function ReservationDatePicker({
               <button
                 type="button"
                 onClick={() => { onChange(today); setOpen(false); }}
-                className="min-h-11 flex-1 rounded-xl bg-white px-4 text-sm font-black text-slate-950"
+                className={`min-h-11 flex-1 rounded-xl px-4 text-sm font-black ${tone === 'light' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'}`}
               >
-                Today
+                {copy?.today ?? 'Today'}
               </button>
               {allowClear ? (
-                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-300">
-                  Clear
+                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10 text-slate-300'}`}>
+                  {copy?.clear ?? 'Clear'}
                 </button>
               ) : null}
-              <button type="button" onClick={() => setOpen(false)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Close date picker">
+              <button type="button" onClick={() => setOpen(false)} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10'}`} aria-label={copy?.close ?? 'Close date picker'}>
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -181,12 +202,16 @@ export function ReservationTimeInput({
   timezone,
   intervalMinutes = 15,
   label = 'Reservation time',
+  tone = 'dark',
+  hint,
 }: {
   value: string;
   onChange(value: string): void;
   timezone?: string;
   intervalMinutes?: number;
   label?: string;
+  tone?: 'dark' | 'light';
+  hint?: string;
 }) {
   const suggestions = useMemo(() => {
     const safeInterval = Math.max(5, Math.min(60, Math.round(intervalMinutes)));
@@ -199,7 +224,7 @@ export function ReservationTimeInput({
 
   return (
     <label>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</span>
+      <span className={`text-xs font-semibold uppercase tracking-[0.12em] ${tone === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>{label}</span>
       <input
         type="time"
         inputMode="numeric"
@@ -207,13 +232,17 @@ export function ReservationTimeInput({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-lg font-bold text-white focus:border-cyan-400/60 focus:outline-none"
+        className={`mt-1.5 min-h-12 w-full rounded-xl border px-3.5 text-lg font-bold focus:outline-none ${
+          tone === 'light'
+            ? 'border-slate-300 bg-white text-slate-950 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+            : 'border-white/10 bg-white/[0.055] text-white focus:border-cyan-400/60'
+        }`}
       />
       <datalist id={listId}>
         {suggestions.map((time) => <option value={time} key={time} />)}
       </datalist>
-      <span className="mt-1 block text-[11px] text-slate-500">
-        {timezone ? `${timezone} · ` : 'Venue-local time · '}{intervalMinutes}-minute suggestions, any minute accepted
+      <span className={`mt-1 block text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>
+        {hint ?? `${timezone ? `${timezone} · ` : 'Venue-local time · '}${intervalMinutes}-minute suggestions, any minute accepted`}
       </span>
     </label>
   );
@@ -224,22 +253,32 @@ export function GuestCountInput({
   onChange,
   minimum = 1,
   maximum = 100,
+  tone = 'dark',
+  copy,
 }: {
   value: number | '';
   onChange(value: number | ''): void;
   minimum?: number;
   maximum?: number;
+  tone?: 'dark' | 'light';
+  copy?: {
+    label: string;
+    remove: string;
+    add: string;
+    clear: string;
+    hint: string;
+  };
 }) {
   const numeric = typeof value === 'number' ? value : minimum;
   return (
     <div>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Number of guests</span>
+      <span className={`text-xs font-semibold uppercase tracking-[0.12em] ${tone === 'light' ? 'text-slate-600' : 'text-slate-400'}`}>{copy?.label ?? 'Number of guests'}</span>
       <div className="mt-1.5 flex items-stretch gap-2">
         <button
           type="button"
           onClick={() => onChange(Math.max(minimum, numeric - 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
-          aria-label="Remove one guest"
+          className={`grid min-h-14 min-w-14 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
+          aria-label={copy?.remove ?? 'Remove one guest'}
         >
           <Minus className="h-5 w-5" />
         </button>
@@ -252,22 +291,26 @@ export function GuestCountInput({
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
-          className="min-h-14 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.055] px-3 text-center text-2xl font-black text-white focus:border-cyan-400/60 focus:outline-none"
-          aria-label="Guest count"
+          className={`min-h-14 min-w-0 flex-1 rounded-xl border px-3 text-center text-2xl font-black focus:outline-none ${
+            tone === 'light'
+              ? 'border-slate-300 bg-white text-slate-950 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
+              : 'border-white/10 bg-white/[0.055] text-white focus:border-cyan-400/60'
+          }`}
+          aria-label={copy?.label ?? 'Guest count'}
         />
         <button
           type="button"
           onClick={() => onChange(Math.min(maximum, numeric + 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
-          aria-label="Add one guest"
+          className={`grid min-h-14 min-w-14 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
+          aria-label={copy?.add ?? 'Add one guest'}
         >
           <Plus className="h-5 w-5" />
         </button>
-        <button type="button" onClick={() => onChange('')} className="min-h-14 rounded-xl border border-white/10 px-3 text-xs font-semibold text-slate-400">
-          Clear
+        <button type="button" onClick={() => onChange('')} className={`min-h-14 rounded-xl border px-3 text-xs font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-white/10 text-slate-400'}`}>
+          {copy?.clear ?? 'Clear'}
         </button>
       </div>
-      <span className="mt-1 block text-[11px] text-slate-500">Enter any whole number from {minimum} to {maximum}.</span>
+      <span className={`mt-1 block text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>{copy?.hint ?? `Enter any whole number from ${minimum} to ${maximum}.`}</span>
     </div>
   );
 }
