@@ -113,8 +113,8 @@ export function CameraSkillControl({ snapshotId }: { snapshotId: string }) {
   }
 
   return (
-    <section className="mt-3 rounded-xl border border-black bg-white p-3 text-black">
-      <label className="block text-sm font-semibold text-black">
+    <section className="mt-3 rounded-xl border border-violet-400/20 bg-violet-500/5 p-3">
+      <label className="block text-sm font-semibold text-violet-100">
         {copy.visionSkill}
         <select
           value={selected}
@@ -129,11 +129,11 @@ export function CameraSkillControl({ snapshotId }: { snapshotId: string }) {
         type="button"
         onClick={() => void runSkill()}
         disabled={loading}
-        className="ui-button-primary mt-3 min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
+        className="ui-button-secondary mt-3 min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
       >
         {loading ? copy.runningSkill : copy.runSkill}
       </button>
-      <p className="mt-2 text-xs text-zinc-800">{copy.skillHumanJudgment}</p>
+      <p className="mt-2 text-xs text-slate-400">{copy.skillHumanJudgment}</p>
       {error ? (
         <p role="alert" className="ui-alert ui-alert-error mt-3 break-all rounded-xl p-3 text-xs">
           {copy.skillFailed} · {error}
@@ -142,13 +142,13 @@ export function CameraSkillControl({ snapshotId }: { snapshotId: string }) {
       {execution ? (
         <div className="mt-3 space-y-3" aria-live="polite">
           <div>
-            <h4 className="font-semibold text-black">{copy.skillResult}</h4>
-            <p className="mt-1 text-sm text-zinc-900">{execution.inspection.result.scene.summary}</p>
-            <p className="mt-1 text-xs text-zinc-700">
+            <h4 className="font-semibold text-violet-100">{copy.skillResult}</h4>
+            <p className="mt-1 text-sm text-slate-200">{execution.inspection.result.scene.summary}</p>
+            <p className="mt-1 text-xs text-slate-400">
               {labels[execution.skill.skillName]} · {Math.round(execution.skill.confidence * 100)}% · {execution.inspection.processingDurationMs} ms
             </p>
           </div>
-          <pre className="ui-inverse max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white bg-black p-3 text-xs text-white">
+          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
             {JSON.stringify(execution.skill, null, 2)}
           </pre>
         </div>

@@ -32,7 +32,7 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="ui-auth-card rounded-3xl p-5 shadow-2xl sm:p-8">
+      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Reset your password</h1>
           <p className="mt-2 text-sm text-slate-400">
@@ -60,7 +60,7 @@ export function ForgotPasswordForm() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@example.com"
                 required
-                className="ui-field mt-2 w-full rounded-2xl px-4 py-3 transition"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
               />
             </div>
 
@@ -80,10 +80,10 @@ export function ForgotPasswordForm() {
           </form>
         )}
 
-        <div className="mt-6 border-t border-black pt-6">
+        <div className="mt-6 border-t border-white/10 pt-6">
           <Link
             href="/login"
-            className="ui-link text-sm transition"
+            className="text-sm text-cyan-400 hover:text-cyan-300 transition"
           >
             Back to login
           </Link>

@@ -47,7 +47,7 @@ export function ResetPasswordForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="ui-auth-card rounded-3xl p-5 shadow-2xl sm:p-8">
+      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Set new password</h1>
           <p className="mt-2 text-sm text-slate-400">
@@ -75,7 +75,7 @@ export function ResetPasswordForm() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="ui-field mt-2 w-full rounded-2xl px-4 py-3 transition"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
               />
               <p className="mt-1 text-xs text-slate-500">At least 8 characters</p>
             </div>
@@ -91,7 +91,7 @@ export function ResetPasswordForm() {
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="••••••••"
                 required
-                className="ui-field mt-2 w-full rounded-2xl px-4 py-3 transition"
+                className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
               />
             </div>
 
@@ -111,10 +111,10 @@ export function ResetPasswordForm() {
           </form>
         )}
 
-        <div className="mt-6 border-t border-black pt-6">
+        <div className="mt-6 border-t border-white/10 pt-6">
           <Link
             href="/login"
-            className="ui-link text-sm transition"
+            className="text-sm text-cyan-400 hover:text-cyan-300 transition"
           >
             Back to login
           </Link>

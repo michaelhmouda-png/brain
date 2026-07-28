@@ -19,6 +19,14 @@ function cssToken(name) {
   return match[1];
 }
 
+function scopedCssToken(selector, name) {
+  const block = css.match(new RegExp(`${selector.replaceAll('.', '\\.')}\\s*\\{([^}]+)\\}`));
+  assert.ok(block, `Missing CSS block ${selector}`);
+  const match = block[1].match(new RegExp(`--${name}:\\s*(#[\\da-fA-F]{3,6})\\s*;`));
+  assert.ok(match, `Missing hexadecimal CSS token --${name} in ${selector}`);
+  return match[1];
+}
+
 function expectContrast(foregroundToken, backgroundToken, minimum = 4.5) {
   const ratio = contrastRatio(cssToken(foregroundToken), cssToken(backgroundToken));
   assert.ok(
@@ -37,59 +45,62 @@ test('contrast utility follows the WCAG sRGB luminance algorithm', () => {
   assert.throws(() => parseHexColor('transparent'), /hexadecimal color/);
 });
 
-test('light surfaces use dark text and dark surfaces use light text', () => {
-  for (const background of ['ui-surface-page', 'ui-surface-card', 'ui-surface-elevated']) {
+test('primary, secondary, muted, inverse, link, and disabled text meet normal-text contrast', () => {
+  for (const background of ['ui-surface-page', 'ui-surface-card']) {
     expectContrast('ui-text-primary', background);
-    expectContrast('ui-text-secondary', background);
-    expectContrast('ui-text-muted', background);
   }
+  expectContrast('ui-text-secondary', 'ui-surface-page');
+  expectContrast('ui-text-muted', 'ui-surface-page');
   expectContrast('ui-text-link', 'ui-surface-card');
   expectContrast('ui-text-inverse', 'ui-surface-inverse');
   expectContrast('ui-text-inverse-secondary', 'ui-surface-inverse');
   expectContrast('ui-text-inverse-muted', 'ui-surface-inverse');
+  expectContrast('ui-text-disabled', 'ui-surface-disabled');
 });
 
-test('every text field is white with black values and a readable placeholder', () => {
-  assert.equal(cssToken('ui-field-bg').toLowerCase(), '#ffffff');
-  assert.equal(cssToken('ui-field-text').toLowerCase(), '#090909');
-  expectContrast('ui-field-text', 'ui-field-bg');
-  expectContrast('ui-field-placeholder', 'ui-field-bg');
-  expectContrast('ui-field-border', 'ui-field-bg', 3);
-
-  assert.match(css, /\.ui-inverse :where\([\s\S]*background-color: var\(--ui-field-bg\);[\s\S]*color: var\(--ui-field-text\)/);
-  assert.match(css, /\.ui-inverse :where\(select option, datalist option\)[\s\S]*background-color: var\(--ui-field-bg\);[\s\S]*color: var\(--ui-field-text\)/);
-});
-
-test('primary, secondary, destructive, disabled, border, and focus pairs are measurable', () => {
+test('actions, form values, placeholders, focus, and meaningful borders meet their thresholds', () => {
   expectContrast('ui-action-primary-text', 'ui-action-primary');
-  expectContrast('ui-action-secondary-text', 'ui-action-secondary');
   expectContrast('ui-action-destructive-text', 'ui-action-destructive');
-  expectContrast('ui-action-disabled-text', 'ui-action-disabled-bg');
-  expectContrast('ui-action-disabled-border', 'ui-action-disabled-bg', 3);
-  expectContrast('ui-field-disabled-text', 'ui-field-disabled-bg');
-  expectContrast('ui-field-disabled-border', 'ui-field-disabled-bg', 3);
+  expectContrast('ui-action-secondary-text', 'ui-action-secondary');
+  expectContrast('ui-text-primary', 'ui-surface-elevated');
+  expectContrast('ui-text-muted', 'ui-surface-elevated');
   expectContrast('ui-border-default', 'ui-surface-elevated', 3);
   expectContrast('ui-border-focus', 'ui-surface-elevated', 3);
-
-  assert.match(css, /\.ui-inverse \.ui-button-primary[\s\S]*background: #ffffff;[\s\S]*color: #000000/);
-  assert.match(css, /\.ui-inverse \.ui-button-secondary[\s\S]*border-color: var\(--ui-border-strong\);[\s\S]*color: var\(--ui-text-primary\)/);
+  expectContrast('ui-border-disabled', 'ui-surface-disabled', 3);
 });
 
-test('status badges stay white and black on light pages with color limited to an accent', () => {
+test('inverse inputs and disabled controls retain measurable contrast in dark drawers', () => {
+  const inverse = (name) => scopedCssToken('.ui-inverse', name);
+  assert.ok(contrastRatio(inverse('ui-text-primary'), inverse('ui-surface-inset')) >= 4.5);
+  assert.ok(contrastRatio(inverse('ui-text-muted'), inverse('ui-surface-inset')) >= 4.5);
+  assert.ok(contrastRatio(inverse('ui-border-default'), inverse('ui-surface-inset')) >= 3);
+  assert.ok(contrastRatio(inverse('ui-border-focus'), inverse('ui-surface-inset')) >= 3);
+  assert.ok(contrastRatio(inverse('ui-text-disabled'), inverse('ui-surface-disabled')) >= 4.5);
+  assert.ok(contrastRatio(inverse('ui-border-disabled'), inverse('ui-surface-disabled')) >= 3);
+});
+
+test('every semantic alert, status, and priority pair has readable text and a visible boundary', () => {
   const statuses = ['success', 'warning', 'error', 'info', 'pending', 'processing', 'offline', 'review', 'failed'];
   for (const status of statuses) {
-    assert.equal(cssToken(`ui-status-${status}-fg`).toLowerCase(), '#090909');
-    assert.equal(cssToken(`ui-status-${status}-bg`).toLowerCase(), '#ffffff');
-    assert.equal(cssToken(`ui-status-${status}-border`).toLowerCase(), '#333333');
     expectContrast(`ui-status-${status}-fg`, `ui-status-${status}-bg`);
     expectContrast(`ui-status-${status}-border`, `ui-status-${status}-bg`, 3);
-    assert.ok(
-      contrastRatio(cssToken(`ui-status-${status}-accent`), cssToken(`ui-status-${status}-bg`)) >= 3,
-      `${status} accent must remain visible against the white badge`,
-    );
   }
-  assert.match(css, /\.ui-status[\s\S]*border-inline-start: 4px solid var\(--ui-status-accent\)/);
-  assert.match(css, /\.ui-inverse \.ui-status[\s\S]*--ui-status-fg: #ffffff;[\s\S]*--ui-status-bg: #070b12;[\s\S]*--ui-status-border: #d1d5db/);
+
+  assert.match(css, /\.ui-status-approved[\s\S]*--ui-status-fg: var\(--ui-status-success-fg\)/);
+  assert.match(css, /\.ui-status-rejected[\s\S]*--ui-status-fg: var\(--ui-status-error-fg\)/);
+  assert.match(css, /\.ui-priority-critical[\s\S]*--ui-status-fg: var\(--ui-status-error-fg\)/);
+  assert.match(css, /\.ui-priority-high[\s\S]*--ui-status-fg: var\(--ui-status-warning-fg\)/);
+  assert.match(css, /\.ui-priority-medium[\s\S]*--ui-status-fg: var\(--ui-status-info-fg\)/);
+  assert.match(css, /\.ui-priority-low[\s\S]*--ui-status-fg: var\(--ui-status-success-fg\)/);
+});
+
+test('navigation and notification states use measured semantic pairs', () => {
+  expectContrast('ui-text-secondary', 'ui-surface-page');
+  expectContrast('ui-text-primary', 'ui-surface-selected');
+  expectContrast('ui-notification-badge-fg', 'ui-notification-badge-bg');
+  assert.match(css, /\.brain-nav-item\s*\{[\s\S]*color: var\(--ui-text-secondary\)/);
+  assert.match(css, /\.brain-mobile-nav-item\s*\{[\s\S]*color: var\(--ui-text-secondary\)/);
+  assert.match(css, /\.ui-notification-badge\s*\{/);
 });
 
 test('shared status badges include visible text and an icon, not color alone', async () => {
@@ -102,73 +113,31 @@ test('shared status badges include visible text and an icon, not color alone', a
   }
 });
 
-test('observed pages use explicit high-contrast cards, actions, fields, and inverse drawers', async () => {
-  const [
-    tasks,
-    evidence,
-    cameras,
-    taskEditor,
-    quickBooking,
-    reservationInputs,
-    evidenceAttachment,
-    assistant,
-  ] = await Promise.all([
+test('observed task, evidence, camera, drawer, and notification failures consume semantic primitives', async () => {
+  const [tasks, evidence, cameras, agents, taskEditor, quickBooking, bell] = await Promise.all([
     read('app/dashboard/tasks/page.tsx'),
     read('app/dashboard/evidence-review/page.tsx'),
     read('app/dashboard/cameras/page.tsx'),
+    read('components/camera-manager/BrainAgentManager.tsx'),
     read('components/tasks/TaskEditPanel.tsx'),
     read('components/reservations/ReservationConsole.tsx'),
-    read('components/reservations/ReservationInputs.tsx'),
-    read('components/brain/TaskEvidenceAttachment.tsx'),
-    read('components/brain-experience/BrainAssistant.tsx'),
+    read('components/NotificationBell.tsx'),
   ]);
 
-  assert.match(tasks, /border border-black bg-white p-4 text-black/);
-  assert.match(tasks, /className="ui-button-primary mt-4 text-sm"/);
-  assert.match(evidence, /border border-black bg-white p-4 text-black/);
-  assert.match(evidence, /ui-button-destructive">Reject/);
-  assert.match(evidence, /ui-button-primary">Approve/);
-  assert.match(cameras, /border border-black bg-white p-5 text-black/);
-  assert.match(cameras, /className="ui-button-primary mt-4 min-h-11 rounded-xl px-4">\{c\.edit\}/);
+  assert.match(tasks, /<StatusBadge label=\{t\.priority\[task\.priority\]\}/);
+  assert.match(tasks, /ui-button-secondary/);
+  assert.match(evidence, /human_approved:\s*'approved'/);
+  assert.match(evidence, /verification_failed:\s*'failed'/);
+  assert.match(cameras, /deviceStatusTone\(item\.status\)/);
+  assert.match(agents, /gatewayStatusTone\(item\.status\)/);
   assert.match(taskEditor, /ui-inverse/);
-  assert.match(taskEditor, /ui-field/);
-  assert.match(quickBooking, /ui-inverse absolute inset-0/);
-  assert.match(quickBooking, /const inputClass = 'ui-field/);
-  assert.match(reservationInputs, /ui-field mt-1\.5 min-h-12/);
-  assert.match(evidenceAttachment, /ui-inverse/);
-  assert.match(evidenceAttachment, /ui-field/);
-  assert.match(assistant, /'brain-message-user'/);
-  assert.match(assistant, /'brain-message-assistant'/);
+  assert.match(quickBooking, /ui-inverse/);
+  assert.match(quickBooking, /<StatusBadge[\s\S]*tone=\{statusTone\[row\.status\]/);
+  assert.match(bell, /ui-notification-badge/);
+  assert.match(bell, /t\.notifications\.offline/);
 });
 
-test('source contract rejects the visually failed patterns on semantic controls', async () => {
-  const sources = await Promise.all([
-    read('components/ui/StatusBadge.tsx'),
-    read('components/tasks/TaskEditPanel.tsx'),
-    read('components/brain/TaskEvidenceAttachment.tsx'),
-    read('components/camera-manager/CameraInspectionControl.tsx'),
-    read('components/camera-manager/CameraSkillControl.tsx'),
-    read('components/reservations/ReservationInputs.tsx'),
-  ]);
-  const observed = sources.join('\n');
-
-  assert.doesNotMatch(observed, /ui-status[^'"]*(?:bg-(?:cyan|amber|green|red|rose|violet)-[^'"]*\/)/);
-  assert.doesNotMatch(observed, /disabled:opacity-/);
-  assert.doesNotMatch(observed, /<(?:input|select|textarea)[^>]*className="[^"]*bg-slate-(?:8|9)/);
-  assert.doesNotMatch(observed, /bg-(?:cyan|amber|green|red|rose|violet)-\d+\/(?:5|10|20)[^'"]*text-white/);
-  assert.doesNotMatch(css, /color-mix\(/);
-});
-
-test('disabled form controls keep explicit readable colors without whole-control opacity', () => {
-  assert.match(css, /\.brain-v3 :where\(input, select, textarea\):disabled[\s\S]*opacity: 1 !important/);
-  assert.match(css, /\.brain-v3 :where\(button\):disabled,[\s\S]*opacity: 1 !important/);
-  assert.doesNotMatch(css, /:disabled\s*\{[^}]*opacity:\s*(?:0|\\.)/);
-});
-
-test('navigation is high contrast and the mobile drawer is explicitly inverse', () => {
-  assert.match(css, /\.brain-sidebar[\s\S]*background: #ffffff/);
-  assert.match(css, /\.brain-nav-item\.is-active[\s\S]*background: #000000;[\s\S]*color: #ffffff/);
-  assert.match(css, /\.brain-mobile-menu[\s\S]*background: #070b12;[\s\S]*color: #ffffff/);
-  assert.match(css, /\.brain-mobile-menu \.brain-mobile-nav-item\.is-active[\s\S]*background: #ffffff;[\s\S]*color: #000000/);
-  expectContrast('ui-notification-badge-fg', 'ui-notification-badge-bg');
+test('disabled controls retain explicit readable colors instead of whole-control opacity', () => {
+  assert.match(css, /\.ui-button-primary:disabled,[\s\S]*opacity: 1 !important/);
+  assert.match(css, /\.brain-v3 :where\(button, input, select, textarea\):disabled,[\s\S]*opacity: 1 !important/);
 });

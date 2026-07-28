@@ -135,12 +135,12 @@ export function CameraSnapshotControl({
   }
 
   return (
-    <div className="mt-4 border-t border-black pt-4">
+    <div className="mt-4 border-t border-white/10 pt-4">
       <button
         type="button"
         onClick={() => void requestSnapshot()}
         disabled={submitting || command !== null}
-        className="ui-button-primary min-h-11 rounded-xl px-4 disabled:cursor-not-allowed"
+        className="ui-button-secondary min-h-11 rounded-xl px-4 disabled:cursor-not-allowed"
       >
         Request JPEG snapshot
       </button>
@@ -153,7 +153,7 @@ export function CameraSnapshotControl({
       {error ? <p role="alert" className="ui-alert ui-alert-error mt-2 rounded-xl p-3 text-xs">{error}</p> : null}
       {access ? (
         <>
-          <figure className="ui-inverse mt-3 overflow-hidden rounded-xl border border-white bg-black">
+          <figure className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={access.signedUrl}
