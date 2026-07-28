@@ -93,12 +93,12 @@ export function ReservationDatePicker({
       </button>
 
       {open ? (
-        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-black/75 p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation">
+        <div className="ui-overlay fixed inset-0 z-[70] flex items-end justify-center p-0 backdrop-blur-sm sm:items-center sm:p-4" role="presentation">
           <section
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="w-full max-w-md rounded-t-[28px] border border-white/10 bg-[#0b1018] p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-5"
+            className="ui-inverse w-full max-w-md rounded-t-[28px] border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-5"
             onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientX ?? null; }}
             onTouchEnd={(event) => {
               const end = event.changedTouches[0]?.clientX;

@@ -158,13 +158,13 @@ export function TaskEditPanel({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-slate-950/80 p-0 backdrop-blur-sm sm:items-center sm:p-6"
+      className="ui-overlay fixed inset-0 z-50 flex items-end justify-center p-0 backdrop-blur-sm sm:items-center sm:p-6"
       role="presentation"
     >
       <section
         aria-labelledby="task-edit-title"
         aria-modal="true"
-        className="max-h-[96dvh] w-full overflow-y-auto rounded-t-3xl border border-white/10 bg-slate-950 p-5 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-7"
+        className="ui-inverse max-h-[96dvh] w-full overflow-y-auto rounded-t-3xl border p-5 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-7"
         role="dialog"
       >
         <div className="flex items-start justify-between gap-4">
@@ -191,13 +191,13 @@ export function TaskEditPanel({
         </div>
 
         {error && (
-          <div className="mt-5 rounded-2xl border border-red-400/25 bg-red-500/10 p-4" role="alert">
+          <div className="ui-alert ui-alert-error mt-5 p-4" role="alert">
             <div className="flex gap-3">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" />
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
               <div>
-                <p className="font-semibold text-red-100">{errorMessage}</p>
+                <p className="font-semibold">{errorMessage}</p>
                 {error.field && (
-                  <p className="mt-1 text-xs text-red-100/75">
+                  <p className="mt-1 text-xs">
                     {t.tasks.editField}: {error.field}
                   </p>
                 )}
@@ -406,14 +406,14 @@ export function TaskEditPanel({
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="min-h-12 rounded-xl border border-white/15 px-5 font-semibold text-white hover:bg-white/10 disabled:opacity-60"
+              className="ui-button-secondary min-h-12 px-5"
             >
               {t.tasks.editCancel}
             </button>
             <button
               type="submit"
               disabled={saving || isTerminal}
-              className="min-h-12 rounded-xl bg-cyan-400 px-5 font-bold text-slate-950 hover:bg-cyan-300 disabled:opacity-60"
+              className="ui-button-primary min-h-12 px-5"
             >
               {saving ? t.tasks.editSaving : t.tasks.editSave}
             </button>

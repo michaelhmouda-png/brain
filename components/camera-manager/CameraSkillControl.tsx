@@ -120,7 +120,7 @@ export function CameraSkillControl({ snapshotId }: { snapshotId: string }) {
           value={selected}
           onChange={(event) => setSelected(event.target.value as VisionSkillName)}
           disabled={loading}
-          className="mt-2 min-h-11 w-full rounded-xl border border-white/10 bg-slate-950 px-3 text-white disabled:opacity-60"
+          className="ui-field mt-2 min-h-11 w-full rounded-xl px-3"
         >
           {VISION_SKILL_NAMES.map((name) => <option key={name} value={name}>{labels[name]}</option>)}
         </select>
@@ -129,13 +129,13 @@ export function CameraSkillControl({ snapshotId }: { snapshotId: string }) {
         type="button"
         onClick={() => void runSkill()}
         disabled={loading}
-        className="mt-3 min-h-11 rounded-xl border border-violet-300/30 px-4 font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="ui-button-secondary mt-3 min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
       >
         {loading ? copy.runningSkill : copy.runSkill}
       </button>
       <p className="mt-2 text-xs text-slate-400">{copy.skillHumanJudgment}</p>
       {error ? (
-        <p role="alert" className="mt-3 break-all text-xs text-rose-300">
+        <p role="alert" className="ui-alert ui-alert-error mt-3 break-all rounded-xl p-3 text-xs">
           {copy.skillFailed} · {error}
         </p>
       ) : null}

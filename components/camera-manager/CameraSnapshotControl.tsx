@@ -140,7 +140,7 @@ export function CameraSnapshotControl({
         type="button"
         onClick={() => void requestSnapshot()}
         disabled={submitting || command !== null}
-        className="min-h-11 rounded-xl border border-cyan-400/30 px-4 disabled:cursor-not-allowed disabled:opacity-50"
+        className="ui-button-secondary min-h-11 rounded-xl px-4 disabled:cursor-not-allowed"
       >
         Request JPEG snapshot
       </button>
@@ -150,7 +150,7 @@ export function CameraSnapshotControl({
           {command.errorCode ? ` · ${command.errorCode}` : ''}
         </p>
       ) : null}
-      {error ? <p role="alert" className="mt-2 text-xs text-rose-300">{error}</p> : null}
+      {error ? <p role="alert" className="ui-alert ui-alert-error mt-2 rounded-xl p-3 text-xs">{error}</p> : null}
       {access ? (
         <>
           <figure className="mt-3 overflow-hidden rounded-xl border border-white/10 bg-black">

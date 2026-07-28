@@ -32,19 +32,19 @@ export function ForgotPasswordForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
+      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Reset your password</h1>
           <p className="mt-2 text-sm text-slate-400">
-            Enter your email address and we'll send you a link to reset your password.
+            Enter your email address and we’ll send you a link to reset your password.
           </p>
         </div>
 
         {success ? (
-          <div className="rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+          <div className="ui-alert ui-alert-success rounded-2xl px-4 py-3 text-sm" role="status">
             <p className="font-medium">Check your email</p>
             <p className="mt-1">
-              We've sent a password reset link to {email}. The link expires in 1 hour.
+              We’ve sent a password reset link to {email}. The link expires in 1 hour.
             </p>
           </div>
         ) : (
@@ -65,7 +65,7 @@ export function ForgotPasswordForm() {
             </div>
 
             {error && (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div className="ui-alert ui-alert-error rounded-2xl px-4 py-3 text-sm" role="alert">
                 {error}
               </div>
             )}
@@ -73,7 +73,7 @@ export function ForgotPasswordForm() {
             <button
               type="submit"
               disabled={isPending}
-              className="w-full rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-white transition hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="ui-button-primary w-full rounded-2xl px-4 py-3 font-semibold disabled:cursor-not-allowed"
             >
               {isPending ? 'Sending...' : 'Send reset link'}
             </button>

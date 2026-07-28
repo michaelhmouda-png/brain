@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Activity, Radar, Wifi } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
+import { StatusBadge, type StatusTone } from '@/components/ui/StatusBadge';
 import type {
   NvrProbeCommandType,
   SanitizedNvrProbeCommand,
@@ -10,6 +11,14 @@ import type {
 } from '@/lib/brain-agent/command-contracts';
 
 const ACTIVE_STATES = new Set(['pending', 'leased']);
+
+function commandStatusTone(status: string): StatusTone {
+  if (status === 'succeeded') return 'success';
+  if (status === 'failed' || status === 'expired') return 'failed';
+  if (status === 'leased') return 'processing';
+  if (status === 'pending') return 'pending';
+  return 'info';
+}
 
 const labels = {
   en: {
@@ -304,9 +313,9 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
       <h4 className="font-semibold">{t.title}</h4>
       <p className="mt-1 text-xs text-slate-400">{t.description}</p>
       {loading ? <p className="mt-3 text-sm text-slate-400">{t.loading}</p> : null}
-      {error ? <p role="alert" className="mt-3 text-sm text-rose-300">{error}</p> : null}
+      {error ? <p role="alert" className="ui-alert ui-alert-error mt-3 rounded-xl p-3 text-sm">{error}</p> : null}
       {!loading && state && !state.eligible ? (
-        <p className="mt-3 rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-sm text-amber-100">
+        <p className="ui-alert ui-alert-warning mt-3 rounded-xl p-3 text-sm">
           {state.safeUnavailableCode ? t.reasons[state.safeUnavailableCode] ?? t.unavailable : t.unavailable}
         </p>
       ) : null}
@@ -316,7 +325,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
             type="button"
             onClick={() => void enqueue('nvr_capability_probe')}
             disabled={hasActiveCommand || hasActiveLocalCommand || submitting !== null}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-cyan-400/30 px-3 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-secondary flex min-h-11 items-center gap-2 rounded-xl px-3 disabled:cursor-not-allowed"
           >
             <Radar className="h-4 w-4" />
             {t.probe}
@@ -325,7 +334,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
             type="button"
             onClick={() => void enqueue('nvr_health_diagnostics')}
             disabled={hasActiveCommand || hasActiveLocalCommand || submitting !== null}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-emerald-400/30 px-3 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-secondary flex min-h-11 items-center gap-2 rounded-xl px-3 disabled:cursor-not-allowed"
           >
             <Activity className="h-4 w-4" />
             {t.health}
@@ -334,7 +343,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
             type="button"
             onClick={() => void enqueueReachability()}
             disabled={hasActiveCommand || hasActiveLocalCommand || submitting !== null || submittingReachability}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-sky-400/30 px-3 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-secondary flex min-h-11 items-center gap-2 rounded-xl px-3 disabled:cursor-not-allowed"
           >
             <Wifi className="h-4 w-4" />
             {reachabilityLabel}
@@ -343,7 +352,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
             type="button"
             onClick={() => void enqueueDiscovery()}
             disabled={hasActiveCommand || hasActiveLocalCommand || submitting !== null || submittingDiscovery}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-violet-400/30 px-3 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-secondary flex min-h-11 items-center gap-2 rounded-xl px-3 disabled:cursor-not-allowed"
           >
             Discover channels
           </button>
@@ -351,7 +360,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
             type="button"
             onClick={() => void enqueueDiscovery(true)}
             disabled={hasActiveCommand || hasActiveLocalCommand || submitting !== null || submittingDiscovery}
-            className="flex min-h-11 items-center gap-2 rounded-xl border border-amber-400/30 px-3 disabled:cursor-not-allowed disabled:opacity-50"
+            className="ui-button-secondary flex min-h-11 items-center gap-2 rounded-xl px-3 disabled:cursor-not-allowed"
           >
             Diagnose channel response
           </button>
@@ -361,7 +370,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
         <article className="mt-3 rounded-xl bg-black/20 p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong>{reachabilityLabel}</strong>
-            <span className="rounded-full bg-white/10 px-2 py-1">{reachability.status}</span>
+            <StatusBadge tone={commandStatusTone(reachability.status)} label={reachability.status} />
           </div>
           <dl className="mt-3 grid gap-x-3 gap-y-1 sm:grid-cols-[max-content_1fr]">
             <dt className="text-slate-500">{t.requestId}</dt><dd className="break-all">{reachability.commandId}</dd>
@@ -380,7 +389,7 @@ export function NvrProbeControls({ nvrConnectionId }: { nvrConnectionId: string 
         <article className="mt-3 rounded-xl bg-black/20 p-3 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <strong>Discover channels</strong>
-            <span className="rounded-full bg-white/10 px-2 py-1">{discovery.status}</span>
+            <StatusBadge tone={commandStatusTone(discovery.status)} label={discovery.status} />
           </div>
           <dl className="mt-3 grid gap-x-3 gap-y-1 sm:grid-cols-[max-content_1fr]">
             <dt className="text-slate-500">{t.requestId}</dt><dd className="break-all">{discovery.commandId}</dd>
@@ -412,7 +421,7 @@ function CommandStatus({
     <article className="mt-3 rounded-xl bg-black/20 p-3 text-xs">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <strong>{command.commandType === 'nvr_capability_probe' ? t.probe : t.health}</strong>
-        <span className="rounded-full bg-white/10 px-2 py-1">{command.status}</span>
+        <StatusBadge tone={commandStatusTone(command.status)} label={command.status} />
       </div>
       <dl className="mt-3 grid gap-x-3 gap-y-1 sm:grid-cols-[max-content_1fr]">
         <dt className="text-slate-500">{t.requestId}</dt><dd className="break-all">{command.requestId}</dd>

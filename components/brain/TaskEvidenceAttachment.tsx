@@ -413,7 +413,7 @@ export function TaskEvidenceAttachment({
       onClick={() => void showPicker()}
       disabled={disabled}
       aria-label={t.evidence.attach}
-      className="flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg border border-cyan-500/20 bg-slate-900/50 text-cyan-300 hover:bg-cyan-500/10 disabled:opacity-50"
+      className="ui-button-secondary flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-lg"
     >
       <Paperclip className="h-5 w-5" />
     </button>
@@ -434,7 +434,7 @@ export function TaskEvidenceAttachment({
       onChange={(event) => addFiles(event, 'gallery_upload')}
     />
     {open && <div
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 sm:items-center sm:p-4"
+      className="ui-overlay fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="evidence-title"
@@ -442,7 +442,7 @@ export function TaskEvidenceAttachment({
       <div
         lang={language}
         dir={language === 'ar' ? 'rtl' : 'ltr'}
-        className="max-h-[100dvh] w-full overflow-y-auto rounded-t-3xl bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-white shadow-2xl sm:max-w-2xl sm:rounded-2xl sm:p-6"
+        className="ui-inverse max-h-[100dvh] w-full overflow-y-auto rounded-t-3xl border p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-2xl sm:max-w-2xl sm:rounded-2xl sm:p-6"
       >
         <div className="flex items-center justify-between">
           <h2 id="evidence-title" className="text-xl font-bold">{t.evidence.attach}</h2>
@@ -461,7 +461,7 @@ export function TaskEvidenceAttachment({
           {loadingTasks
             ? <p role="status" className="text-sm text-slate-300">{t.evidence.loadingTasks}</p>
             : tasksLoaded && tasks.length === 0
-              ? <p className="rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-100">{t.evidence.noActiveTasks}</p>
+              ? <p className="ui-alert ui-alert-warning rounded-xl p-3 text-sm">{t.evidence.noActiveTasks}</p>
               : <label className="block text-sm font-semibold">
                   {t.evidence.task}
                   <select
@@ -655,11 +655,11 @@ export function TaskEvidenceAttachment({
           </div>}
 
           <p className="text-xs text-slate-500">{t.evidence.queuedReview}</p>
-          {submissionId && error && <p className="text-xs text-amber-200">
+          {submissionId && error && <p className="ui-alert ui-alert-warning rounded-xl p-3 text-xs">
             {t.evidenceC5.uploadInterrupted}
           </p>}
           {error && <div
-            className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200"
+            className="ui-alert ui-alert-error text-sm"
             role="alert"
           >
             {error}
@@ -669,7 +669,7 @@ export function TaskEvidenceAttachment({
               type="button"
               onClick={resetAndClose}
               disabled={uploading}
-              className="min-h-11 rounded-lg border border-slate-600 px-4 font-semibold"
+              className="ui-button-secondary"
             >
               {t.evidence.cancel}
             </button>
@@ -683,7 +683,7 @@ export function TaskEvidenceAttachment({
                 || tasks.length === 0
                 || (requirement !== null && quantity === '')
               }
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg bg-cyan-600 px-5 font-semibold disabled:opacity-50"
+              className="ui-button-primary"
             >
               {uploading
                 ? <RefreshCw className="h-4 w-4 animate-spin" />

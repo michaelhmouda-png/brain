@@ -27,6 +27,7 @@ import {
   ReservationDatePicker,
   ReservationTimeInput,
 } from '@/components/reservations/ReservationInputs';
+import { StatusBadge, type StatusTone } from '@/components/ui/StatusBadge';
 import type { ReservationDailyMetrics } from '@/lib/reservations/metrics';
 import { normalizePhone } from '@/lib/reservations/phone';
 import { venueDate } from '@/lib/reservations/time';
@@ -136,8 +137,8 @@ const formatDay = (value: string) => new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
 }).format(new Date(`${value}T12:00:00`));
-const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-[15px] text-white transition placeholder:text-slate-600 hover:border-white/20 focus:border-cyan-400/60 focus:bg-white/[0.075] focus:outline-none';
-const labelClass = 'text-xs font-semibold uppercase tracking-[0.12em] text-slate-400';
+const inputClass = 'ui-field mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
+const labelClass = 'ui-muted text-xs font-semibold uppercase tracking-[0.12em]';
 
 function createInitialForm(locationId = ''): {
   firstName: string;
@@ -179,14 +180,14 @@ function createInitialForm(locationId = ''): {
   };
 }
 
-const statusTone: Record<string, string> = {
-  pending: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
-  confirmed: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200',
-  waitlisted: 'border-violet-300/20 bg-violet-300/10 text-violet-200',
-  seated: 'border-cyan-300/20 bg-cyan-300/10 text-cyan-200',
-  completed: 'border-slate-300/15 bg-slate-300/5 text-slate-300',
-  cancelled: 'border-rose-300/20 bg-rose-300/10 text-rose-200',
-  no_show: 'border-orange-300/20 bg-orange-300/10 text-orange-200',
+const statusTone: Record<string, StatusTone> = {
+  pending: 'pending',
+  confirmed: 'success',
+  waitlisted: 'review',
+  seated: 'processing',
+  completed: 'approved',
+  cancelled: 'rejected',
+  no_show: 'warning',
 };
 
 const statusActions: Record<string, { label: string; status: string; primary?: boolean }[]> = {
@@ -789,9 +790,11 @@ export function ReservationConsole() {
                               <span className="hidden sm:inline">{title(row.source)}</span>
                             </p>
                           </div>
-                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone[row.status] ?? statusTone.completed}`}>
-                            {title(row.status)}
-                          </span>
+                          <StatusBadge
+                            className="uppercase tracking-wide"
+                            label={title(row.status)}
+                            tone={statusTone[row.status] ?? 'info'}
+                          />
                         </div>
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
                           <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm text-slate-400 hover:text-cyan-200">
@@ -920,12 +923,12 @@ export function ReservationConsole() {
       </button>
 
       {composerOpen ? (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" role="presentation">
+        <div className="ui-overlay fixed inset-0 z-50 backdrop-blur-sm" role="presentation">
           <aside
             role="dialog"
             aria-modal="true"
             aria-label="New reservation"
-            className="absolute inset-0 flex w-full min-w-0 max-w-full flex-col border-white/10 bg-[#0a0e14] shadow-2xl sm:inset-y-3 sm:left-auto sm:right-3 sm:w-[min(560px,calc(100vw-1.5rem))] sm:rounded-[28px] sm:border"
+            className="ui-inverse absolute inset-0 flex w-full min-w-0 max-w-full flex-col border shadow-2xl sm:inset-y-3 sm:left-auto sm:right-3 sm:w-[min(560px,calc(100vw-1.5rem))] sm:rounded-[28px]"
           >
             <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-5">
               <div>
@@ -1130,8 +1133,8 @@ export function ReservationConsole() {
                 type="submit"
                 form="reservation-quick-form"
                 disabled={saving || !form.locationId || form.guestCount === '' || !form.date || !form.time}
-                className={`flex min-h-13 w-full items-center justify-center gap-2 rounded-2xl font-black text-slate-950 transition disabled:cursor-not-allowed disabled:opacity-50 ${
-                  form.waitlist ? 'bg-violet-300 hover:bg-violet-200' : 'bg-cyan-300 hover:bg-cyan-200'
+                className={`min-h-13 w-full rounded-2xl ${
+                  form.waitlist ? 'ui-button-secondary' : 'ui-button-primary'
                 }`}
               >
                 {saving ? <><LoaderCircle className="h-5 w-5 animate-spin" /> Saving once…</> : form.waitlist ? 'Add to waiting list' : 'Save reservation'}

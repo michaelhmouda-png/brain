@@ -293,7 +293,7 @@ export function BrainAssistant({
                 {message.role === 'assistant' ? <BrainMark className="mt-0.5 h-6 w-6 shrink-0 text-slate-950" /> : null}
                 <div>
                   <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
-                  <time className="mt-1 block text-[11px] opacity-50">
+                  <time className="ui-muted mt-1 block text-[11px]">
                     {message.timestamp.toLocaleTimeString(language === 'ar' ? 'ar-LB' : 'en', { hour: '2-digit', minute: '2-digit' })}
                   </time>
                 </div>
@@ -306,7 +306,7 @@ export function BrainAssistant({
               </div>
             ) : null}
             {error ? (
-              <div className="flex gap-2 rounded-2xl bg-red-50 p-3 text-sm text-red-700" role="alert">
+              <div className="ui-alert ui-alert-error flex gap-2 rounded-2xl p-3 text-sm" role="alert">
                 <AlertCircle className="h-4 w-4 shrink-0" />
                 {error}
               </div>

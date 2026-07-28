@@ -13,8 +13,8 @@ const TRANSITIONS: Record<string, string[]> = {
   waitlisted: ['confirmed', 'cancelled'],
   seated: ['completed'],
 };
-const inputClass = 'mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-[15px] text-white transition focus:border-cyan-400/60 focus:outline-none';
-const labelClass = 'text-xs font-semibold uppercase tracking-[0.12em] text-slate-400';
+const inputClass = 'ui-field mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
+const labelClass = 'ui-muted text-xs font-semibold uppercase tracking-[0.12em]';
 const title = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export type EditableReservation = {
@@ -138,12 +138,12 @@ export function ReservationEditPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-end bg-black/75 backdrop-blur-sm sm:items-stretch sm:justify-end" role="presentation">
+    <div className="ui-overlay fixed inset-0 z-[60] flex items-end backdrop-blur-sm sm:items-stretch sm:justify-end" role="presentation">
       <aside
         role="dialog"
         aria-modal="true"
         aria-label="Edit reservation"
-        className="flex max-h-[92dvh] w-full flex-col rounded-t-[28px] border border-white/10 bg-[#0a0e14] shadow-2xl sm:max-h-none sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-none sm:border-y-0 sm:border-r-0"
+        className="ui-inverse flex max-h-[92dvh] w-full flex-col rounded-t-[28px] border shadow-2xl sm:max-h-none sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-none sm:border-y-0 sm:border-r-0"
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.08] px-4 py-4 sm:px-5">
           <div className="min-w-0">
@@ -160,7 +160,7 @@ export function ReservationEditPanel({
 
         <form id="reservation-edit-form" onSubmit={save} className="mobile-scroll-region flex-1 overflow-y-auto">
           <div className="space-y-5 p-4 sm:p-5">
-            {error ? <p role="alert" className="rounded-xl border border-rose-300/20 bg-rose-300/10 p-3 text-sm text-rose-100">{error}</p> : null}
+            {error ? <p role="alert" className="ui-alert ui-alert-error text-sm">{error}</p> : null}
 
             <section>
               <h3 className="flex items-center gap-2 text-sm font-bold"><UserRound className="h-4 w-4 text-cyan-300" /> Guest</h3>
@@ -205,8 +205,8 @@ export function ReservationEditPanel({
 
         <footer className="shrink-0 border-t border-white/[0.08] bg-[#0a0e14]/95 p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
           <div className="flex gap-2">
-            <button type="button" onClick={closeSafely} disabled={saving} className="min-h-12 flex-1 rounded-xl border border-white/10 font-bold text-slate-300">Cancel</button>
-            <button type="submit" form="reservation-edit-form" disabled={saving || !dirty || form.guestCount === '' || !form.date || !form.time} className="flex min-h-12 flex-[1.4] items-center justify-center gap-2 rounded-xl bg-cyan-300 font-black text-slate-950 disabled:opacity-50">
+            <button type="button" onClick={closeSafely} disabled={saving} className="ui-button-secondary min-h-12 flex-1">Cancel</button>
+            <button type="submit" form="reservation-edit-form" disabled={saving || !dirty || form.guestCount === '' || !form.date || !form.time} className="ui-button-primary min-h-12 flex-[1.4]">
               {saving ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Saving once…</> : <><Save className="h-4 w-4" /> Save changes</>}
             </button>
           </div>

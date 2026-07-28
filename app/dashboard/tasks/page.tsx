@@ -7,6 +7,7 @@ import type { TaskListItem } from '@/lib/task-list';
 import type { TaskEditOptions } from '@/lib/task-edit';
 import { useLocale } from '@/components/LocaleProvider';
 import { TaskEditPanel } from '@/components/tasks/TaskEditPanel';
+import { StatusBadge, type StatusTone } from '@/components/ui/StatusBadge';
 
 function taskFromPayload(value: unknown): TaskListItem | null {
   if (!isRecord(value) || !isRecord(value.assignedEmployee) && value.assignedEmployee !== null) return null;
@@ -61,11 +62,11 @@ function editOptionsFromPayload(value: unknown): TaskEditOptions | null {
   };
 }
 
-const priorityStyle: Record<TaskListItem['priority'], string> = {
-  critical: 'border-red-400/30 bg-red-500/10 text-red-200',
-  high: 'border-orange-400/30 bg-orange-500/10 text-orange-200',
-  medium: 'border-yellow-400/30 bg-yellow-500/10 text-yellow-100',
-  low: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
+const statusTone: Record<TaskListItem['status'], StatusTone> = {
+  pending: 'pending',
+  in_progress: 'processing',
+  completed: 'approved',
+  cancelled: 'rejected',
 };
 
 function formatTaskDeadline(task: TaskListItem, language: 'en' | 'ar'): string | null {
@@ -179,10 +180,10 @@ export default function TasksPage() {
       )}
 
       {!loading && error && (
-        <div className="rounded-2xl border border-red-400/25 bg-red-500/10 p-5" role="alert">
-          <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-300" /><div>
-            <p className="font-semibold text-red-100">{error.authorization ? t.tasks.access : t.tasks.unable}</p>
-            <p className="mt-1 text-sm text-red-100/80">{error.message}</p>
+        <div className="ui-alert ui-alert-error p-5" role="alert">
+          <div className="flex gap-3"><AlertCircle className="mt-0.5 h-5 w-5 shrink-0" /><div>
+            <p className="font-semibold">{error.authorization ? t.tasks.access : t.tasks.unable}</p>
+            <p className="mt-1 text-sm">{error.message}</p>
           </div></div>
           {!error.authorization && <button type="button" onClick={() => void loadTasks()} className="mt-4 min-h-11 rounded-xl bg-red-100 px-4 text-sm font-semibold text-red-950">{t.tasks.retry}</button>}
         </div>
@@ -208,10 +209,10 @@ export default function TasksPage() {
                 <button type="button" onClick={() => void loadTasks()} className="mt-2 min-h-11 rounded-lg bg-amber-100 px-3 font-semibold text-amber-950">{t.tasks.retry}</button>
               </div>}
               </div>
-              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${priorityStyle[task.priority]}`}>{t.priority[task.priority]}</span>
+              <StatusBadge label={t.priority[task.priority]} tone={task.priority} />
             </div>
             <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
-              <span className="text-slate-200">{t.status[task.status]}</span>
+              <StatusBadge label={t.status[task.status]} tone={statusTone[task.status]} />
               <span className="inline-flex items-center gap-1.5"><UserRound className="h-4 w-4" />{task.assignedEmployee ? `${task.assignedEmployee.firstName} ${task.assignedEmployee.lastName ?? ''}`.trim() : t.tasks.unassigned}</span>
               {task.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{task.location.name}</span>}
               <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatTaskDeadline(task, language) ?? t.tasks.noDue}</span>
@@ -221,7 +222,7 @@ export default function TasksPage() {
               <button
                 type="button"
                 onClick={() => setEditingTaskId(task.id)}
-                className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/20"
+                className="ui-button-secondary mt-4 text-sm"
               >
                 <Pencil className="h-4 w-4" />
                 {t.tasks.edit}

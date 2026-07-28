@@ -106,13 +106,13 @@ export function CameraInspectionControl({ snapshotId }: { snapshotId: string }) 
         type="button"
         onClick={() => void inspect()}
         disabled={attempted || loading}
-        className="min-h-11 rounded-xl border border-violet-300/30 px-4 font-semibold text-violet-100 disabled:cursor-not-allowed disabled:opacity-50"
+        className="ui-button-secondary min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
       >
         {loading ? copy.inspectingWithAi : copy.inspectWithAi}
       </button>
       <p className="mt-2 text-xs text-slate-400">{copy.inspectionHumanJudgment}</p>
       {error ? (
-        <p role="alert" className="mt-3 break-all text-xs text-rose-300">
+        <p role="alert" className="ui-alert ui-alert-error mt-3 break-all rounded-xl p-3 text-xs">
           {copy.inspectionFailed} · {error}
         </p>
       ) : null}
@@ -129,7 +129,7 @@ export function CameraInspectionControl({ snapshotId }: { snapshotId: string }) 
             {JSON.stringify(inspection.result, null, 2)}
           </pre>
           {inspection.warnings.length > 0 ? (
-            <p className="text-xs text-amber-200">{inspection.warnings.join(' · ')}</p>
+            <p className="ui-alert ui-alert-warning rounded-xl p-3 text-xs">{inspection.warnings.join(' · ')}</p>
           ) : null}
         </div>
       ) : null}

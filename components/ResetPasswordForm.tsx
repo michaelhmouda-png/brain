@@ -1,13 +1,12 @@
 'use client';
 
 import { useState, useTransition } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { resetPassword } from '@/lib/auth';
 
 export function ResetPasswordForm() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [isPending, startTransition] = useTransition();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -48,7 +47,7 @@ export function ResetPasswordForm() {
 
   return (
     <div className="w-full max-w-md">
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
+      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">Set new password</h1>
           <p className="mt-2 text-sm text-slate-400">
@@ -58,7 +57,7 @@ export function ResetPasswordForm() {
 
         {success ? (
           <div className="space-y-4">
-            <div className="rounded-2xl border border-green-500/20 bg-green-500/10 px-4 py-3 text-sm text-green-400">
+            <div className="ui-alert ui-alert-success rounded-2xl px-4 py-3 text-sm" role="status">
               <p className="font-medium">Password reset successful!</p>
               <p className="mt-1">Redirecting to login...</p>
             </div>
@@ -97,7 +96,7 @@ export function ResetPasswordForm() {
             </div>
 
             {error && (
-              <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+              <div className="ui-alert ui-alert-error rounded-2xl px-4 py-3 text-sm" role="alert">
                 {error}
               </div>
             )}
@@ -105,7 +104,7 @@ export function ResetPasswordForm() {
             <button
               type="submit"
               disabled={isPending}
-              className="w-full rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-white transition hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="ui-button-primary w-full rounded-2xl px-4 py-3 font-semibold disabled:cursor-not-allowed"
             >
               {isPending ? 'Resetting...' : 'Reset password'}
             </button>

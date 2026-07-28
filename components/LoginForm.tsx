@@ -56,9 +56,9 @@ export function LoginForm() {
 
   return (
     <div className="w-full max-w-md" lang={language} dir={ar ? 'rtl' : 'ltr'}>
-      <div className="rounded-3xl border border-white/10 bg-white/5 p-5 backdrop-blur-xl sm:p-8">
+      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
         <div className="mb-8">
-          <div className="mb-4 flex justify-end gap-2" dir="ltr"><button type="button" onClick={() => setLanguage('en')} className={`min-h-11 rounded-xl px-3 ${!ar?'bg-cyan-600':'border border-white/10'}`}>English</button><button type="button" onClick={() => setLanguage('ar')} className={`min-h-11 rounded-xl px-3 ${ar?'bg-cyan-600':'border border-white/10'}`}>العربية</button></div>
+          <div className="mb-4 flex justify-end gap-2" dir="ltr"><button type="button" onClick={() => setLanguage('en')} aria-pressed={!ar} className={`min-h-11 rounded-xl px-3 ${!ar?'ui-button-primary':'ui-button-secondary'}`}>English</button><button type="button" onClick={() => setLanguage('ar')} aria-pressed={ar} className={`min-h-11 rounded-xl px-3 ${ar?'ui-button-primary':'ui-button-secondary'}`}>العربية</button></div>
           <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
             <span className="text-3xl font-black tracking-[0.25em]">B</span>
           </div>
@@ -98,7 +98,7 @@ export function LoginForm() {
           </div>
 
           {error && (
-            <div className="rounded-2xl border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+            <div className="ui-alert ui-alert-error rounded-2xl px-4 py-3 text-sm" role="alert">
               {error}
             </div>
           )}
@@ -106,7 +106,7 @@ export function LoginForm() {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full rounded-2xl bg-cyan-500 px-4 py-3 font-semibold text-white transition hover:bg-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="ui-button-primary w-full rounded-2xl px-4 py-3 font-semibold disabled:cursor-not-allowed"
           >
             {isLoading ? (ar ? 'جارٍ تسجيل الدخول...' : 'Signing in...') : (ar ? 'تسجيل الدخول' : 'Sign in')}
           </button>
