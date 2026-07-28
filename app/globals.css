@@ -876,6 +876,19 @@ canvas {
   color: #fff;
 }
 
+.brain-v3 .dashboard-main .brain-dashboard-ask-button,
+.brain-v3 .dashboard-main .brain-dashboard-ask-button:is(:hover, :focus-visible, :active),
+.brain-v3 .dashboard-main .brain-dashboard-ask-button[aria-busy='true'] {
+  color: var(--ui-text-inverse);
+}
+
+.brain-v3 .dashboard-main .brain-dashboard-ask-button:disabled {
+  border-color: var(--ui-surface-inverse) !important;
+  background-color: var(--ui-surface-inverse) !important;
+  color: var(--ui-text-inverse-secondary) !important;
+  opacity: 1 !important;
+}
+
 .brain-v3 .dashboard-main select,
 .brain-v3 .dashboard-main input,
 .brain-v3 .dashboard-main textarea {

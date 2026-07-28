@@ -127,6 +127,28 @@ test('navigation and notification states use measured semantic pairs', () => {
   assert.match(css, /\.ui-notification-badge\s*\{/);
 });
 
+test('Dashboard Ask about today keeps a light inherited foreground on its dark action surface', async () => {
+  const dashboard = await read('components/PremiumCommandCenter.tsx');
+  assert.match(
+    dashboard,
+    /brain-dashboard-ask-button[^"]*bg-slate-950[^"]*[\s\S]*<BrainMark className="h-5 w-5" \/>[\s\S]*Ask about today/,
+  );
+  assert.doesNotMatch(
+    dashboard,
+    /brain-dashboard-ask-button[^"]*(?:text-slate-(?:8|9)\d\d|text-black)/,
+  );
+  assert.match(
+    css,
+    /\.brain-v3 \.dashboard-main \.brain-dashboard-ask-button,[\s\S]*color: var\(--ui-text-inverse\)/,
+  );
+  assert.match(
+    css,
+    /\.brain-v3 \.dashboard-main \.brain-dashboard-ask-button:disabled[\s\S]*background-color: var\(--ui-surface-inverse\) !important;[\s\S]*color: var\(--ui-text-inverse-secondary\) !important;[\s\S]*opacity: 1 !important;/,
+  );
+  assert.ok(contrastRatio(cssToken('ui-text-inverse'), '#020617') >= 4.5);
+  assert.ok(contrastRatio(cssToken('ui-text-inverse-secondary'), cssToken('ui-surface-inverse')) >= 4.5);
+});
+
 test('shared status badges include visible text and an icon, not color alone', async () => {
   const component = await read('components/ui/StatusBadge.tsx');
   assert.match(component, /<Icon aria-hidden="true"/);

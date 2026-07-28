@@ -178,7 +178,7 @@ export function PremiumCommandCenter() {
                 {briefing.priorities[0]?.description || briefing.positive_updates[0] || 'Brain will surface the next important operational change here.'}
               </p>
             </div>
-            <button type="button" onClick={() => window.dispatchEvent(new Event('brain:open'))} className="inline-flex min-h-11 w-fit items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold text-white">
+            <button type="button" onClick={() => window.dispatchEvent(new Event('brain:open'))} className="brain-dashboard-ask-button inline-flex min-h-11 w-fit items-center gap-2 rounded-xl bg-slate-950 px-4 text-sm font-semibold">
               <BrainMark className="h-5 w-5" />
               Ask about today
             </button>
