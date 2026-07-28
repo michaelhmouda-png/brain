@@ -34,11 +34,11 @@ function collectionFromPayload(payload: unknown): unknown[] | null {
   return null;
 }
 
-export async function fetchJsonCollection(
+async function fetchJsonResponse(
   route: string,
   input: string,
   signal: AbortSignal
-): Promise<unknown[]> {
+): Promise<{ payload: unknown; status: number; contentType: string }> {
   let response: Response;
   try {
     response = await fetch(input, {
@@ -101,12 +101,40 @@ export async function fetchJsonCollection(
     );
   }
 
+  return { payload, status: response.status, contentType };
+}
+
+export async function fetchJsonDocument(
+  route: string,
+  input: string,
+  signal: AbortSignal
+): Promise<Record<string, unknown>> {
+  const { payload, status, contentType } = await fetchJsonResponse(route, input, signal);
+  if (!isRecord(payload)) {
+    throw new ClientApiError('The server returned an unexpected data format.', {
+      route,
+      stage: 'validate',
+      status,
+      contentType,
+      errorName: 'InvalidDocumentShape',
+      errorMessage: 'expected_json_object',
+    });
+  }
+  return payload;
+}
+
+export async function fetchJsonCollection(
+  route: string,
+  input: string,
+  signal: AbortSignal
+): Promise<unknown[]> {
+  const { payload, status, contentType } = await fetchJsonResponse(route, input, signal);
   const collection = collectionFromPayload(payload);
   if (!collection) {
     throw new ClientApiError('The server returned an unexpected data format.', {
       route,
       stage: 'validate',
-      status: response.status,
+      status,
       contentType,
       errorName: 'InvalidCollectionShape',
       errorMessage: 'expected_array_or_paginated_data',

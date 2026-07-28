@@ -1,10 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import { AlertCircle, CalendarDays, CheckCircle2, MapPin, RefreshCw, UserRound } from 'lucide-react';
-import { ClientApiError, fetchJsonCollection, isRecord, logRouteDiagnostic, stringField } from '@/lib/client-api';
+import { AlertCircle, CalendarDays, CheckCircle2, MapPin, Pencil, RefreshCw, UserRound } from 'lucide-react';
+import { ClientApiError, fetchJsonDocument, isRecord, logRouteDiagnostic, stringField } from '@/lib/client-api';
 import type { TaskListItem } from '@/lib/task-list';
+import type { TaskEditOptions } from '@/lib/task-edit';
 import { useLocale } from '@/components/LocaleProvider';
+import { TaskEditPanel } from '@/components/tasks/TaskEditPanel';
 
 function taskFromPayload(value: unknown): TaskListItem | null {
   if (!isRecord(value) || !isRecord(value.assignedEmployee) && value.assignedEmployee !== null) return null;
@@ -38,6 +40,27 @@ function taskFromPayload(value: unknown): TaskListItem | null {
   };
 }
 
+function editOptionsFromPayload(value: unknown): TaskEditOptions | null {
+  if (!isRecord(value) || !Array.isArray(value.employees) || !Array.isArray(value.locations)) {
+    return null;
+  }
+  const parse = (entry: unknown) => {
+    if (!isRecord(entry)) return null;
+    const id = stringField(entry, 'id');
+    const name = stringField(entry, 'name');
+    return id && name ? { id, name } : null;
+  };
+  const employees = value.employees.map(parse);
+  const locations = value.locations.map(parse);
+  if (employees.some((entry) => entry === null) || locations.some((entry) => entry === null)) {
+    return null;
+  }
+  return {
+    employees: employees as TaskEditOptions['employees'],
+    locations: locations as TaskEditOptions['locations'],
+  };
+}
+
 const priorityStyle: Record<TaskListItem['priority'], string> = {
   critical: 'border-red-400/30 bg-red-500/10 text-red-200',
   high: 'border-orange-400/30 bg-orange-500/10 text-orange-200',
@@ -45,12 +68,32 @@ const priorityStyle: Record<TaskListItem['priority'], string> = {
   low: 'border-blue-400/30 bg-blue-500/10 text-blue-200',
 };
 
+function formatTaskDeadline(task: TaskListItem, language: 'en' | 'ar'): string | null {
+  const locale = language === 'ar' ? 'ar-LB' : 'en';
+  if (task.dueAt) {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: task.companyTimezone ?? 'UTC',
+    }).format(new Date(task.dueAt));
+  }
+  if (task.dueDate) {
+    return new Intl.DateTimeFormat(locale, {
+      dateStyle: 'medium',
+      timeZone: 'UTC',
+    }).format(new Date(`${task.dueDate}T12:00:00.000Z`));
+  }
+  return null;
+}
+
 export default function TasksPage() {
   const { language, role, messages: t } = useLocale();
   const [tasks, setTasks] = useState<TaskListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<{ message: string; authorization: boolean } | null>(null);
   const [completingId, setCompletingId] = useState<string | null>(null);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editOptions, setEditOptions] = useState<TaskEditOptions>({ employees: [], locations: [] });
   const completeTask = async (taskId: string) => {
     setCompletingId(taskId); setError(null);
     try {
@@ -68,12 +111,18 @@ export default function TasksPage() {
     setError(null);
     const controller = signal ? null : new AbortController();
     try {
-      const values = await fetchJsonCollection('Tasks', '/api/tasks', signal ?? controller!.signal);
-      const parsed = values.map(taskFromPayload);
+      const payload = await fetchJsonDocument('Tasks', '/api/tasks', signal ?? controller!.signal);
+      if (!Array.isArray(payload.data)) throw new Error('INVALID_TASK_RESPONSE');
+      const parsed = payload.data.map(taskFromPayload);
       if (parsed.some((task) => task === null)) throw new Error('INVALID_TASK_RESPONSE');
       const visibleTasks = role === 'employee'
         ? (parsed as TaskListItem[]).filter((task) => task.status === 'pending' || task.status === 'in_progress')
         : parsed as TaskListItem[];
+      if (role !== 'employee') {
+        const options = editOptionsFromPayload(payload.editOptions);
+        if (!options) throw new Error('INVALID_TASK_EDIT_OPTIONS');
+        setEditOptions(options);
+      }
       setTasks(visibleTasks);
     } catch (loadError) {
       if (signal?.aborted || controller?.signal.aborted) return;
@@ -99,6 +148,10 @@ export default function TasksPage() {
     void Promise.resolve().then(() => loadTasks(controller.signal));
     return () => controller.abort();
   }, [loadTasks]);
+
+  const editingTask = editingTaskId
+    ? tasks.find((task) => task.id === editingTaskId) ?? null
+    : null;
 
   return (
     <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:space-y-8 sm:rounded-[36px] sm:p-8">
@@ -161,12 +214,34 @@ export default function TasksPage() {
               <span className="text-slate-200">{t.status[task.status]}</span>
               <span className="inline-flex items-center gap-1.5"><UserRound className="h-4 w-4" />{task.assignedEmployee ? `${task.assignedEmployee.firstName} ${task.assignedEmployee.lastName ?? ''}`.trim() : t.tasks.unassigned}</span>
               {task.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{task.location.name}</span>}
-              <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{task.dueAt ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', { dateStyle: 'medium', timeStyle: 'short', timeZone: task.companyTimezone ?? undefined }).format(new Date(task.dueAt)) : task.dueDate ? new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', { dateStyle: 'medium' }).format(new Date(task.dueDate)) : t.tasks.noDue}</span>
+              <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatTaskDeadline(task, language) ?? t.tasks.noDue}</span>
             </div>
             {role === 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && <button type="button" disabled={completingId === task.id} onClick={() => void completeTask(task.id)} className="mt-4 min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{completingId === task.id ? t.tasks.completing : t.tasks.complete}</button>}
+            {role !== 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && (
+              <button
+                type="button"
+                onClick={() => setEditingTaskId(task.id)}
+                className="mt-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-cyan-300/30 bg-cyan-400/10 px-4 text-sm font-semibold text-cyan-100 hover:bg-cyan-400/20"
+              >
+                <Pencil className="h-4 w-4" />
+                {t.tasks.edit}
+              </button>
+            )}
           </article>
         ))}
       </div>}
+      {editingTask && (
+        <TaskEditPanel
+          key={`${editingTask.id}:${editingTask.updatedAt}`}
+          task={editingTask}
+          options={editOptions}
+          onClose={() => setEditingTaskId(null)}
+          onUpdated={(updated) => {
+            setTasks((current) => current.map((task) => task.id === updated.id ? updated : task));
+          }}
+          onRefresh={() => loadTasks()}
+        />
+      )}
     </div>
   );
 }

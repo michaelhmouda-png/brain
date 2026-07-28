@@ -52,6 +52,58 @@ function optionalString(row: Record<string, unknown>, field: string): string | n
   return value;
 }
 
+export function taskListItemFromPayload(value: unknown): TaskListItem | null {
+  const row = record(value);
+  if (!row) return null;
+  const assigned = record(row.assignedEmployee);
+  const location = record(row.location);
+  const priority = optionalString(row, 'priority');
+  const status = optionalString(row, 'status');
+  if (
+    !priority
+    || !status
+    || !PRIORITIES.has(priority)
+    || !STATUSES.has(status)
+    || (row.assignedEmployee !== null && !assigned)
+    || (row.location !== null && row.location !== undefined && !location)
+  ) {
+    return null;
+  }
+  try {
+    return {
+      id: requiredString(row, 'id'),
+      title: requiredString(row, 'title'),
+      description: optionalString(row, 'description'),
+      displayTitle: optionalString(row, 'displayTitle'),
+      displayDescription: optionalString(row, 'displayDescription'),
+      translationState: ['not_required', 'ready', 'pending', 'failed'].includes(
+        String(row.translationState),
+      )
+        ? row.translationState as TaskListItem['translationState']
+        : 'pending',
+      priority: priority as TaskListItem['priority'],
+      status: status as TaskListItem['status'],
+      dueDate: optionalString(row, 'dueDate'),
+      dueAt: optionalString(row, 'dueAt'),
+      companyTimezone: optionalString(row, 'companyTimezone'),
+      location: location
+        ? { id: requiredString(location, 'id'), name: requiredString(location, 'name') }
+        : null,
+      assignedEmployee: assigned
+        ? {
+            id: requiredString(assigned, 'id'),
+            firstName: requiredString(assigned, 'firstName'),
+            lastName: optionalString(assigned, 'lastName'),
+          }
+        : null,
+      createdAt: requiredString(row, 'createdAt'),
+      updatedAt: requiredString(row, 'updatedAt'),
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function loadCompanyTasks(
   access: TaskListAccess,
   companyId: string,

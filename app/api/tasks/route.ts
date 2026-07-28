@@ -1,10 +1,17 @@
 import { NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
-import { createSupabaseServerAuth } from '@/lib/supabaseServer';
+import { createSupabaseServer, createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { loadCompanyTasks } from '@/lib/task-list';
 import { resolveTaskVisibilityScope } from '@/lib/task-visibility';
 import { loadTaskDisplayLocalizations } from '@/lib/task-localization.server';
 import { buildTaskSnapshot, taskSnapshotProvenance } from '@/lib/task-metrics.server';
+import {
+  isTaskEditRole,
+  parseTaskEditRequest,
+  TaskEditInputError,
+  type TaskEditOptions,
+} from '@/lib/task-edit';
+import { TaskEditServiceError, updateManagementTask } from '@/lib/task-edit.server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -77,6 +84,39 @@ export async function GET() {
     });
     const localizedTasks = tasks.map((task) => ({ ...task, ...localizations.get(task.id) }));
 
+    let editOptions: TaskEditOptions | null = null;
+    if (isTaskEditRole(authorization.role)) {
+      const [{ data: employees, error: employeeError }, { data: locations, error: locationError }] =
+        await Promise.all([
+          supabase
+            .from('employees')
+            .select('id, first_name, last_name')
+            .eq('company_id', authorization.companyId)
+            .eq('status', 'active')
+            .order('first_name', { ascending: true })
+            .order('last_name', { ascending: true }),
+          supabase
+            .from('locations')
+            .select('id, name')
+            .eq('company_id', authorization.companyId)
+            .eq('status', 'active')
+            .order('name', { ascending: true }),
+        ]);
+      if (employeeError || locationError || !Array.isArray(employees) || !Array.isArray(locations)) {
+        throw new Error('TASK_EDIT_OPTIONS_QUERY_FAILED');
+      }
+      editOptions = {
+        employees: employees.map((employee) => ({
+          id: String(employee.id),
+          name: `${String(employee.first_name ?? '')} ${String(employee.last_name ?? '')}`.trim(),
+        })),
+        locations: locations.map((location) => ({
+          id: String(location.id),
+          name: String(location.name ?? ''),
+        })),
+      };
+    }
+
     if (visibility.kind === 'assigned' && tasks.length === 0) {
       const { data: visibleAssignedHistory, error: visibleAssignedHistoryError } = await supabase
         .from('tasks')
@@ -141,6 +181,7 @@ export async function GET() {
         total: localizedTasks.length,
         metrics: taskSnapshot.metrics,
         task_snapshot: taskSnapshotProvenance(taskSnapshot),
+        editOptions,
         scope: visibility.kind,
         diagnostic: localizedTasks.length === 0 && visibility.kind === 'assigned' ? 'NO_ASSIGNED_TASKS' : null,
       },
@@ -162,12 +203,83 @@ export async function GET() {
 export async function PATCH(request: Request) {
   const supabase = await createSupabaseServerAuth();
   const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
-  if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status, headers: NO_STORE_HEADERS });
+  if (!authorization.authorized) {
+    return NextResponse.json(
+      {
+        error: authorization.status === 401 ? 'Unauthorized' : 'Account is not provisioned',
+        code: authorization.code,
+      },
+      { status: authorization.status, headers: NO_STORE_HEADERS },
+    );
+  }
   const body: unknown = await request.json().catch(() => null);
-  const taskId = body && typeof body === 'object' && !Array.isArray(body) && 'taskId' in body ? (body as Record<string, unknown>).taskId : null;
-  if (typeof taskId !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId)) return NextResponse.json({ error: 'Invalid task' }, { status: 400, headers: NO_STORE_HEADERS });
-  if (authorization.role !== 'employee') return NextResponse.json({ error: 'Use the management task workflow' }, { status: 403, headers: NO_STORE_HEADERS });
-  const { error } = await supabase.rpc('complete_my_assigned_task', { p_task_id: taskId });
-  if (error) return NextResponse.json({ error: 'Task cannot be completed', code: 'TASK_NOT_COMPLETABLE' }, { status: 403, headers: NO_STORE_HEADERS });
-  return NextResponse.json({ taskId, status: 'completed' }, { headers: NO_STORE_HEADERS });
+  if (authorization.role === 'employee') {
+    if (
+      body
+      && typeof body === 'object'
+      && !Array.isArray(body)
+      && ('patch' in body || 'expectedUpdatedAt' in body)
+    ) {
+      return NextResponse.json(
+        { error: 'TASK_EDIT_FORBIDDEN', code: 'TASK_EDIT_FORBIDDEN' },
+        { status: 403, headers: NO_STORE_HEADERS },
+      );
+    }
+    const taskId = body && typeof body === 'object' && !Array.isArray(body) && 'taskId' in body
+      ? (body as Record<string, unknown>).taskId
+      : null;
+    if (
+      typeof taskId !== 'string'
+      || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(taskId)
+    ) {
+      return NextResponse.json(
+        { error: 'Invalid task', code: 'TASK_INPUT_INVALID' },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    const { error } = await supabase.rpc('complete_my_assigned_task', { p_task_id: taskId });
+    if (error) {
+      return NextResponse.json(
+        { error: 'Task cannot be completed', code: 'TASK_NOT_COMPLETABLE' },
+        { status: 403, headers: NO_STORE_HEADERS },
+      );
+    }
+    return NextResponse.json({ taskId, status: 'completed' }, { headers: NO_STORE_HEADERS });
+  }
+
+  try {
+    const input = parseTaskEditRequest(body);
+    const result = await updateManagementTask(
+      supabase,
+      createSupabaseServer(),
+      authorization,
+      input,
+    );
+    return NextResponse.json(
+      { data: result.task, outcome: result.outcome },
+      { status: 200, headers: NO_STORE_HEADERS },
+    );
+  } catch (error) {
+    if (error instanceof TaskEditInputError) {
+      return NextResponse.json(
+        { error: error.code, code: error.code, field: error.field },
+        { status: 400, headers: NO_STORE_HEADERS },
+      );
+    }
+    if (error instanceof TaskEditServiceError) {
+      return NextResponse.json(
+        { error: error.code, code: error.code },
+        { status: error.status, headers: NO_STORE_HEADERS },
+      );
+    }
+    console.error('[Tasks API] PATCH failed', {
+      stage: 'task_edit.execute',
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+      errorCode: 'TASK_EDIT_UNEXPECTED',
+    });
+    return NextResponse.json(
+      { error: 'TASK_EDIT_UNAVAILABLE', code: 'TASK_EDIT_UNAVAILABLE' },
+      { status: 500, headers: NO_STORE_HEADERS },
+    );
+  }
 }
