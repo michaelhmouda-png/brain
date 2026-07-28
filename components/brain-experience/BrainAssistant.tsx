@@ -143,7 +143,10 @@ export function BrainAssistant({
 
   useEffect(() => {
     const node = messagesRef.current;
-    if (node) node.scrollTo({ top: node.scrollHeight, behavior: 'smooth' });
+    if (node) {
+      const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+      node.scrollTo({ top: node.scrollHeight, behavior: reduceMotion ? 'auto' : 'smooth' });
+    }
   }, [messages, pendingAction, state]);
 
   const send = async (rawMessage: string) => {
@@ -255,9 +258,46 @@ export function BrainAssistant({
     void send(input);
   };
 
+  const composer = (
+    <form onSubmit={submit} className="brain-assistant-composer-form">
+      <div className="brain-composer">
+        <TaskEvidenceAttachment
+          disabled={state === 'thinking' || state === 'executing'}
+          onUploaded={(taskTitle) => setMessages((current) => [...current, {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: interpolateMessage(t.brain.evidenceQueued, { task: taskTitle }),
+            timestamp: new Date(),
+          }])}
+        />
+        <label className="sr-only" htmlFor="brain-drawer-input">{t.assistant.inputLabel}</label>
+        <input
+          id="brain-drawer-input"
+          value={input}
+          onChange={(event) => setInput(event.target.value)}
+          placeholder={interpolateMessage(t.assistant.placeholder, { module: context.module })}
+          disabled={!quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
+          className="min-w-0 flex-1 bg-transparent px-1 text-base text-slate-950 outline-none placeholder:text-slate-400"
+        />
+        <button
+          type="submit"
+          disabled={!input.trim() || !quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
+          className="brain-send-button"
+          aria-label={t.assistant.send}
+        >
+          <ArrowUp className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="mt-2 flex items-center justify-between gap-3 px-1 text-[11px] text-slate-400">
+        <span className="inline-flex min-w-0 items-center gap-1"><Paperclip className="h-3 w-3 shrink-0" /> {t.assistant.evidencePrivate}</span>
+        <span className="shrink-0">{quota ? interpolateMessage(t.assistant.requestsLeft, { count: quota.remaining }) : t.assistant.connecting}</span>
+      </div>
+    </form>
+  );
+
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <div ref={messagesRef} className="mobile-scroll-region min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-6" aria-live="polite">
+    <div className="brain-assistant-layout">
+      <div ref={messagesRef} className="brain-assistant-scroll mobile-scroll-region" aria-live="polite">
         {messages.length === 0 ? (
           <div className="flex min-h-full flex-col justify-between gap-8">
             <div>
@@ -313,67 +353,50 @@ export function BrainAssistant({
             ) : null}
           </div>
         )}
+
+        {pendingAction ? (
+          <section className="brain-proposal-preview">
+            <div className="flex min-w-0 items-start gap-2 text-sm font-semibold text-slate-900">
+              <Clock3 className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+              <span className="min-w-0 [overflow-wrap:anywhere]">
+                {interpolateMessage(t.assistant.confirmAction, { action: pendingAction.label })}
+              </span>
+            </div>
+            <dl className="mt-3 space-y-2">
+              {pendingAction.rows.map((row) => (
+                <div key={row.key} className="brain-proposal-row">
+                  <dt className="text-slate-500">{row.key}</dt>
+                  <dd className="font-medium text-slate-900">{row.value}</dd>
+                </div>
+              ))}
+            </dl>
+          </section>
+        ) : null}
       </div>
 
       {pendingAction ? (
-        <section className="border-t border-slate-200 bg-amber-50/70 p-5">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
-            <Clock3 className="h-4 w-4 text-amber-600" />
-            {interpolateMessage(t.assistant.confirmAction, { action: pendingAction.label })}
-          </div>
-          <dl className="mt-3 space-y-2">
-            {pendingAction.rows.map((row) => (
-              <div key={row.key} className="grid grid-cols-[7rem_1fr] gap-3 text-sm">
-                <dt className="text-slate-500">{row.key}</dt>
-                <dd className="font-medium text-slate-900">{row.value}</dd>
-              </div>
-            ))}
-          </dl>
-          <div className="mt-4 grid grid-cols-2 gap-2">
-            <button type="button" onClick={() => void rejectAction()} className="brain-button-secondary">
+        <footer className="brain-confirmation-footer">
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => void rejectAction()}
+              disabled={state === 'executing'}
+              className="brain-button-secondary"
+            >
               <X className="h-4 w-4" /> {t.assistant.cancel}
             </button>
-            <button type="button" onClick={() => void send('Confirm')} className="brain-button-primary">
+            <button
+              type="button"
+              onClick={() => void send('Confirm')}
+              disabled={state === 'executing'}
+              className="brain-button-primary"
+            >
               <Check className="h-4 w-4" /> {t.assistant.confirm}
             </button>
           </div>
-        </section>
-      ) : null}
-
-      <form onSubmit={submit} className="border-t border-slate-200 bg-white p-4 sm:p-5">
-        <div className="brain-composer">
-          <TaskEvidenceAttachment
-            disabled={state === 'thinking' || state === 'executing'}
-            onUploaded={(taskTitle) => setMessages((current) => [...current, {
-              id: crypto.randomUUID(),
-              role: 'assistant',
-              content: interpolateMessage(t.brain.evidenceQueued, { task: taskTitle }),
-              timestamp: new Date(),
-            }])}
-          />
-          <label className="sr-only" htmlFor="brain-drawer-input">{t.assistant.inputLabel}</label>
-          <input
-            id="brain-drawer-input"
-            value={input}
-            onChange={(event) => setInput(event.target.value)}
-            placeholder={interpolateMessage(t.assistant.placeholder, { module: context.module })}
-            disabled={!quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
-            className="min-w-0 flex-1 bg-transparent px-1 text-base text-slate-950 outline-none placeholder:text-slate-400"
-          />
-          <button
-            type="submit"
-            disabled={!input.trim() || !quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
-            className="brain-send-button"
-            aria-label={t.assistant.send}
-          >
-            <ArrowUp className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-400">
-          <span className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" /> {t.assistant.evidencePrivate}</span>
-          <span>{quota ? interpolateMessage(t.assistant.requestsLeft, { count: quota.remaining }) : t.assistant.connecting}</span>
-        </div>
-      </form>
+          {composer}
+        </footer>
+      ) : composer}
     </div>
   );
 }
