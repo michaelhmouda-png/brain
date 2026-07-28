@@ -82,13 +82,13 @@ export function ReservationDatePicker({
       <button
         type="button"
         onClick={openPicker}
-        className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-left transition hover:border-white/20 focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field-light flex min-h-12 w-full items-center gap-3 rounded-xl border px-3.5 text-left transition focus:border-cyan-400/60 focus:outline-none"
         aria-label={label}
       >
         <CalendarDays className="h-4 w-4 shrink-0 text-cyan-300" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold text-white">{formatVenueDate(value)}</span>
-          <span className="block text-[11px] text-slate-500">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
+          <span className="block truncate text-sm font-bold text-slate-950">{formatVenueDate(value)}</span>
+          <span className="block text-[11px] text-slate-600">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
         </span>
       </button>
 
@@ -140,7 +140,7 @@ export function ReservationDatePicker({
                       selected
                         ? 'bg-cyan-300 text-slate-950'
                         : muted
-                          ? 'text-slate-700 hover:bg-white/[0.04]'
+                          ? 'text-slate-400 hover:bg-white/[0.04]'
                           : 'text-slate-200 hover:bg-white/[0.08]'
                     }`}
                   >
@@ -199,7 +199,7 @@ export function ReservationTimeInput({
 
   return (
     <label>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</span>
+      <span className="ui-secondary text-xs font-semibold uppercase tracking-[0.12em]">{label}</span>
       <input
         type="time"
         inputMode="numeric"
@@ -207,12 +207,12 @@ export function ReservationTimeInput({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-lg font-bold text-white focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field-light mt-1.5 min-h-12 w-full rounded-xl border px-3.5 text-lg font-bold focus:border-cyan-400/60 focus:outline-none"
       />
       <datalist id={listId}>
         {suggestions.map((time) => <option value={time} key={time} />)}
       </datalist>
-      <span className="mt-1 block text-[11px] text-slate-500">
+      <span className="ui-muted mt-1 block text-[11px]">
         {timezone ? `${timezone} · ` : 'Venue-local time · '}{intervalMinutes}-minute suggestions, any minute accepted
       </span>
     </label>
@@ -233,12 +233,12 @@ export function GuestCountInput({
   const numeric = typeof value === 'number' ? value : minimum;
   return (
     <div>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Number of guests</span>
+      <span className="ui-secondary text-xs font-semibold uppercase tracking-[0.12em]">Number of guests</span>
       <div className="mt-1.5 flex items-stretch gap-2">
         <button
           type="button"
           onClick={() => onChange(Math.max(minimum, numeric - 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
+          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/20 bg-white/[0.04] text-white"
           aria-label="Remove one guest"
         >
           <Minus className="h-5 w-5" />
@@ -252,22 +252,22 @@ export function GuestCountInput({
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
-          className="min-h-14 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.055] px-3 text-center text-2xl font-black text-white focus:border-cyan-400/60 focus:outline-none"
+          className="ui-field-light min-h-14 min-w-0 flex-1 rounded-xl border px-3 text-center text-2xl font-black focus:border-cyan-400/60 focus:outline-none"
           aria-label="Guest count"
         />
         <button
           type="button"
           onClick={() => onChange(Math.min(maximum, numeric + 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
+          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/20 bg-white/[0.04] text-white"
           aria-label="Add one guest"
         >
           <Plus className="h-5 w-5" />
         </button>
-        <button type="button" onClick={() => onChange('')} className="min-h-14 rounded-xl border border-white/10 px-3 text-xs font-semibold text-slate-400">
+        <button type="button" onClick={() => onChange('')} className="min-h-14 rounded-xl border border-white/20 px-3 text-xs font-semibold text-slate-300">
           Clear
         </button>
       </div>
-      <span className="mt-1 block text-[11px] text-slate-500">Enter any whole number from {minimum} to {maximum}.</span>
+      <span className="ui-muted mt-1 block text-[11px]">Enter any whole number from {minimum} to {maximum}.</span>
     </div>
   );
 }

@@ -37,6 +37,13 @@
   --ui-border-focus: #005fcc;
   --ui-border-disabled: #747d86;
   --ui-border-error: #b42318;
+  --ui-field-light-bg: #ffffff;
+  --ui-field-light-text: #17191c;
+  --ui-field-light-placeholder: #626a72;
+  --ui-field-light-border: #818a94;
+  --ui-field-light-disabled-bg: #d9dde1;
+  --ui-field-light-disabled-text: #4f5760;
+  --ui-field-light-disabled-border: #747d86;
   --ui-action-primary: #006b85;
   --ui-action-primary-hover: #00566c;
   --ui-action-primary-pressed: #004657;
@@ -445,7 +452,7 @@ canvas {
   margin: .6rem 1.25rem 0;
   border-bottom: 1px solid var(--brain-line);
   padding: 0 .15rem .6rem;
-  color: #747a80;
+  color: var(--ui-text-muted);
   font-size: .75rem;
 }
 
@@ -510,7 +517,7 @@ canvas {
   min-height: 3.25rem;
   align-items: center;
   gap: .35rem;
-  border: 1px solid #d9dad7;
+  border: 1px solid var(--ui-border-default);
   border-radius: 17px;
   background: #fff;
   padding: .35rem;
@@ -530,7 +537,7 @@ canvas {
 
 .brain-send-button:disabled {
   background: #d6d7d4;
-  color: #f7f7f5;
+  color: #4f5760;
 }
 
 .brain-button-primary,
@@ -996,6 +1003,38 @@ canvas {
   color: var(--ui-text-inverse);
 }
 
+.ui-field-light,
+.brain-v3 .dashboard-main .ui-field-light,
+.brain-v3 .dashboard-main .ui-inverse :is(input, select, textarea, button).ui-field-light {
+  border-color: var(--ui-field-light-border);
+  background-color: var(--ui-field-light-bg);
+  color: var(--ui-field-light-text);
+  caret-color: var(--ui-field-light-text);
+  color-scheme: light;
+  opacity: 1;
+}
+
+.ui-field-light::placeholder,
+.brain-v3 .dashboard-main .ui-inverse :is(input, textarea).ui-field-light::placeholder {
+  color: var(--ui-field-light-placeholder);
+  opacity: 1;
+}
+
+.ui-inverse :is(select.ui-field-light, .ui-field-light) :is(option, optgroup),
+.ui-inverse select.ui-field-light :is(option, optgroup) {
+  background-color: var(--ui-field-light-bg);
+  color: var(--ui-field-light-text);
+}
+
+.ui-inverse :where(input, textarea)::placeholder {
+  color: var(--ui-text-muted);
+  opacity: 1;
+}
+
+.ui-inverse :is(input, textarea).ui-field-light::placeholder {
+  color: var(--ui-field-light-placeholder);
+}
+
 .brain-v3 :where(input[type='checkbox'], input[type='radio']) {
   min-height: 1.25rem;
   min-width: 1.25rem;
@@ -1008,6 +1047,13 @@ canvas {
   background-color: var(--ui-surface-disabled) !important;
   color: var(--ui-text-disabled) !important;
   cursor: not-allowed;
+  opacity: 1 !important;
+}
+
+.brain-v3 .ui-inverse :is(input, select, textarea).ui-field-light:disabled {
+  border-color: var(--ui-field-light-disabled-border) !important;
+  background-color: var(--ui-field-light-disabled-bg) !important;
+  color: var(--ui-field-light-disabled-text) !important;
   opacity: 1 !important;
 }
 

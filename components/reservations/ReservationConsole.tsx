@@ -137,8 +137,8 @@ const formatDay = (value: string) => new Intl.DateTimeFormat(undefined, {
   month: 'short',
   day: 'numeric',
 }).format(new Date(`${value}T12:00:00`));
-const inputClass = 'ui-field mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
-const labelClass = 'ui-muted text-xs font-semibold uppercase tracking-[0.12em]';
+const inputClass = 'ui-field-light mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
+const labelClass = 'ui-secondary text-xs font-semibold uppercase tracking-[0.12em]';
 
 function createInitialForm(locationId = ''): {
   firstName: string;
@@ -811,7 +811,7 @@ export function ReservationConsole() {
                                     void transition(row, action.status);
                                   }}
                                   disabled={updatingId === row.id}
-                                  className={`min-h-9 rounded-lg px-3 text-xs font-bold transition disabled:opacity-50 ${
+                                  className={`min-h-9 rounded-lg px-3 text-xs font-bold transition ${
                                     action.primary
                                       ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
                                       : 'border border-white/10 text-slate-300 hover:bg-white/[0.07]'
@@ -850,11 +850,11 @@ export function ReservationConsole() {
             <p className="mt-1 text-xs leading-relaxed text-slate-500">Facts from reservation history only. No AI decision or automatic availability.</p>
 
             <div className="mt-5 rounded-2xl border border-cyan-300/15 bg-cyan-300/[0.05] p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-200/60">Next arrival</p>
+              <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-cyan-800">Next arrival</p>
               {nextArrival ? (
                 <>
-                  <strong className="mt-2 block text-lg text-cyan-50">{nextArrival.time} · {nextArrival.guestName}</strong>
-                  <span className="mt-1 block text-xs text-cyan-100/55">{nextArrival.guestCount} guests</span>
+                  <strong className="mt-2 block text-lg text-slate-950">{nextArrival.time} · {nextArrival.guestName}</strong>
+                  <span className="mt-1 block text-xs text-slate-700">{nextArrival.guestCount} guests</span>
                 </>
               ) : <p className="mt-2 text-sm text-slate-500">No pending or confirmed arrival.</p>}
               {upcomingDaily.length ? (
@@ -904,7 +904,7 @@ export function ReservationConsole() {
 
             <div className="mt-4 rounded-2xl border border-amber-300/10 bg-amber-300/[0.045] p-4">
               <p className="flex items-center gap-2 text-sm font-semibold text-amber-100"><Armchair className="h-4 w-4" /> Availability unknown</p>
-              <p className="mt-2 text-xs leading-relaxed text-amber-100/55">Capacity and table rules are not configured. Confirm or waitlist using staff judgment.</p>
+              <p className="mt-2 text-xs leading-relaxed text-amber-900">Capacity and table rules are not configured. Confirm or waitlist using staff judgment.</p>
             </div>
 
             <Link href="/dashboard/reservations/calendar" className="mt-4 flex min-h-11 items-center justify-between rounded-xl border border-white/[0.08] px-3.5 text-sm font-semibold text-slate-300 hover:bg-white/[0.05]">
@@ -933,11 +933,11 @@ export function ReservationConsole() {
             <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-5">
               <div>
                 <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Call mode</p>
-                <h2 className="mt-0.5 text-xl font-black">Quick booking</h2>
+                <h2 className="mt-0.5 text-xl font-black text-white">Quick booking</h2>
               </div>
               <div className="flex items-center gap-1">
-                <button type="button" onClick={clearComposer} disabled={saving} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05]">Clear</button>
-                <button type="button" onClick={() => setComposerOpen(false)} disabled={saving} className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05]" aria-label="Close booking form">
+                <button type="button" onClick={clearComposer} disabled={saving} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-slate-200 hover:bg-white/[0.05]">Clear</button>
+                <button type="button" onClick={() => setComposerOpen(false)} disabled={saving} className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-white hover:bg-white/[0.05]" aria-label="Close booking form">
                   <X className="h-4 w-4" />
                 </button>
               </div>
@@ -954,8 +954,8 @@ export function ReservationConsole() {
               <div className="space-y-6 px-4 py-5 sm:px-5">
                 <section>
                   <div className="mb-3 flex items-center justify-between">
-                    <h3 className="flex items-center gap-2 text-sm font-bold"><Phone className="h-4 w-4 text-cyan-300" /> Caller</h3>
-                    {guestLookupLoading ? <span className="flex items-center gap-1 text-[11px] text-slate-500"><LoaderCircle className="h-3 w-3 animate-spin" /> Checking history</span> : null}
+                    <h3 className="flex items-center gap-2 text-sm font-bold text-white"><Phone className="h-4 w-4 text-cyan-300" /> Caller</h3>
+                    {guestLookupLoading ? <span className="flex items-center gap-1 text-[11px] text-slate-300"><LoaderCircle className="h-3 w-3 animate-spin" /> Checking history</span> : null}
                   </div>
                   <div className="grid grid-cols-[116px_minmax(0,1fr)] gap-2">
                     <label>
@@ -998,7 +998,7 @@ export function ReservationConsole() {
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <p className="flex items-center gap-1.5 text-sm font-bold text-cyan-100"><UserRound className="h-4 w-4" /> Returning guest · {guestMemory.name}</p>
-                          <p className="mt-1 text-xs text-cyan-100/60">{guestMemory.reservationCount} prior reservation{guestMemory.reservationCount === 1 ? '' : 's'} · latest {formatDay(guestMemory.latestDate)}</p>
+                          <p className="mt-1 text-xs text-cyan-100">{guestMemory.reservationCount} prior reservation{guestMemory.reservationCount === 1 ? '' : 's'} · latest {formatDay(guestMemory.latestDate)}</p>
                         </div>
                         <button
                           type="button"
@@ -1027,14 +1027,14 @@ export function ReservationConsole() {
                 </section>
 
                 <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="flex items-center gap-2 text-sm font-bold"><UsersRound className="h-4 w-4 text-cyan-300" /> Party</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-white"><UsersRound className="h-4 w-4 text-cyan-300" /> Party</h3>
                   <div className="mt-3">
                     <GuestCountInput value={form.guestCount} onChange={(value) => set('guestCount', value)} />
                   </div>
                 </section>
 
                 <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-cyan-300" /> When</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-white"><CalendarDays className="h-4 w-4 text-cyan-300" /> When</h3>
                   <div className="mt-3 space-y-3">
                     <ReservationDatePicker
                       value={form.date}
@@ -1051,7 +1051,7 @@ export function ReservationConsole() {
                     <span className={labelClass}>Duration</span>
                     <div className="mt-1.5 flex gap-2">
                       {[90, 120, 150].map((minutes) => <Choice key={minutes} active={form.expectedDurationMinutes === minutes} onClick={() => set('expectedDurationMinutes', minutes)}>{minutes / 60 % 1 ? `${minutes / 60} hr` : `${minutes / 60} hrs`}</Choice>)}
-                      <select value={form.expectedDurationMinutes} onChange={(event) => set('expectedDurationMinutes', Number(event.target.value))} className="min-h-10 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.055] px-2 text-sm">
+                      <select value={form.expectedDurationMinutes} onChange={(event) => set('expectedDurationMinutes', Number(event.target.value))} className="ui-field-light min-h-10 min-w-0 flex-1 rounded-xl border px-2 text-sm">
                         {[60, 90, 120, 150, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}
                       </select>
                     </div>
@@ -1059,10 +1059,10 @@ export function ReservationConsole() {
                 </section>
 
                 <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="flex items-center gap-2 text-sm font-bold"><Sparkles className="h-4 w-4 text-cyan-300" /> Occasion & seating</h3>
+                  <h3 className="flex items-center gap-2 text-sm font-bold text-white"><Sparkles className="h-4 w-4 text-cyan-300" /> Occasion & seating</h3>
                   <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
                     {QUICK_PURPOSES.map((purpose) => <Choice key={purpose} active={form.purpose === purpose} onClick={() => set('purpose', purpose)}>{title(purpose)}</Choice>)}
-                    <select value={form.purpose} onChange={(event) => set('purpose', event.target.value)} className="min-h-10 min-w-[105px] rounded-xl border border-white/10 bg-white/[0.055] px-2 text-sm">
+                    <select value={form.purpose} onChange={(event) => set('purpose', event.target.value)} className="ui-field-light min-h-10 min-w-[105px] rounded-xl border px-2 text-sm">
                       {PURPOSES.map((purpose) => <option key={purpose} value={purpose}>{title(purpose)}</option>)}
                     </select>
                   </div>
@@ -1096,7 +1096,7 @@ export function ReservationConsole() {
                   <details className="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.025]">
                     <summary className="cursor-pointer list-none px-3.5 py-3 text-sm font-semibold text-slate-300">Add internal notes</summary>
                     <div className="border-t border-white/[0.06] p-3">
-                      <textarea maxLength={2000} rows={3} value={form.notes} onChange={(event) => set('notes', event.target.value)} placeholder="Allergies, accessibility, service notes…" className="w-full resize-none rounded-xl border border-white/10 bg-white/[0.045] p-3 text-sm placeholder:text-slate-600 focus:border-cyan-300/40 focus:outline-none" />
+                      <textarea maxLength={2000} rows={3} value={form.notes} onChange={(event) => set('notes', event.target.value)} placeholder="Allergies, accessibility, service notes…" className="ui-field-light w-full resize-none rounded-xl border p-3 text-sm focus:border-cyan-300/40 focus:outline-none" />
                     </div>
                   </details>
                 </section>
@@ -1126,8 +1126,8 @@ export function ReservationConsole() {
 
             <footer className="shrink-0 border-t border-white/[0.08] bg-[#0a0e14]/95 p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] backdrop-blur sm:rounded-b-[28px] sm:px-5">
               <div className="mb-3 flex items-center justify-between gap-3 text-xs">
-                <span className="truncate text-slate-400">{form.guestCount || '—'} guests · {form.date ? formatDay(form.date) : 'Choose date'} at {form.time || '—'}</span>
-                <span className="shrink-0 text-amber-200/70">Availability unknown</span>
+                <span className="truncate text-slate-300">{form.guestCount || '—'} guests · {form.date ? formatDay(form.date) : 'Choose date'} at {form.time || '—'}</span>
+                <span className="shrink-0 text-amber-200">Availability unknown</span>
               </div>
               <button
                 type="submit"

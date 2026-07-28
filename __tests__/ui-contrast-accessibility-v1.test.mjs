@@ -36,6 +36,16 @@ function expectContrast(foregroundToken, backgroundToken, minimum = 4.5) {
   return ratio;
 }
 
+function compositeHex(foreground, background, alpha) {
+  const fg = parseHexColor(foreground);
+  const bg = parseHexColor(background);
+  const channel = (foregroundChannel, backgroundChannel) =>
+    Math.round(foregroundChannel * alpha + backgroundChannel * (1 - alpha))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(fg.red, bg.red)}${channel(fg.green, bg.green)}${channel(fg.blue, bg.blue)}`;
+}
+
 test('contrast utility follows the WCAG sRGB luminance algorithm', () => {
   assert.deepEqual(parseHexColor('#fff'), { red: 255, green: 255, blue: 255 });
   assert.equal(linearizeSrgbChannel(0), 0);
@@ -67,6 +77,16 @@ test('actions, form values, placeholders, focus, and meaningful borders meet the
   expectContrast('ui-border-default', 'ui-surface-elevated', 3);
   expectContrast('ui-border-focus', 'ui-surface-elevated', 3);
   expectContrast('ui-border-disabled', 'ui-surface-disabled', 3);
+});
+
+test('targeted white drawer fields use dark values, placeholders, borders, and disabled text', () => {
+  expectContrast('ui-field-light-text', 'ui-field-light-bg');
+  expectContrast('ui-field-light-placeholder', 'ui-field-light-bg');
+  expectContrast('ui-field-light-border', 'ui-field-light-bg', 3);
+  expectContrast('ui-field-light-disabled-text', 'ui-field-light-disabled-bg');
+  expectContrast('ui-field-light-disabled-border', 'ui-field-light-disabled-bg', 3);
+  assert.match(css, /\.ui-inverse :is\(input, textarea\)\.ui-field-light::placeholder[\s\S]*var\(--ui-field-light-placeholder\)/);
+  assert.match(css, /\.ui-inverse select\.ui-field-light :is\(option, optgroup\)[\s\S]*var\(--ui-field-light-text\)/);
 });
 
 test('inverse inputs and disabled controls retain measurable contrast in dark drawers', () => {
@@ -135,6 +155,84 @@ test('observed task, evidence, camera, drawer, and notification failures consume
   assert.match(quickBooking, /<StatusBadge[\s\S]*tone=\{statusTone\[row\.status\]/);
   assert.match(bell, /ui-notification-badge/);
   assert.match(bell, /t\.notifications\.offline/);
+});
+
+test('dark task and reservation drawers opt into readable inverse labels and white fields', async () => {
+  const [taskEditor, quickBooking, reservationEditor, reservationInputs, assistant] = await Promise.all([
+    read('components/tasks/TaskEditPanel.tsx'),
+    read('components/reservations/ReservationConsole.tsx'),
+    read('components/reservations/ReservationEditPanel.tsx'),
+    read('components/reservations/ReservationInputs.tsx'),
+    read('components/brain-experience/BrainAssistant.tsx'),
+  ]);
+
+  assert.match(taskEditor, /ui-inverse/);
+  assert.match(taskEditor, /id="task-edit-title" className="[^"]*text-white"/);
+  assert.match(taskEditor, /text-sm font-semibold text-slate-200/);
+  assert.match(taskEditor, /className="ui-field-light/);
+  assert.doesNotMatch(taskEditor, /disabled:opacity-/);
+
+  assert.match(quickBooking, /ui-inverse absolute inset-0/);
+  assert.match(quickBooking, /const inputClass = 'ui-field-light/);
+  assert.match(quickBooking, /const labelClass = 'ui-secondary/);
+  assert.match(quickBooking, />Quick booking<\/h2>/);
+  assert.match(reservationEditor, /const inputClass = 'ui-field-light/);
+  assert.match(reservationInputs, /ui-field-light[^"]*text-lg font-bold/);
+  assert.match(reservationInputs, /ui-field-light[^"]*text-center text-2xl font-black/);
+
+  assert.match(assistant, /placeholder:text-slate-600/);
+  assert.match(assistant, /ui-muted mt-2 flex items-center justify-between/);
+});
+
+test('balanced visual hierarchy remains and rejected strict global styling cannot return', () => {
+  assert.notEqual(cssToken('ui-action-primary').toLowerCase(), '#000000');
+  assert.notEqual(cssToken('ui-surface-page').toLowerCase(), '#ffffff');
+  assert.ok(new Set([
+    'success',
+    'warning',
+    'error',
+    'info',
+    'pending',
+    'processing',
+    'offline',
+    'review',
+    'failed',
+  ].map((status) => cssToken(`ui-status-${status}-bg`).toLowerCase())).size > 4);
+
+  assert.doesNotMatch(
+    css,
+    /\.brain-v3 \.dashboard-main [^{]+\{[^}]*border(?:-color)?:\s*#(?:000000|000)\b/,
+  );
+  assert.doesNotMatch(
+    css,
+    /\.brain-v3 \.dashboard-main :is\(button, a\)[^{]+\{[^}]*background(?:-color)?:\s*#(?:000000|000)\b/,
+  );
+});
+
+test('pale actions keep dark text and offline states remain readable without manual dark badges', async () => {
+  const [quickBooking, cameras, agents] = await Promise.all([
+    read('components/reservations/ReservationConsole.tsx'),
+    read('app/dashboard/cameras/page.tsx'),
+    read('components/camera-manager/BrainAgentManager.tsx'),
+  ]);
+  assert.doesNotMatch(quickBooking, /bg-cyan-(?:200|300|400)[^'"]*text-white/);
+  assert.match(quickBooking, /bg-cyan-300 text-slate-950/);
+  assert.doesNotMatch(quickBooking, /text-[a-z]+-\d+\/\d+/);
+  assert.doesNotMatch(quickBooking, /disabled:opacity-/);
+  assert.match(cameras, /deviceStatusTone\(item\.status\)/);
+  assert.match(agents, /gatewayStatusTone\(item\.status\)/);
+
+  const offlineForeground = cssToken('ui-status-offline-fg');
+  const offlineBackground = cssToken('ui-status-offline-bg');
+  assert.ok(contrastRatio(offlineForeground, offlineBackground) >= 4.5);
+  if (relativeLuminance(offlineBackground) < 0.18) {
+    assert.ok(relativeLuminance(offlineForeground) > 0.5, 'dark offline badges require light text');
+  }
+
+  const paleCyanPanel = compositeHex('#67e8f9', '#ffffff', 0.05);
+  const paleAmberPanel = compositeHex('#fde68a', '#ffffff', 0.045);
+  assert.ok(contrastRatio('#155e75', paleCyanPanel) >= 4.5);
+  assert.ok(contrastRatio('#78350f', paleAmberPanel) >= 4.5);
 });
 
 test('disabled controls retain explicit readable colors instead of whole-control opacity', () => {

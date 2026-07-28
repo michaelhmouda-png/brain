@@ -272,7 +272,7 @@ export function BrainAssistant({
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{t.assistant.suggested}</p>
+              <p className="ui-muted text-xs font-semibold uppercase tracking-[0.14em]">{t.assistant.suggested}</p>
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion}
@@ -358,7 +358,7 @@ export function BrainAssistant({
             onChange={(event) => setInput(event.target.value)}
             placeholder={interpolateMessage(t.assistant.placeholder, { module: context.module })}
             disabled={!quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
-            className="min-w-0 flex-1 bg-transparent px-1 text-base text-slate-950 outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 bg-transparent px-1 text-base text-slate-950 outline-none placeholder:text-slate-600"
           />
           <button
             type="submit"
@@ -369,7 +369,7 @@ export function BrainAssistant({
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-400">
+        <div className="ui-muted mt-2 flex items-center justify-between px-1 text-[11px]">
           <span className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" /> {t.assistant.evidencePrivate}</span>
           <span>{quota ? interpolateMessage(t.assistant.requestsLeft, { count: quota.remaining }) : t.assistant.connecting}</span>
         </div>
