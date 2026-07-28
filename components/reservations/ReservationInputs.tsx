@@ -82,10 +82,10 @@ export function ReservationDatePicker({
       <button
         type="button"
         onClick={openPicker}
-        className="ui-field-light flex min-h-12 w-full items-center gap-3 rounded-xl border px-3.5 text-left transition focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field flex min-h-12 w-full items-center gap-3 rounded-xl px-3.5 text-left transition"
         aria-label={label}
       >
-        <CalendarDays className="h-4 w-4 shrink-0 text-cyan-300" />
+        <CalendarDays className="h-4 w-4 shrink-0 text-[var(--ui-action-primary)]" />
         <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-bold text-slate-950">{formatVenueDate(value)}</span>
           <span className="block text-[11px] text-slate-600">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
@@ -98,7 +98,7 @@ export function ReservationDatePicker({
             role="dialog"
             aria-modal="true"
             aria-label={label}
-            className="ui-inverse w-full max-w-md rounded-t-[28px] border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] shadow-2xl sm:rounded-[28px] sm:p-5"
+            className="ui-management-surface w-full max-w-md rounded-t-[28px] border p-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:rounded-[28px] sm:p-5"
             onTouchStart={(event) => { touchStart.current = event.touches[0]?.clientX ?? null; }}
             onTouchEnd={(event) => {
               const end = event.changedTouches[0]?.clientX;
@@ -108,16 +108,16 @@ export function ReservationDatePicker({
               touchStart.current = null;
             }}
           >
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[var(--brain-line)] sm:hidden" />
             <div className="flex items-center justify-between gap-2">
-              <button type="button" onClick={() => moveMonth(-1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Previous month">
-                <ChevronLeft className="h-4 w-4" />
+              <button type="button" onClick={() => moveMonth(-1)} className="ui-button-secondary min-h-11 min-w-11 p-0" aria-label="Previous month">
+                <ChevronLeft className="brain-directional-icon h-4 w-4" />
               </button>
               <strong className="text-base">
                 {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month)}
               </strong>
-              <button type="button" onClick={() => moveMonth(1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Next month">
-                <ChevronRight className="h-4 w-4" />
+              <button type="button" onClick={() => moveMonth(1)} className="ui-button-secondary min-h-11 min-w-11 p-0" aria-label="Next month">
+                <ChevronRight className="brain-directional-icon h-4 w-4" />
               </button>
             </div>
 
@@ -140,8 +140,8 @@ export function ReservationDatePicker({
                       selected
                         ? 'bg-cyan-300 text-slate-950'
                         : muted
-                          ? 'text-slate-400 hover:bg-white/[0.04]'
-                          : 'text-slate-200 hover:bg-white/[0.08]'
+                          ? 'text-slate-500 hover:bg-[var(--ui-action-secondary-hover)]'
+                          : 'text-slate-800 hover:bg-[var(--ui-action-secondary-hover)]'
                     }`}
                   >
                     {day.getDate()}
@@ -155,16 +155,16 @@ export function ReservationDatePicker({
               <button
                 type="button"
                 onClick={() => { onChange(today); setOpen(false); }}
-                className="min-h-11 flex-1 rounded-xl bg-white px-4 text-sm font-black text-slate-950"
+                className="ui-button-primary min-h-11 flex-1"
               >
                 Today
               </button>
               {allowClear ? (
-                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-300">
+                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="ui-button-secondary min-h-11">
                   Clear
                 </button>
               ) : null}
-              <button type="button" onClick={() => setOpen(false)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Close date picker">
+              <button type="button" onClick={() => setOpen(false)} className="ui-button-secondary min-h-11 min-w-11 p-0" aria-label="Close date picker">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -207,7 +207,7 @@ export function ReservationTimeInput({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="ui-field-light mt-1.5 min-h-12 w-full rounded-xl border px-3.5 text-lg font-bold focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field mt-1.5 min-h-12 w-full rounded-xl px-3.5 text-lg font-bold"
       />
       <datalist id={listId}>
         {suggestions.map((time) => <option value={time} key={time} />)}
@@ -238,7 +238,7 @@ export function GuestCountInput({
         <button
           type="button"
           onClick={() => onChange(Math.max(minimum, numeric - 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/20 bg-white/[0.04] text-white"
+          className="ui-button-secondary min-h-14 min-w-14 p-0"
           aria-label="Remove one guest"
         >
           <Minus className="h-5 w-5" />
@@ -252,18 +252,18 @@ export function GuestCountInput({
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
-          className="ui-field-light min-h-14 min-w-0 flex-1 rounded-xl border px-3 text-center text-2xl font-black focus:border-cyan-400/60 focus:outline-none"
+          className="ui-field min-h-14 min-w-0 flex-1 rounded-xl px-3 text-center text-2xl font-black"
           aria-label="Guest count"
         />
         <button
           type="button"
           onClick={() => onChange(Math.min(maximum, numeric + 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/20 bg-white/[0.04] text-white"
+          className="ui-button-secondary min-h-14 min-w-14 p-0"
           aria-label="Add one guest"
         >
           <Plus className="h-5 w-5" />
         </button>
-        <button type="button" onClick={() => onChange('')} className="min-h-14 rounded-xl border border-white/20 px-3 text-xs font-semibold text-slate-300">
+        <button type="button" onClick={() => onChange('')} className="ui-button-secondary min-h-14 px-3 text-xs">
           Clear
         </button>
       </div>

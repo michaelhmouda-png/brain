@@ -13,8 +13,8 @@ const TRANSITIONS: Record<string, string[]> = {
   waitlisted: ['confirmed', 'cancelled'],
   seated: ['completed'],
 };
-const inputClass = 'ui-field-light mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
-const labelClass = 'ui-secondary text-xs font-semibold uppercase tracking-[0.12em]';
+const inputClass = 'ui-field mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
+const labelClass = 'text-xs font-semibold uppercase tracking-[0.12em] text-[var(--ui-text-secondary)]';
 const title = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export type EditableReservation = {
@@ -143,17 +143,17 @@ export function ReservationEditPanel({
         role="dialog"
         aria-modal="true"
         aria-label="Edit reservation"
-        className="ui-inverse flex max-h-[92dvh] w-full flex-col rounded-t-[28px] border shadow-2xl sm:max-h-none sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-none sm:border-y-0 sm:border-r-0"
+        className="ui-management-surface flex max-h-[92dvh] w-full flex-col rounded-t-[28px] border sm:max-h-none sm:w-[min(560px,calc(100vw-2rem))] sm:rounded-none sm:border-y-0 sm:border-e-0"
       >
-        <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.08] px-4 py-4 sm:px-5">
+        <header className="ui-management-divider flex shrink-0 items-start justify-between gap-3 border-b px-4 py-4 sm:px-5">
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Reservation summary</p>
-            <h2 className="mt-1 truncate text-xl font-black text-white">
+            <h2 className="mt-1 truncate text-xl font-black text-[var(--ui-text-primary)]">
               {row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : 'Guest'}
             </h2>
-            <p className="mt-1 text-xs text-slate-300">{row.reservation_date} · {String(row.reservation_time).slice(0, 5)} · {row.guest_count} guests</p>
+            <p className="ui-muted mt-1 text-xs">{row.reservation_date} · {String(row.reservation_time).slice(0, 5)} · {row.guest_count} guests</p>
           </div>
-          <button type="button" onClick={closeSafely} disabled={saving} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 text-white" aria-label="Close reservation editor">
+          <button type="button" onClick={closeSafely} disabled={saving} className="ui-button-secondary min-h-11 min-w-11 p-0" aria-label="Close reservation editor">
             <X className="h-4 w-4" />
           </button>
         </header>
@@ -163,7 +163,7 @@ export function ReservationEditPanel({
             {error ? <p role="alert" className="ui-alert ui-alert-error text-sm">{error}</p> : null}
 
             <section>
-              <h3 className="flex items-center gap-2 text-sm font-bold text-white"><UserRound className="h-4 w-4 text-cyan-300" /> Guest</h3>
+              <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--ui-text-primary)]"><UserRound className="h-4 w-4 text-[var(--ui-action-primary)]" /> Guest</h3>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <label><span className={labelClass}>First name</span><input required maxLength={80} value={form.firstName} onChange={(event) => set('firstName', event.target.value)} className={inputClass} /></label>
                 <label><span className={labelClass}>Last name</span><input required maxLength={80} value={form.lastName} onChange={(event) => set('lastName', event.target.value)} className={inputClass} /></label>
@@ -175,19 +175,19 @@ export function ReservationEditPanel({
               </div>
             </section>
 
-            <section className="border-t border-white/[0.07] pt-5">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-white"><UsersRound className="h-4 w-4 text-cyan-300" /> Party</h3>
+            <section className="ui-management-divider border-t pt-5">
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-bold text-[var(--ui-text-primary)]"><UsersRound className="h-4 w-4 text-[var(--ui-action-primary)]" /> Party</h3>
               <GuestCountInput value={form.guestCount} onChange={(value) => setForm((current) => ({ ...current, guestCount: value }))} />
             </section>
 
-            <section className="space-y-3 border-t border-white/[0.07] pt-5">
-              <h3 className="flex items-center gap-2 text-sm font-bold text-white"><CalendarDays className="h-4 w-4 text-cyan-300" /> Date and time</h3>
+            <section className="ui-management-divider space-y-3 border-t pt-5">
+              <h3 className="flex items-center gap-2 text-sm font-bold text-[var(--ui-text-primary)]"><CalendarDays className="h-4 w-4 text-[var(--ui-action-primary)]" /> Date and time</h3>
               <ReservationDatePicker value={form.date} onChange={(value) => set('date', value)} timezone={timezone} />
               <ReservationTimeInput value={form.time} onChange={(value) => set('time', value)} timezone={timezone} />
               <label><span className={labelClass}>Expected duration</span><input type="number" inputMode="numeric" min={15} max={720} step={15} required value={form.expectedDurationMinutes} onChange={(event) => set('expectedDurationMinutes', Number(event.target.value))} className={inputClass} /></label>
             </section>
 
-            <section className="border-t border-white/[0.07] pt-5">
+            <section className="ui-management-divider border-t pt-5">
               <div className="grid grid-cols-2 gap-2">
                 <label><span className={labelClass}>Occasion</span><select value={form.purpose} onChange={(event) => set('purpose', event.target.value)} className={inputClass}>{PURPOSES.map((purpose) => <option value={purpose} key={purpose}>{title(purpose)}</option>)}</select></label>
                 <label><span className={labelClass}>Seating</span><select value={form.seatingPreference} onChange={(event) => set('seatingPreference', event.target.value)} className={inputClass}>{SEATING.map((preference) => <option value={preference} key={preference}>{title(preference)}</option>)}</select></label>
@@ -196,21 +196,21 @@ export function ReservationEditPanel({
               <label className="mt-3 block"><span className={labelClass}>Notes</span><textarea rows={3} maxLength={2000} value={form.notes} onChange={(event) => set('notes', event.target.value)} className={`${inputClass} resize-none py-3`} /></label>
             </section>
 
-            <section className="border-t border-white/[0.07] pt-5">
+            <section className="ui-management-divider border-t pt-5">
               <label><span className={labelClass}>Status</span><select value={form.status} onChange={(event) => set('status', event.target.value)} className={inputClass}>{allowedStatuses.map((status) => <option value={status} key={status}>{title(status)}</option>)}</select></label>
-              <p className="mt-2 text-xs text-slate-300">Only valid next statuses are offered. Source remains {title(row.source)} and cannot be changed.</p>
+              <p className="ui-muted mt-2 text-xs">Only valid next statuses are offered. Source remains {title(row.source)} and cannot be changed.</p>
             </section>
           </div>
         </form>
 
-        <footer className="shrink-0 border-t border-white/[0.08] bg-[#0a0e14]/95 p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
+        <footer className="ui-management-divider shrink-0 border-t bg-[var(--ui-surface-elevated)] p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
           <div className="flex gap-2">
             <button type="button" onClick={closeSafely} disabled={saving} className="ui-button-secondary min-h-12 flex-1">Cancel</button>
             <button type="submit" form="reservation-edit-form" disabled={saving || !dirty || form.guestCount === '' || !form.date || !form.time} className="ui-button-primary min-h-12 flex-[1.4]">
               {saving ? <><LoaderCircle className="h-4 w-4 animate-spin" /> Saving once…</> : <><Save className="h-4 w-4" /> Save changes</>}
             </button>
           </div>
-          <p className="mt-2 text-center text-[10px] text-slate-300">{dirty ? 'Unsaved changes are protected.' : 'No changes yet.'}</p>
+          <p className="ui-muted mt-2 text-center text-[10px]">{dirty ? 'Unsaved changes are protected.' : 'No changes yet.'}</p>
         </footer>
       </aside>
     </div>

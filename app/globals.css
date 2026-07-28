@@ -968,6 +968,41 @@ canvas {
   background: var(--ui-surface-overlay);
 }
 
+.ui-management-surface {
+  border-color: var(--ui-border-default);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text-primary);
+  color-scheme: light;
+  box-shadow: 0 24px 72px rgba(20, 24, 28, .18);
+}
+
+.ui-management-inset {
+  border-color: var(--brain-line);
+  background: var(--ui-surface-inset);
+  color: var(--ui-text-primary);
+}
+
+.ui-management-divider {
+  border-color: var(--brain-line);
+}
+
+.ui-choice {
+  border: 1px solid var(--ui-border-default);
+  background: var(--ui-action-secondary);
+  color: var(--ui-action-secondary-text);
+}
+
+.ui-choice:hover {
+  background: var(--ui-action-secondary-hover);
+}
+
+.ui-choice[aria-pressed='true'] {
+  border-color: var(--ui-action-primary);
+  background: var(--ui-action-primary);
+  color: var(--ui-action-primary-text);
+  box-shadow: 0 8px 24px rgba(0, 107, 133, .16);
+}
+
 .ui-field,
 .brain-v3 .dashboard-main :where(
   input:not([type='checkbox']):not([type='radio']):not([type='range']),

@@ -130,7 +130,7 @@ export default function CamerasPage() {
       <div><h2 className="mb-3 text-xl font-bold">{c.cameras}</h2>{cameras.length === 0 ? <div className="rounded-3xl border border-dashed border-white/15 p-8 text-center text-slate-400"><Camera className="mx-auto mb-3 h-8 w-8" />{c.noCameras}</div> : <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{cameras.map((item) => <article key={item.id} className="rounded-2xl border border-white/10 bg-slate-950/70 p-5"><div className="flex justify-between gap-3"><h3 className="font-bold">{item.name}</h3><span className="text-xs text-slate-400">{c.channel} {item.external_channel_id}</span></div><p className="mt-2 text-sm text-slate-400">{locationName(item.location_id)} · {nvrName(item.nvr_connection_id)}</p><p className="mt-2 text-sm">{item.area || c.unassigned} / {item.department || c.unassigned}</p><div className="mt-3 flex flex-wrap gap-2 text-xs"><StatusBadge tone={deviceStatusTone(item.status)} label={c.status[item.status as keyof typeof c.status] ?? item.status} />{item.ai_enabled && <StatusBadge tone="info" label={c.aiEnabled} />}{item.task_verification_enabled && <StatusBadge tone="review" label={c.taskVerification} />}</div><button onClick={() => setEditingCamera({ ...item })} className="ui-button-secondary mt-4 min-h-11 rounded-xl px-4">{c.edit}</button>{canManageNvrs && nvrs.find((nvr) => nvr.id === item.nvr_connection_id)?.gateway_id ? <CameraSnapshotControl gatewayId={nvrs.find((nvr) => nvr.id === item.nvr_connection_id)!.gateway_id!} nvrConnectionId={item.nvr_connection_id} channelId={item.external_channel_id} /> : null}</article>)}</div>}</div>
     </>}
     {form && <div role="dialog" aria-modal="true" aria-labelledby="nvr-title" className="ui-overlay fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center">
-      <form onSubmit={saveNvr} className="ui-inverse max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-3xl p-5">
+      <form onSubmit={saveNvr} className="ui-management-surface max-h-[calc(100dvh-1.5rem)] w-full max-w-xl overflow-y-auto rounded-3xl border p-5">
         <div className="flex justify-between">
           <h2 id="nvr-title" className="text-xl font-bold">{form.id ? c.editNvr : c.addNvr}</h2>
           <button type="button" onClick={() => setForm(null)} aria-label={c.close} className="h-11 w-11"><X className="mx-auto" /></button>
@@ -141,21 +141,21 @@ export default function CamerasPage() {
               const nextLocationId = event.target.value;
               const gatewayStillMatches = gateways.some((gateway) => gateway.id === form.gatewayId && (gateway.location_id === null || gateway.location_id === nextLocationId));
               setForm({ ...form, locationId: nextLocationId, gatewayId: gatewayStillMatches ? form.gatewayId : '' });
-            }} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3">
+            }} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3">
               {locations.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
             </select>
           </label>
           <label>{t.agents.title}
-            <select value={form.gatewayId} onChange={(event) => setForm({ ...form, gatewayId: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3">
+            <select value={form.gatewayId} onChange={(event) => setForm({ ...form, gatewayId: event.target.value })} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3">
               <option value="">{c.unassigned}</option>
               {gateways.filter((gateway) => gateway.location_id === null || gateway.location_id === form.locationId).map((gateway) =>
                 <option key={gateway.id} value={gateway.id}>{gateway.name} · {t.agents.status[gateway.status as keyof typeof t.agents.status] ?? gateway.status}</option>
               )}
             </select>
           </label>
-          {(['name','vendor','localHost'] as const).map((key) => <label key={key}>{c[key]}<input required value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3" /></label>)}
-          {(['httpPort','rtspPort','onvifPort'] as const).map((key) => <label key={key}>{c[key]}<input type="number" min="1" max="65535" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3" /></label>)}
-          {(['usernameSecretReference','passwordSecretReference'] as const).map((key) => <label key={key}>{c[key]}<input value={form[key]} autoComplete="off" onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3" /></label>)}
+          {(['name','vendor','localHost'] as const).map((key) => <label key={key}>{c[key]}<input required value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3" /></label>)}
+          {(['httpPort','rtspPort','onvifPort'] as const).map((key) => <label key={key}>{c[key]}<input type="number" min="1" max="65535" value={form[key]} onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3" /></label>)}
+          {(['usernameSecretReference','passwordSecretReference'] as const).map((key) => <label key={key}>{c[key]}<input value={form[key]} autoComplete="off" onChange={(event) => setForm({ ...form, [key]: event.target.value })} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3" /></label>)}
         </div>
         <p className="mt-3 text-xs text-amber-200">{c.secretNotice}</p>
         <div className="mt-5 flex justify-end gap-2">
@@ -164,6 +164,6 @@ export default function CamerasPage() {
         </div>
       </form>
     </div>}
-    {editingCamera && <div role="dialog" aria-modal="true" className="ui-overlay fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center"><form onSubmit={saveCamera} className="ui-inverse w-full max-w-lg rounded-3xl p-5"><h2 className="text-xl font-bold">{c.editCamera}</h2>{(['name','area','department'] as const).map((key)=><label key={key} className="mt-3 block">{c[key]}<input required={key==='name'} value={editingCamera[key]??''} onChange={(e)=>setEditingCamera({...editingCamera,[key]:e.target.value||null})} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3" /></label>)}<label className="mt-4 flex min-h-11 items-center gap-3"><input type="checkbox" checked={editingCamera.ai_enabled} onChange={(e)=>setEditingCamera({...editingCamera,ai_enabled:e.target.checked})}/>{c.aiEnabled}</label><label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={editingCamera.task_verification_enabled} onChange={(e)=>setEditingCamera({...editingCamera,task_verification_enabled:e.target.checked})}/>{c.taskVerification}</label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setEditingCamera(null)} className="ui-button-secondary min-h-11 rounded-xl px-4">{c.cancel}</button><button disabled={saving} className="ui-button-primary min-h-11 rounded-xl px-5 font-semibold">{saving?c.saving:c.save}</button></div></form></div>}
+    {editingCamera && <div role="dialog" aria-modal="true" className="ui-overlay fixed inset-0 z-50 flex items-end justify-center p-3 sm:items-center"><form onSubmit={saveCamera} className="ui-management-surface w-full max-w-lg rounded-3xl border p-5"><h2 className="text-xl font-bold">{c.editCamera}</h2>{(['name','area','department'] as const).map((key)=><label key={key} className="mt-3 block">{c[key]}<input required={key==='name'} value={editingCamera[key]??''} onChange={(e)=>setEditingCamera({...editingCamera,[key]:e.target.value||null})} className="ui-field mt-1 min-h-11 w-full rounded-xl px-3" /></label>)}<label className="mt-4 flex min-h-11 items-center gap-3"><input type="checkbox" checked={editingCamera.ai_enabled} onChange={(e)=>setEditingCamera({...editingCamera,ai_enabled:e.target.checked})}/>{c.aiEnabled}</label><label className="flex min-h-11 items-center gap-3"><input type="checkbox" checked={editingCamera.task_verification_enabled} onChange={(e)=>setEditingCamera({...editingCamera,task_verification_enabled:e.target.checked})}/>{c.taskVerification}</label><div className="mt-5 flex justify-end gap-2"><button type="button" onClick={()=>setEditingCamera(null)} className="ui-button-secondary min-h-11 rounded-xl px-4">{c.cancel}</button><button disabled={saving} className="ui-button-primary min-h-11 rounded-xl px-5 font-semibold">{saving?c.saving:c.save}</button></div></form></div>}
   </section>;
 }

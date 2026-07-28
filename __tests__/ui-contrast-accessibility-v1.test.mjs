@@ -79,14 +79,18 @@ test('actions, form values, placeholders, focus, and meaningful borders meet the
   expectContrast('ui-border-disabled', 'ui-surface-disabled', 3);
 });
 
-test('targeted white drawer fields use dark values, placeholders, borders, and disabled text', () => {
-  expectContrast('ui-field-light-text', 'ui-field-light-bg');
-  expectContrast('ui-field-light-placeholder', 'ui-field-light-bg');
-  expectContrast('ui-field-light-border', 'ui-field-light-bg', 3);
-  expectContrast('ui-field-light-disabled-text', 'ui-field-light-disabled-bg');
-  expectContrast('ui-field-light-disabled-border', 'ui-field-light-disabled-bg', 3);
-  assert.match(css, /\.ui-inverse :is\(input, textarea\)\.ui-field-light::placeholder[\s\S]*var\(--ui-field-light-placeholder\)/);
-  assert.match(css, /\.ui-inverse select\.ui-field-light :is\(option, optgroup\)[\s\S]*var\(--ui-field-light-text\)/);
+test('light management surfaces reuse the canonical Brain V3 surface, text, border, and shadow tokens', () => {
+  assert.match(css, /\.ui-management-surface\s*\{[\s\S]*border-color: var\(--ui-border-default\)/);
+  assert.match(css, /\.ui-management-surface\s*\{[\s\S]*background: var\(--ui-surface-elevated\)/);
+  assert.match(css, /\.ui-management-surface\s*\{[\s\S]*color: var\(--ui-text-primary\)/);
+  assert.match(css, /\.ui-management-surface\s*\{[\s\S]*color-scheme: light/);
+  assert.match(css, /\.ui-management-inset\s*\{[\s\S]*background: var\(--ui-surface-inset\)/);
+  assert.match(css, /\.ui-management-inset\s*\{[\s\S]*border-color: var\(--brain-line\)/);
+  assert.match(css, /\.ui-management-divider\s*\{[\s\S]*border-color: var\(--brain-line\)/);
+  expectContrast('ui-text-primary', 'ui-surface-elevated');
+  expectContrast('ui-text-secondary', 'ui-surface-elevated');
+  expectContrast('ui-text-muted', 'ui-surface-elevated');
+  expectContrast('ui-border-default', 'ui-surface-elevated', 3);
 });
 
 test('inverse inputs and disabled controls retain measurable contrast in dark drawers', () => {
@@ -133,7 +137,7 @@ test('shared status badges include visible text and an icon, not color alone', a
   }
 });
 
-test('observed task, evidence, camera, drawer, and notification failures consume semantic primitives', async () => {
+test('observed task, evidence, camera, management, and notification surfaces consume semantic primitives', async () => {
   const [tasks, evidence, cameras, agents, taskEditor, quickBooking, bell] = await Promise.all([
     read('app/dashboard/tasks/page.tsx'),
     read('app/dashboard/evidence-review/page.tsx'),
@@ -150,38 +154,105 @@ test('observed task, evidence, camera, drawer, and notification failures consume
   assert.match(evidence, /verification_failed:\s*'failed'/);
   assert.match(cameras, /deviceStatusTone\(item\.status\)/);
   assert.match(agents, /gatewayStatusTone\(item\.status\)/);
-  assert.match(taskEditor, /ui-inverse/);
-  assert.match(quickBooking, /ui-inverse/);
+  assert.match(taskEditor, /ui-management-surface/);
+  assert.match(quickBooking, /ui-management-surface/);
   assert.match(quickBooking, /<StatusBadge[\s\S]*tone=\{statusTone\[row\.status\]/);
   assert.match(bell, /ui-notification-badge/);
   assert.match(bell, /t\.notifications\.offline/);
 });
 
-test('dark task and reservation drawers opt into readable inverse labels and white fields', async () => {
-  const [taskEditor, quickBooking, reservationEditor, reservationInputs, assistant] = await Promise.all([
+test('task and reservation management drawers use the shared light system without inverse leakage', async () => {
+  const [taskEditor, quickBooking, reservationEditor, reservationInputs, incomingCall, assistant] = await Promise.all([
     read('components/tasks/TaskEditPanel.tsx'),
     read('components/reservations/ReservationConsole.tsx'),
     read('components/reservations/ReservationEditPanel.tsx'),
     read('components/reservations/ReservationInputs.tsx'),
+    read('components/reservations/IncomingCallPopup.tsx'),
     read('components/brain-experience/BrainAssistant.tsx'),
   ]);
 
-  assert.match(taskEditor, /ui-inverse/);
-  assert.match(taskEditor, /id="task-edit-title" className="[^"]*text-white"/);
-  assert.match(taskEditor, /text-sm font-semibold text-slate-200/);
-  assert.match(taskEditor, /className="ui-field-light/);
+  assert.match(taskEditor, /ui-management-surface/);
+  assert.match(taskEditor, /id="task-edit-title" className="[^"]*ui-text-primary/);
+  assert.match(taskEditor, /ui-management-inset/);
+  assert.match(taskEditor, /className="ui-field/);
   assert.doesNotMatch(taskEditor, /disabled:opacity-/);
+  assert.doesNotMatch(taskEditor, /ui-inverse|bg-slate-9\d\d|border-white/);
 
-  assert.match(quickBooking, /ui-inverse absolute inset-0/);
-  assert.match(quickBooking, /const inputClass = 'ui-field-light/);
-  assert.match(quickBooking, /const labelClass = 'ui-secondary/);
+  assert.match(quickBooking, /ui-management-surface absolute inset-0/);
+  assert.match(quickBooking, /const inputClass = 'ui-field/);
+  assert.match(quickBooking, /const labelClass = '[^']*ui-text-secondary/);
   assert.match(quickBooking, />Quick booking<\/h2>/);
-  assert.match(reservationEditor, /const inputClass = 'ui-field-light/);
-  assert.match(reservationInputs, /ui-field-light[^"]*text-lg font-bold/);
-  assert.match(reservationInputs, /ui-field-light[^"]*text-center text-2xl font-black/);
+  assert.match(quickBooking, /sm:start-auto sm:end-3/);
+  assert.doesNotMatch(quickBooking.slice(quickBooking.indexOf('aria-label="New reservation"')), /ui-inverse/);
+
+  assert.match(reservationEditor, /ui-management-surface/);
+  assert.match(reservationEditor, /const inputClass = 'ui-field/);
+  assert.match(reservationEditor, /sm:border-e-0/);
+  assert.doesNotMatch(reservationEditor, /ui-inverse|bg-\[#0a0e14\]|border-white/);
+
+  assert.match(reservationInputs, /ui-management-surface/);
+  assert.match(reservationInputs, /ui-field[^"]*text-lg font-bold/);
+  assert.match(reservationInputs, /ui-field[^"]*text-center text-2xl font-black/);
+  assert.equal((reservationInputs.match(/brain-directional-icon/g) ?? []).length, 2);
+  assert.doesNotMatch(reservationInputs, /ui-inverse|bg-white\/\[0\.04\]|border-white/);
+  assert.match(incomingCall, /ui-management-surface/);
+  assert.match(incomingCall, /sm:start-auto sm:end-4/);
+  assert.doesNotMatch(incomingCall, /bg-\[#090e15\]|border-white/);
 
   assert.match(assistant, /placeholder:text-slate-600/);
   assert.match(assistant, /ui-muted mt-2 flex items-center justify-between/);
+});
+
+test('all management dialogs use the light primitive while intentional auth and media contexts stay contained', async () => {
+  const [evidence, cameras, agents, login, taskEvidence] = await Promise.all([
+    read('app/dashboard/evidence-review/page.tsx'),
+    read('app/dashboard/cameras/page.tsx'),
+    read('components/camera-manager/BrainAgentManager.tsx'),
+    read('components/LoginForm.tsx'),
+    read('components/brain/TaskEvidenceAttachment.tsx'),
+  ]);
+
+  assert.match(evidence, /confirming[\s\S]*ui-management-surface/);
+  assert.match(cameras, /saveNvr[\s\S]*ui-management-surface/);
+  assert.match(cameras, /saveCamera[\s\S]*ui-management-surface/);
+  assert.doesNotMatch(cameras.slice(cameras.indexOf('{form &&')), /ui-inverse|bg-slate-900/);
+  assert.match(agents, /code&&[\s\S]*ui-management-surface/);
+  assert.match(agents, /creating&&[\s\S]*ui-management-surface/);
+  assert.doesNotMatch(agents.slice(agents.indexOf('{code&&')), /ui-inverse|bg-slate-900/);
+
+  assert.match(login, /ui-inverse/, 'public authentication may retain its contained identity');
+  assert.match(taskEvidence, /ui-inverse/, 'camera/evidence capture may retain a contained media surface');
+  assert.doesNotMatch(css, /\.brain-drawer[^{]*\{[^}]*--ui-surface-elevated:/);
+});
+
+test('Tasks and Evidence Review keep their accepted card and status language', async () => {
+  const [tasks, evidence] = await Promise.all([
+    read('app/dashboard/tasks/page.tsx'),
+    read('app/dashboard/evidence-review/page.tsx'),
+  ]);
+  assert.match(tasks, /rounded-2xl border border-white\/10 bg-slate-950\/60/);
+  assert.match(tasks, /<StatusBadge label=\{t\.priority\[task\.priority\]\}/);
+  assert.match(evidence, /overflow-hidden rounded-2xl border border-white\/10 bg-slate-950\/60/);
+  assert.match(evidence, /<StatusBadge className="h-fit"/);
+});
+
+test('management drawers retain bounded responsive layouts, safe footers, and logical RTL edges', async () => {
+  const [taskEditor, quickBooking, reservationEditor, incomingCall] = await Promise.all([
+    read('components/tasks/TaskEditPanel.tsx'),
+    read('components/reservations/ReservationConsole.tsx'),
+    read('components/reservations/ReservationEditPanel.tsx'),
+    read('components/reservations/IncomingCallPopup.tsx'),
+  ]);
+  assert.match(taskEditor, /max-h-\[96dvh\][^"]*overflow-y-auto/);
+  assert.match(taskEditor, /pb-\[max\(1\.25rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(quickBooking, /w-full min-w-0 max-w-full/);
+  assert.match(quickBooking, /sm:w-\[min\(560px,calc\(100vw-1\.5rem\)\)\]/);
+  assert.match(quickBooking, /mobile-scroll-region min-w-0 flex-1 overflow-y-auto/);
+  assert.match(quickBooking, /pb-\[max\(0\.875rem,env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(reservationEditor, /max-h-\[92dvh\][^"]*sm:w-\[min\(560px,calc\(100vw-2rem\)\)\]/);
+  assert.match(reservationEditor, /mobile-scroll-region flex-1 overflow-y-auto/);
+  assert.match(incomingCall, /inset-x-3[^"]*sm:start-auto sm:end-4/);
+  assert.match(css, /html,\s*body\s*\{[\s\S]*max-width: 100%[\s\S]*overflow-x: clip/);
 });
 
 test('balanced visual hierarchy remains and rejected strict global styling cannot return', () => {

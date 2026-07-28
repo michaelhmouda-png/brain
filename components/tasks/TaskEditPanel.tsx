@@ -164,7 +164,7 @@ export function TaskEditPanel({
       <section
         aria-labelledby="task-edit-title"
         aria-modal="true"
-        className="ui-inverse max-h-[96dvh] w-full overflow-y-auto rounded-t-3xl border p-5 shadow-2xl sm:max-w-2xl sm:rounded-3xl sm:p-7"
+        className="ui-management-surface max-h-[96dvh] w-full overflow-y-auto rounded-t-3xl border p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-2xl sm:rounded-3xl sm:p-7"
         role="dialog"
       >
         <div className="flex items-start justify-between gap-4">
@@ -172,17 +172,17 @@ export function TaskEditPanel({
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
               {t.tasks.editEyebrow}
             </p>
-            <h2 id="task-edit-title" className="mt-2 text-2xl font-black text-white">
+            <h2 id="task-edit-title" className="mt-2 text-2xl font-black text-[var(--ui-text-primary)]">
               {t.tasks.editTitle}
             </h2>
-            <p className="mt-2 text-sm text-slate-400">
+            <p className="ui-muted mt-2 text-sm">
               {t.tasks.editTimezone}: {task.companyTimezone ?? 'UTC'}
             </p>
           </div>
           <button
             type="button"
             aria-label={t.tasks.editClose}
-            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl border border-white/10 text-white hover:bg-white/10"
+            className="ui-button-secondary min-h-11 min-w-11 p-0"
             onClick={onClose}
             disabled={saving}
           >
@@ -217,33 +217,33 @@ export function TaskEditPanel({
 
         <form className="mt-6 grid gap-5 sm:grid-cols-2" onSubmit={submit}>
           <label className="sm:col-span-2">
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editTaskTitle}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editTaskTitle}</span>
             <input
               required
               maxLength={300}
               value={form.title}
               onChange={(event) => update('title', event.target.value)}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             />
           </label>
 
           <label className="sm:col-span-2">
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editDescription}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editDescription}</span>
             <textarea
               maxLength={5000}
               rows={4}
               value={form.description}
               onChange={(event) => update('description', event.target.value)}
-              className="ui-field-light mt-2 w-full rounded-xl border px-4 py-3 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 w-full rounded-xl px-4 py-3"
             />
           </label>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editAssignee}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editAssignee}</span>
             <select
               value={form.assignedEmployeeId}
               onChange={(event) => update('assignedEmployeeId', event.target.value)}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             >
               <option value="">{t.tasks.unassigned}</option>
               {options.employees.map((employee) => (
@@ -252,7 +252,7 @@ export function TaskEditPanel({
             </select>
           </label>
 
-          <fieldset className="space-y-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4 sm:col-span-2">
+          <fieldset className="ui-management-inset space-y-4 rounded-2xl border p-4 sm:col-span-2">
             <label className="flex min-h-11 items-center gap-3">
               <input
                 type="checkbox"
@@ -260,14 +260,14 @@ export function TaskEditPanel({
                 onChange={(event) => update('countRequired', event.target.checked)}
                 className="h-5 w-5"
               />
-              <span className="text-sm font-semibold text-slate-100">
+              <span className="text-sm font-semibold text-[var(--ui-text-primary)]">
                 {t.evidenceC5.requireCount}
               </span>
             </label>
             {form.countRequired && <>
               <div className="grid gap-4 sm:grid-cols-2">
                 <label>
-                  <span className="text-sm font-semibold text-slate-200">
+                  <span className="text-sm font-semibold text-[var(--ui-text-primary)]">
                     {t.evidenceC5.countLabel}
                   </span>
                   <input
@@ -275,11 +275,11 @@ export function TaskEditPanel({
                     maxLength={120}
                     value={form.countLabel}
                     onChange={(event) => update('countLabel', event.target.value)}
-                    className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+                    className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
                   />
                 </label>
                 <label>
-                  <span className="text-sm font-semibold text-slate-200">
+                  <span className="text-sm font-semibold text-[var(--ui-text-primary)]">
                     {t.evidenceC5.unit}
                   </span>
                   <input
@@ -289,7 +289,7 @@ export function TaskEditPanel({
                     value={form.countUnit}
                     onChange={(event) => update('countUnit', event.target.value.toLowerCase())}
                     list="task-evidence-count-units"
-                    className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+                    className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
                   />
                   <datalist id="task-evidence-count-units">
                     {['bags', 'pieces', 'boxes', 'bottles', 'kilograms', 'litres', 'trays']
@@ -298,7 +298,7 @@ export function TaskEditPanel({
                 </label>
               </div>
               <label className="block">
-                <span className="text-sm font-semibold text-slate-200">
+                <span className="text-sm font-semibold text-[var(--ui-text-primary)]">
                   {t.evidenceC5.instructions}
                 </span>
                 <textarea
@@ -306,7 +306,7 @@ export function TaskEditPanel({
                   rows={3}
                   value={form.countInstructions}
                   onChange={(event) => update('countInstructions', event.target.value)}
-                  className="ui-field-light mt-2 w-full rounded-xl border px-4 py-3 outline-none focus:border-cyan-400"
+                  className="ui-field mt-2 w-full rounded-xl px-4 py-3"
                 />
               </label>
               <div className="flex flex-wrap gap-5">
@@ -320,7 +320,7 @@ export function TaskEditPanel({
                     )}
                     className="h-5 w-5"
                   />
-                  <span className="text-sm text-slate-200">
+                  <span className="text-sm text-[var(--ui-text-secondary)]">
                     {t.evidenceC5.requestDamaged}
                   </span>
                 </label>
@@ -331,7 +331,7 @@ export function TaskEditPanel({
                     onChange={(event) => update('allowDecimals', event.target.checked)}
                     className="h-5 w-5"
                   />
-                  <span className="text-sm text-slate-200">
+                  <span className="text-sm text-[var(--ui-text-secondary)]">
                     {t.evidenceC5.allowDecimals}
                   </span>
                 </label>
@@ -340,11 +340,11 @@ export function TaskEditPanel({
           </fieldset>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editLocation}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editLocation}</span>
             <select
               value={form.locationId}
               onChange={(event) => update('locationId', event.target.value)}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             >
               <option value="">{t.tasks.editNoLocation}</option>
               {options.locations.map((location) => (
@@ -354,11 +354,11 @@ export function TaskEditPanel({
           </label>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editPriority}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editPriority}</span>
             <select
               value={form.priority}
               onChange={(event) => update('priority', event.target.value as TaskListItem['priority'])}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             >
               {(['critical', 'high', 'medium', 'low'] as const).map((priority) => (
                 <option key={priority} value={priority}>{t.priority[priority]}</option>
@@ -367,12 +367,12 @@ export function TaskEditPanel({
           </label>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editStatus}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editStatus}</span>
             <select
               value={form.status}
               disabled={isTerminal}
               onChange={(event) => update('status', event.target.value as TaskListItem['status'])}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             >
               {statusOptions.map((status) => (
                 <option key={status} value={status}>{t.status[status]}</option>
@@ -381,23 +381,23 @@ export function TaskEditPanel({
           </label>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editDueDate}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editDueDate}</span>
             <input
               type="date"
               value={form.dueDate}
               onChange={(event) => update('dueDate', event.target.value)}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             />
           </label>
 
           <label>
-            <span className="text-sm font-semibold text-slate-200">{t.tasks.editDueTime}</span>
+            <span className="text-sm font-semibold text-[var(--ui-text-primary)]">{t.tasks.editDueTime}</span>
             <input
               type="time"
               value={form.dueTime}
               disabled={!form.dueDate}
               onChange={(event) => update('dueTime', event.target.value)}
-              className="ui-field-light mt-2 min-h-12 w-full rounded-xl border px-4 outline-none focus:border-cyan-400"
+              className="ui-field mt-2 min-h-12 w-full rounded-xl px-4"
             />
           </label>
 
