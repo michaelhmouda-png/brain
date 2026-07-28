@@ -17,6 +17,7 @@ export type TaskEditErrorCode =
   | 'TASK_EDIT_LIFECYCLE_CONFLICT'
   | 'TASK_EDIT_ASSIGNEE_INVALID'
   | 'TASK_EDIT_LOCATION_INVALID'
+  | 'TASK_EDIT_COUNT_REQUIREMENT_LOCKED'
   | 'TASK_EDIT_INPUT_INVALID'
   | 'TASK_EDIT_UNAVAILABLE';
 
@@ -56,9 +57,13 @@ function mapDatabaseError(error: { message?: string; code?: string } | null): Ta
   if (message.includes('TASK_EDIT_LOCATION_INVALID')) {
     return new TaskEditServiceError('TASK_EDIT_LOCATION_INVALID', 400);
   }
+  if (message.includes('COUNT_REQUIREMENT_LOCKED_BY_EVIDENCE')) {
+    return new TaskEditServiceError('TASK_EDIT_COUNT_REQUIREMENT_LOCKED', 409);
+  }
   if (
     message.includes('TASK_EDIT_INPUT_INVALID')
     || message.includes('TASK_EDIT_TIMEZONE_INVALID')
+    || message.includes('COUNT_REQUIREMENT_INVALID')
     || error?.code === '22P02'
     || error?.code === '22007'
     || error?.code === '22008'
@@ -108,7 +113,26 @@ async function loadUpdatedTaskProjection(
     language,
     tasks: [{ id: tasks[0].id, title: tasks[0].title, description: tasks[0].description }],
   });
-  return { ...tasks[0], ...localizations.get(tasks[0].id) };
+  const { data: requirementRows, error: requirementError } = await authenticated.rpc(
+    'list_my_task_evidence_count_requirements',
+  );
+  if (requirementError) throw new TaskEditServiceError('TASK_EDIT_UNAVAILABLE', 500);
+  const requirementRow = Array.isArray(requirementRows)
+    ? requirementRows.find((row) =>
+        typeof row === 'object'
+        && row !== null
+        && row.task_id === taskId)
+    : null;
+  return {
+    ...tasks[0],
+    ...localizations.get(tasks[0].id),
+    countRequirement: requirementRow
+      && typeof requirementRow === 'object'
+      && 'requirement' in requirementRow
+      && typeof requirementRow.requirement === 'object'
+      ? requirementRow.requirement as TaskListItem['countRequirement']
+      : null,
+  };
 }
 
 export async function updateManagementTask(
@@ -146,22 +170,28 @@ export async function updateManagementTask(
     throw new TaskEditServiceError('TASK_EDIT_INPUT_INVALID', 400);
   }
 
-  const canonicalPatch = canonicalizeTaskEditPatch(
-    input.patch,
+  const updatesCountRequirement = Object.hasOwn(input.patch, 'countRequirement');
+  const { countRequirement: requestedCountRequirement, ...taskPatch } = input.patch;
+  const canonicalTaskPatch = canonicalizeTaskEditPatch(
+    taskPatch,
     {
       dueDate: typeof currentTask.due_date === 'string' ? currentTask.due_date : null,
       dueAt: typeof currentTask.due_at === 'string' ? currentTask.due_at : null,
     },
     companyTimezone,
   );
-
-  const { data, error } = await serviceRole.rpc('update_management_task', {
-    p_actor_profile_id: authorization.profileId,
-    p_company_id: authorization.companyId,
-    p_task_id: input.taskId,
-    p_expected_updated_at: input.expectedUpdatedAt,
-    p_patch: canonicalPatch,
-  });
+  const { data, error } = await serviceRole.rpc(
+    'update_management_task_with_count_requirement',
+    {
+      p_actor_profile_id: authorization.profileId,
+      p_company_id: authorization.companyId,
+      p_task_id: input.taskId,
+      p_expected_updated_at: input.expectedUpdatedAt,
+      p_patch: canonicalTaskPatch,
+      p_count_requirement: requestedCountRequirement ?? null,
+      p_update_count_requirement: updatesCountRequirement,
+    },
+  );
   if (error) throw mapDatabaseError(error);
   const result = Array.isArray(data) ? data[0] : data;
   if (

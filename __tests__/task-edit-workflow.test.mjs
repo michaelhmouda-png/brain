@@ -171,7 +171,10 @@ test('RPC is service-role-only with owner postgres and empty search_path', () =>
   assert.match(migration, /REVOKE ALL ON FUNCTION public\.update_management_task\([\s\S]*FROM PUBLIC, anon, authenticated, service_role/);
   assert.match(migration, /GRANT EXECUTE ON FUNCTION public\.update_management_task\([\s\S]*TO service_role/);
   assert.doesNotMatch(migration, /GRANT EXECUTE[\s\S]*TO authenticated/);
-  assert.match(service, /createSupabase|serviceRole\.rpc\('update_management_task'/);
+  assert.match(
+    service,
+    /createSupabase|serviceRole\.rpc\(\s*'update_management_task(?:_with_count_requirement)?'/,
+  );
 });
 
 test('generic edit cannot complete, reopen, or mutate terminal tasks', () => {

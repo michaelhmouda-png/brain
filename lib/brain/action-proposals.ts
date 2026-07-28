@@ -189,6 +189,43 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
       }
       p.due_at = new Date(String(p.due_at)).toISOString();
     }
+    if (i.count_requirement !== undefined) {
+      const count = object(i.count_requirement);
+      const allowed = [
+        'countRequired',
+        'countLabel',
+        'unit',
+        'damagedQuantityRequested',
+        'allowDecimals',
+        'instructions',
+      ];
+      const label = string(count, 'countLabel', true);
+      const unit = string(count, 'unit', true);
+      const instructions = count.instructions === null
+        ? null
+        : string(count, 'instructions');
+      if (
+        Object.keys(count).some((key) => !allowed.includes(key))
+        || count.countRequired !== true
+        || !label
+        || label.length > 120
+        || !unit
+        || !/^[a-z][a-z0-9_-]{0,31}$/.test(unit)
+        || typeof count.damagedQuantityRequested !== 'boolean'
+        || typeof count.allowDecimals !== 'boolean'
+        || (instructions !== null && instructions !== undefined && instructions.length > 1000)
+      ) {
+        throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+      }
+      p.count_requirement = {
+        countRequired: true,
+        countLabel: label,
+        unit,
+        damagedQuantityRequested: count.damagedQuantityRequested,
+        allowDecimals: count.allowDecimals,
+        instructions: instructions ?? null,
+      };
+    }
   }
   for (const key of ['start_time','end_time']) if (i[key] !== undefined) { const v=string(i,key,a==='create_shift'); if (!v || !time.test(v)) throw new Error('INVALID_PROPOSAL_ARGUMENTS'); p[key]=v; }
   if (a === 'create_shift') {

@@ -12,6 +12,7 @@ import {
   type TaskEditOptions,
 } from '@/lib/task-edit';
 import { TaskEditServiceError, updateManagementTask } from '@/lib/task-edit.server';
+import type { TaskEvidenceCountRequirement } from '@/lib/task-evidence-submission';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -82,7 +83,32 @@ export async function GET() {
       language,
       tasks: tasks.map((task) => ({ id: task.id, title: task.title, description: task.description })),
     });
-    const localizedTasks = tasks.map((task) => ({ ...task, ...localizations.get(task.id) }));
+    const { data: countRows, error: countError } = await supabase.rpc(
+      'list_my_task_evidence_count_requirements',
+    );
+    if (countError) throw new Error('TASK_COUNT_REQUIREMENTS_QUERY_FAILED');
+    const countByTask = new Map<string, TaskEvidenceCountRequirement>();
+    if (Array.isArray(countRows)) {
+      for (const row of countRows) {
+        if (
+          typeof row === 'object'
+          && row !== null
+          && typeof row.task_id === 'string'
+          && typeof row.requirement === 'object'
+          && row.requirement !== null
+        ) {
+          countByTask.set(
+            row.task_id,
+            row.requirement as TaskEvidenceCountRequirement,
+          );
+        }
+      }
+    }
+    const localizedTasks = tasks.map((task) => ({
+      ...task,
+      ...localizations.get(task.id),
+      countRequirement: countByTask.get(task.id) ?? null,
+    }));
 
     let editOptions: TaskEditOptions | null = null;
     if (isTaskEditRole(authorization.role)) {

@@ -18,6 +18,15 @@ export type TaskListItem = {
   } | null;
   createdAt: string;
   updatedAt: string;
+  countRequirement?: {
+    countRequired: boolean;
+    countLabel: string;
+    unit: string;
+    damagedQuantityRequested: boolean;
+    allowDecimals: boolean;
+    instructions: string | null;
+    version: number;
+  } | null;
 };
 
 type QueryResult = {
@@ -57,6 +66,7 @@ export function taskListItemFromPayload(value: unknown): TaskListItem | null {
   if (!row) return null;
   const assigned = record(row.assignedEmployee);
   const location = record(row.location);
+  const countRequirement = record(row.countRequirement);
   const priority = optionalString(row, 'priority');
   const status = optionalString(row, 'status');
   if (
@@ -98,6 +108,20 @@ export function taskListItemFromPayload(value: unknown): TaskListItem | null {
         : null,
       createdAt: requiredString(row, 'createdAt'),
       updatedAt: requiredString(row, 'updatedAt'),
+      countRequirement: countRequirement
+        ? {
+            countRequired: countRequirement.countRequired === true,
+            countLabel: requiredString(countRequirement, 'countLabel'),
+            unit: requiredString(countRequirement, 'unit'),
+            damagedQuantityRequested:
+              countRequirement.damagedQuantityRequested === true,
+            allowDecimals: countRequirement.allowDecimals === true,
+            instructions: optionalString(countRequirement, 'instructions'),
+            version: typeof countRequirement.version === 'number'
+              ? countRequirement.version
+              : Number(countRequirement.version),
+          }
+        : null,
     };
   } catch {
     return null;

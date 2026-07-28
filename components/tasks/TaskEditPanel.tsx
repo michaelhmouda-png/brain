@@ -16,6 +16,12 @@ type FormState = {
   dueDate: string;
   dueTime: string;
   locationId: string;
+  countRequired: boolean;
+  countLabel: string;
+  countUnit: string;
+  countInstructions: string;
+  damagedQuantityRequested: boolean;
+  allowDecimals: boolean;
 };
 
 function formFromTask(task: TaskListItem): FormState {
@@ -33,6 +39,12 @@ function formFromTask(task: TaskListItem): FormState {
     dueDate: deadline.dueDate,
     dueTime: deadline.dueTime,
     locationId: task.location?.id ?? '',
+    countRequired: task.countRequirement?.countRequired === true,
+    countLabel: task.countRequirement?.countLabel ?? '',
+    countUnit: task.countRequirement?.unit ?? 'pieces',
+    countInstructions: task.countRequirement?.instructions ?? '',
+    damagedQuantityRequested: task.countRequirement?.damagedQuantityRequested ?? false,
+    allowDecimals: task.countRequirement?.allowDecimals ?? false,
   };
 }
 
@@ -104,6 +116,18 @@ export function TaskEditPanel({
             dueDate: form.dueDate || null,
             dueTime: form.dueTime || null,
             locationId: form.locationId || null,
+            countRequirement: form.countRequired
+              ? {
+                  countRequired: true,
+                  countLabel: form.countLabel,
+                  unit: form.countUnit,
+                  damagedQuantityRequested: form.damagedQuantityRequested,
+                  allowDecimals: form.allowDecimals,
+                  instructions: form.countInstructions.trim()
+                    ? form.countInstructions
+                    : null,
+                }
+              : null,
           },
         }),
       });
@@ -227,6 +251,93 @@ export function TaskEditPanel({
               ))}
             </select>
           </label>
+
+          <fieldset className="space-y-4 rounded-2xl border border-cyan-400/20 bg-cyan-400/5 p-4 sm:col-span-2">
+            <label className="flex min-h-11 items-center gap-3">
+              <input
+                type="checkbox"
+                checked={form.countRequired}
+                onChange={(event) => update('countRequired', event.target.checked)}
+                className="h-5 w-5"
+              />
+              <span className="text-sm font-semibold text-slate-100">
+                {t.evidenceC5.requireCount}
+              </span>
+            </label>
+            {form.countRequired && <>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <label>
+                  <span className="text-sm font-semibold text-slate-200">
+                    {t.evidenceC5.countLabel}
+                  </span>
+                  <input
+                    required
+                    maxLength={120}
+                    value={form.countLabel}
+                    onChange={(event) => update('countLabel', event.target.value)}
+                    className="mt-2 min-h-12 w-full rounded-xl border border-white/15 bg-white/5 px-4 text-white outline-none focus:border-cyan-400"
+                  />
+                </label>
+                <label>
+                  <span className="text-sm font-semibold text-slate-200">
+                    {t.evidenceC5.unit}
+                  </span>
+                  <input
+                    required
+                    maxLength={32}
+                    pattern="[a-z][a-z0-9_-]{0,31}"
+                    value={form.countUnit}
+                    onChange={(event) => update('countUnit', event.target.value.toLowerCase())}
+                    list="task-evidence-count-units"
+                    className="mt-2 min-h-12 w-full rounded-xl border border-white/15 bg-white/5 px-4 text-white outline-none focus:border-cyan-400"
+                  />
+                  <datalist id="task-evidence-count-units">
+                    {['bags', 'pieces', 'boxes', 'bottles', 'kilograms', 'litres', 'trays']
+                      .map((unit) => <option key={unit} value={unit} />)}
+                  </datalist>
+                </label>
+              </div>
+              <label className="block">
+                <span className="text-sm font-semibold text-slate-200">
+                  {t.evidenceC5.instructions}
+                </span>
+                <textarea
+                  maxLength={1000}
+                  rows={3}
+                  value={form.countInstructions}
+                  onChange={(event) => update('countInstructions', event.target.value)}
+                  className="mt-2 w-full rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-white outline-none focus:border-cyan-400"
+                />
+              </label>
+              <div className="flex flex-wrap gap-5">
+                <label className="flex min-h-11 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={form.damagedQuantityRequested}
+                    onChange={(event) => update(
+                      'damagedQuantityRequested',
+                      event.target.checked,
+                    )}
+                    className="h-5 w-5"
+                  />
+                  <span className="text-sm text-slate-200">
+                    {t.evidenceC5.requestDamaged}
+                  </span>
+                </label>
+                <label className="flex min-h-11 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={form.allowDecimals}
+                    onChange={(event) => update('allowDecimals', event.target.checked)}
+                    className="h-5 w-5"
+                  />
+                  <span className="text-sm text-slate-200">
+                    {t.evidenceC5.allowDecimals}
+                  </span>
+                </label>
+              </div>
+            </>}
+          </fieldset>
 
           <label>
             <span className="text-sm font-semibold text-slate-200">{t.tasks.editLocation}</span>

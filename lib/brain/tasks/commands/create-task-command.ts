@@ -11,6 +11,7 @@ import type { CommandDefinition, CommandEnvelope } from '../../kernel/commands/c
 import { createCommandEnvelope } from '../../kernel/commands/command-envelope.ts';
 import { CommandError } from '../../kernel/commands/command-errors.ts';
 import type { BrainRequestContext } from '../../kernel/request-context.ts';
+import type { TaskEvidenceCountRequirement } from '../../../task-evidence-submission';
 
 export interface CreateTaskCommandPayload {
   readonly title: string;
@@ -22,6 +23,7 @@ export interface CreateTaskCommandPayload {
   readonly urgency: string | null;
   readonly dueDate: string | null;
   readonly dueAt: string | null;
+  readonly countRequirement?: Omit<TaskEvidenceCountRequirement, 'version'>;
 }
 
 export type CreateTaskCommand = CommandEnvelope<'task.create', CreateTaskCommandPayload>;
@@ -60,6 +62,24 @@ export function canonicalizeCreateTaskPayload(input: unknown): CreateTaskCommand
   }
   const priorityInput = optionalString(raw.priority);
   const statusInput = optionalString(raw.status);
+  const countRequirement = raw.count_requirement === undefined
+    ? null
+    : raw.count_requirement;
+  if (
+    countRequirement !== null
+    && (
+      typeof countRequirement !== 'object'
+      || Array.isArray(countRequirement)
+      || (countRequirement as Record<string, unknown>).countRequired !== true
+      || typeof (countRequirement as Record<string, unknown>).countLabel !== 'string'
+      || typeof (countRequirement as Record<string, unknown>).unit !== 'string'
+      || !/^[a-z][a-z0-9_-]{0,31}$/.test(
+        String((countRequirement as Record<string, unknown>).unit),
+      )
+    )
+  ) {
+    throw new CommandError('INVALID_COMMAND_PAYLOAD');
+  }
   const priority = priorityInput === null
     ? (urgency ? mapPriorityToDatabase(urgency).dbValue : TASK_PRIORITY.MEDIUM)
     : canonicalPriority(priorityInput);
@@ -76,6 +96,12 @@ export function canonicalizeCreateTaskPayload(input: unknown): CreateTaskCommand
     urgency,
     dueDate: dueDateInput && RELATIVE_DATE_PATTERN.test(dueDateInput) ? dueDateInput.toLowerCase() : dueDateInput,
     dueAt: dueAtInput ? new Date(dueAtInput).toISOString() : null,
+    ...(countRequirement
+      ? {
+          countRequirement:
+            countRequirement as Omit<TaskEvidenceCountRequirement, 'version'>,
+        }
+      : {}),
   };
 }
 

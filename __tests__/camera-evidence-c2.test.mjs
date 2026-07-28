@@ -105,8 +105,11 @@ test('evidence selection permits only active task options and disables upload wh
   const component = read('components/brain/TaskEvidenceAttachment.tsx');
   assert.match(component, /task\.status === 'pending' \|\| task\.status === 'in_progress'/);
   assert.match(component, /tasksLoaded && tasks\.length === 0[\s\S]*t\.evidence\.noActiveTasks/);
-  assert.match(component, /disabled=\{tasks\.length === 0\}/);
-  assert.match(component, /disabled=\{!selected \|\| !taskId \|\| uploading \|\| tasks\.length === 0\}/);
+  assert.match(component, /tasks\.length === 0[\s\S]*\|\| uploading/);
+  assert.match(
+    component,
+    /disabled=\{[\s\S]{0,100}selected\.length === 0[\s\S]{0,100}\|\| !taskId[\s\S]{0,100}\|\| uploading[\s\S]{0,100}\|\| tasks\.length === 0/,
+  );
   assert.doesNotMatch(component, /status\.replaceAll/);
 });
 

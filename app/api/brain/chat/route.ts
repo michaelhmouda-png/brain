@@ -271,6 +271,14 @@ interface CreateTaskInput {
   due_time?: string;                // company-local 24-hour time (HH:mm), only when explicitly requested
   status?: 'pending' | 'in_progress' | 'completed' | 'cancelled';
   confirmed?: boolean;              // true = execute; false or undefined = show preview
+  count_requirement?: {
+    countRequired: true;
+    countLabel: string;
+    unit: string;
+    damagedQuantityRequested: boolean;
+    allowDecimals: boolean;
+    instructions: string | null;
+  };
 }
 
 interface UpdateTaskInput {
@@ -808,6 +816,31 @@ const TOOLS = [
           type: 'string',
           pattern: '^([01]\\d|2[0-3]):[0-5]\\d$',
           description: 'Company-local due time in 24-hour HH:mm format. Include only when the user explicitly supplies a time.',
+        },
+        count_requirement: {
+          type: 'object',
+          additionalProperties: false,
+          description: 'Optional canonical structured-count evidence requirement.',
+          properties: {
+            countRequired: { type: 'boolean', enum: [true] },
+            countLabel: { type: 'string', minLength: 1, maxLength: 120 },
+            unit: {
+              type: 'string',
+              pattern: '^[a-z][a-z0-9_-]{0,31}$',
+              description: 'Canonical unit such as bags, pieces, boxes, bottles, kilograms, litres, or trays.',
+            },
+            damagedQuantityRequested: { type: 'boolean' },
+            allowDecimals: { type: 'boolean' },
+            instructions: { type: ['string', 'null'], maxLength: 1000 },
+          },
+          required: [
+            'countRequired',
+            'countLabel',
+            'unit',
+            'damagedQuantityRequested',
+            'allowDecimals',
+            'instructions',
+          ],
         },
       },
       required: ['title'],
@@ -2305,6 +2338,29 @@ class ToolHandlers {
     const priorityMapping = mapPriorityToDatabase(priorityInput);
     const priorityDbValue = priorityMapping.dbValue;      // lowercase for database: 'critical', 'high', 'medium', 'low'
     const priorityDisplay = priorityMapping.displayValue; // capitalized for UI: 'Critical', 'High', etc.
+    const countRequirement = params.count_requirement;
+    if (
+      countRequirement !== undefined
+      && (
+        countRequirement.countRequired !== true
+        || typeof countRequirement.countLabel !== 'string'
+        || !countRequirement.countLabel.trim()
+        || countRequirement.countLabel.trim().length > 120
+        || typeof countRequirement.unit !== 'string'
+        || !/^[a-z][a-z0-9_-]{0,31}$/.test(countRequirement.unit)
+        || typeof countRequirement.damagedQuantityRequested !== 'boolean'
+        || typeof countRequirement.allowDecimals !== 'boolean'
+        || !(
+          countRequirement.instructions === null
+          || (
+            typeof countRequirement.instructions === 'string'
+            && countRequirement.instructions.trim().length <= 1000
+          )
+        )
+      )
+    ) {
+      return { error: 'The structured count requirement is invalid.' };
+    }
 
     // 4. Return validation errors if any
     if (employeeResolutionError) {
@@ -2327,6 +2383,12 @@ class ToolHandlers {
           { label: 'Due', value: resolvedDueAt ? `${resolvedDueDate} ${resolvedDueTime} (${dueTimezone})` : resolvedDueDate || '(no due date)' },
           { label: 'Priority', value: priorityDisplay },
           { label: 'Status', value: previewStatus },
+          ...(countRequirement
+            ? [{
+                label: 'Evidence count',
+                value: `${countRequirement.countLabel.trim()} (${countRequirement.unit})`,
+              }]
+            : []),
         ],
         canonicalArguments: {
           title: params.title.trim(),
@@ -2340,6 +2402,13 @@ class ToolHandlers {
             due_local: `${resolvedDueDate}T${resolvedDueTime}`,
             due_at: resolvedDueAt,
             timezone: dueTimezone,
+          } : {}),
+          ...(countRequirement ? {
+            count_requirement: {
+              ...countRequirement,
+              countLabel: countRequirement.countLabel.trim(),
+              instructions: countRequirement.instructions?.trim() || null,
+            },
           } : {}),
         },
         message: `Please confirm this task:

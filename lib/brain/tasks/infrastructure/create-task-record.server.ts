@@ -74,9 +74,13 @@ async function createTaskRecord(
     dueAt: input.payload.dueAt,
   };
   const event = createTaskCreatedEvent({ command: input.command, result: preparedResult });
-  const rpcName = preparedResult.dueAt
-    ? 'create_task_with_outbox_event_due_at'
-    : 'create_task_with_outbox_event';
+  const rpcName = input.payload.countRequirement
+    ? preparedResult.dueAt
+      ? 'create_task_with_count_requirement_and_outbox_event_due_at'
+      : 'create_task_with_count_requirement_and_outbox_event'
+    : preparedResult.dueAt
+      ? 'create_task_with_outbox_event_due_at'
+      : 'create_task_with_outbox_event';
   const rpcArguments = {
     p_task_id: taskId,
     p_actor_id: input.actorId,
@@ -101,6 +105,9 @@ async function createTaskRecord(
     p_idempotency_key: input.command.idempotencyKey,
     p_event_payload: event.payload,
     p_occurred_at: event.occurredAt,
+    ...(input.payload.countRequirement
+      ? { p_count_requirement: input.payload.countRequirement }
+      : {}),
   };
   const { data, error } = await serviceSupabase.rpc(rpcName, rpcArguments);
   const row = Array.isArray(data) ? data[0] : data;

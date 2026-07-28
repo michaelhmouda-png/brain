@@ -5,6 +5,10 @@ import {
   type TaskStatus,
 } from './brain/taskConstants.ts';
 import { localDateTimeToInstant } from './brain/tasks/batch/task-batch-time.ts';
+import {
+  isTaskEvidenceCountUnit,
+  type TaskEvidenceCountRequirement,
+} from './task-evidence-submission.ts';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -25,6 +29,7 @@ export type TaskEditPatch = {
   dueDate?: string | null;
   dueTime?: string | null;
   locationId?: string | null;
+  countRequirement?: Omit<TaskEvidenceCountRequirement, 'version'> | null;
 };
 
 export type TaskEditRequest = {
@@ -134,6 +139,7 @@ export function parseTaskEditRequest(value: unknown): TaskEditRequest {
     'dueDate',
     'dueTime',
     'locationId',
+    'countRequirement',
   ]);
   const keys = Object.keys(value.patch);
   if (keys.length === 0 || keys.some((key) => !allowedPatchKeys.has(key))) {
@@ -181,6 +187,53 @@ export function parseTaskEditRequest(value: unknown): TaskEditRequest {
   }
   if (Object.hasOwn(value.patch, 'locationId')) {
     patch.locationId = parseNullableUuid(value.patch.locationId, 'locationId');
+  }
+  if (Object.hasOwn(value.patch, 'countRequirement')) {
+    if (value.patch.countRequirement === null) {
+      patch.countRequirement = null;
+    } else {
+      const requirement = isRecord(value.patch.countRequirement)
+        ? value.patch.countRequirement
+        : null;
+      const allowed = new Set([
+        'countRequired',
+        'countLabel',
+        'unit',
+        'damagedQuantityRequested',
+        'allowDecimals',
+        'instructions',
+      ]);
+      if (
+        !requirement
+        || Object.keys(requirement).some((key) => !allowed.has(key))
+        || requirement.countRequired !== true
+        || typeof requirement.countLabel !== 'string'
+        || !requirement.countLabel.trim()
+        || requirement.countLabel.trim().length > 120
+        || !isTaskEvidenceCountUnit(requirement.unit)
+        || typeof requirement.damagedQuantityRequested !== 'boolean'
+        || typeof requirement.allowDecimals !== 'boolean'
+        || !(
+          requirement.instructions === null
+          || (
+            typeof requirement.instructions === 'string'
+            && requirement.instructions.trim().length <= 1000
+          )
+        )
+      ) {
+        throw new TaskEditInputError('countRequirement');
+      }
+      patch.countRequirement = {
+        countRequired: true,
+        countLabel: requirement.countLabel.trim(),
+        unit: requirement.unit,
+        damagedQuantityRequested: requirement.damagedQuantityRequested,
+        allowDecimals: requirement.allowDecimals,
+        instructions: typeof requirement.instructions === 'string'
+          ? requirement.instructions.trim() || null
+          : null,
+      };
+    }
   }
 
   return {
