@@ -155,18 +155,18 @@ export default function TasksPage() {
     : null;
 
   return (
-    <div className="space-y-6 rounded-[28px] border border-white/10 bg-white/5 p-4 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl sm:space-y-8 sm:rounded-[36px] sm:p-8">
+    <div className="space-y-6 rounded-[28px] border border-black bg-white p-4 text-black shadow-[0_20px_60px_rgba(0,0,0,0.12)] sm:space-y-8 sm:rounded-[36px] sm:p-8">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <p className="text-sm uppercase tracking-[0.3em] text-cyan-300">{t.tasks.eyebrow}</p>
-          <h1 className="mt-3 text-3xl font-black text-white sm:text-4xl">{t.tasks.title}</h1>
-          <p className="mt-3 max-w-2xl text-slate-300">{t.tasks.description}</p>
+          <p className="text-sm font-semibold uppercase tracking-[0.3em] text-black">{t.tasks.eyebrow}</p>
+          <h1 className="mt-3 text-3xl font-black text-black sm:text-4xl">{t.tasks.title}</h1>
+          <p className="mt-3 max-w-2xl text-zinc-800">{t.tasks.description}</p>
         </div>
         <button
           type="button"
           onClick={() => void loadTasks()}
           disabled={loading}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/10 px-4 text-sm font-semibold text-white hover:bg-white/15 disabled:opacity-60"
+          className="ui-button-secondary text-sm"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
           {t.tasks.refresh}
@@ -175,7 +175,7 @@ export default function TasksPage() {
 
       {loading && tasks.length === 0 && (
         <div aria-label={t.tasks.loading} className="space-y-3" role="status">
-          {[1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl bg-white/5" />)}
+          {[1, 2, 3].map((item) => <div key={item} className="h-32 animate-pulse rounded-2xl border border-black bg-zinc-100" />)}
         </div>
       )}
 
@@ -185,44 +185,44 @@ export default function TasksPage() {
             <p className="font-semibold">{error.authorization ? t.tasks.access : t.tasks.unable}</p>
             <p className="mt-1 text-sm">{error.message}</p>
           </div></div>
-          {!error.authorization && <button type="button" onClick={() => void loadTasks()} className="mt-4 min-h-11 rounded-xl bg-red-100 px-4 text-sm font-semibold text-red-950">{t.tasks.retry}</button>}
+          {!error.authorization && <button type="button" onClick={() => void loadTasks()} className="ui-button-secondary mt-4 text-sm">{t.tasks.retry}</button>}
         </div>
       )}
 
       {!loading && !error && tasks.length === 0 && (
-        <div className="rounded-3xl border border-dashed border-white/15 bg-slate-950/50 p-8 text-center">
-          <CheckCircle2 className="mx-auto h-8 w-8 text-cyan-300" />
-          <p className="mt-4 text-lg font-semibold text-white">{t.tasks.emptyTitle}</p>
-          <p className="mt-2 text-sm text-slate-400">{t.tasks.empty}</p>
+        <div className="rounded-3xl border border-dashed border-black bg-white p-8 text-center">
+          <CheckCircle2 className="mx-auto h-8 w-8 text-black" />
+          <p className="mt-4 text-lg font-semibold text-black">{t.tasks.emptyTitle}</p>
+          <p className="mt-2 text-sm text-zinc-800">{t.tasks.empty}</p>
         </div>
       )}
 
       {!error && tasks.length > 0 && <div className="grid gap-3 xl:grid-cols-2">
         {tasks.map((task) => (
-          <article key={task.id} className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/60 p-4 sm:p-5">
+          <article key={task.id} className="min-w-0 rounded-2xl border border-black bg-white p-4 text-black sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">{task.displayTitle ? <>
-                <h2 className="break-words text-lg font-bold text-white">{task.displayTitle}</h2>
-                {task.displayDescription && <p className="mt-2 break-words text-sm text-slate-300">{task.displayDescription}</p>}
-              </> : <div className="rounded-xl border border-amber-400/20 bg-amber-500/10 p-3 text-sm text-amber-100" role="status">
+                <h2 className="break-words text-lg font-bold text-black">{task.displayTitle}</h2>
+                {task.displayDescription && <p className="mt-2 break-words text-sm text-zinc-800">{task.displayDescription}</p>}
+              </> : <div className="ui-alert ui-alert-warning rounded-xl p-3 text-sm" role="status">
                 <p>{t.tasks.translationPending}</p>
-                <button type="button" onClick={() => void loadTasks()} className="mt-2 min-h-11 rounded-lg bg-amber-100 px-3 font-semibold text-amber-950">{t.tasks.retry}</button>
+                <button type="button" onClick={() => void loadTasks()} className="ui-button-secondary mt-2 rounded-lg px-3">{t.tasks.retry}</button>
               </div>}
               </div>
               <StatusBadge label={t.priority[task.priority]} tone={task.priority} />
             </div>
-            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-400">
+            <div className="mt-4 flex flex-wrap gap-x-5 gap-y-2 text-sm text-zinc-800">
               <StatusBadge label={t.status[task.status]} tone={statusTone[task.status]} />
               <span className="inline-flex items-center gap-1.5"><UserRound className="h-4 w-4" />{task.assignedEmployee ? `${task.assignedEmployee.firstName} ${task.assignedEmployee.lastName ?? ''}`.trim() : t.tasks.unassigned}</span>
               {task.location && <span className="inline-flex items-center gap-1.5"><MapPin className="h-4 w-4" />{task.location.name}</span>}
               <span className="inline-flex items-center gap-1.5"><CalendarDays className="h-4 w-4" />{formatTaskDeadline(task, language) ?? t.tasks.noDue}</span>
             </div>
-            {role === 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && <button type="button" disabled={completingId === task.id} onClick={() => void completeTask(task.id)} className="mt-4 min-h-11 rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white disabled:opacity-60">{completingId === task.id ? t.tasks.completing : t.tasks.complete}</button>}
+            {role === 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && <button type="button" disabled={completingId === task.id} onClick={() => void completeTask(task.id)} className="ui-button-primary mt-4 text-sm">{completingId === task.id ? t.tasks.completing : t.tasks.complete}</button>}
             {role !== 'employee' && task.status !== 'completed' && task.status !== 'cancelled' && (
               <button
                 type="button"
                 onClick={() => setEditingTaskId(task.id)}
-                className="ui-button-secondary mt-4 text-sm"
+                className="ui-button-primary mt-4 text-sm"
               >
                 <Pencil className="h-4 w-4" />
                 {t.tasks.edit}

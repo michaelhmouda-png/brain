@@ -101,16 +101,16 @@ export function CameraInspectionControl({ snapshotId }: { snapshotId: string }) 
   }
 
   return (
-    <section className="mt-3 rounded-xl border border-violet-400/20 bg-violet-500/5 p-3">
+    <section className="mt-3 rounded-xl border border-black bg-white p-3 text-black">
       <button
         type="button"
         onClick={() => void inspect()}
         disabled={attempted || loading}
-        className="ui-button-secondary min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
+        className="ui-button-primary min-h-11 rounded-xl px-4 font-semibold disabled:cursor-not-allowed"
       >
         {loading ? copy.inspectingWithAi : copy.inspectWithAi}
       </button>
-      <p className="mt-2 text-xs text-slate-400">{copy.inspectionHumanJudgment}</p>
+      <p className="mt-2 text-xs text-zinc-800">{copy.inspectionHumanJudgment}</p>
       {error ? (
         <p role="alert" className="ui-alert ui-alert-error mt-3 break-all rounded-xl p-3 text-xs">
           {copy.inspectionFailed} · {error}
@@ -119,13 +119,13 @@ export function CameraInspectionControl({ snapshotId }: { snapshotId: string }) 
       {inspection ? (
         <div className="mt-3 space-y-3" aria-live="polite">
           <div>
-            <h4 className="font-semibold text-violet-100">{copy.inspectionResult}</h4>
-            <p className="mt-1 text-sm text-slate-200">{inspection.result.scene.summary}</p>
-            <p className="mt-1 text-xs text-slate-400">
+            <h4 className="font-semibold text-black">{copy.inspectionResult}</h4>
+            <p className="mt-1 text-sm text-zinc-900">{inspection.result.scene.summary}</p>
+            <p className="mt-1 text-xs text-zinc-700">
               {inspection.model} · {inspection.processingDurationMs} ms
             </p>
           </div>
-          <pre className="max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-950 p-3 text-xs text-slate-300">
+          <pre className="ui-inverse max-h-96 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-white bg-black p-3 text-xs text-white">
             {JSON.stringify(inspection.result, null, 2)}
           </pre>
           {inspection.warnings.length > 0 ? (

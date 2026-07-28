@@ -56,7 +56,7 @@ export function LoginForm() {
 
   return (
     <div className="w-full max-w-md" lang={language} dir={ar ? 'rtl' : 'ltr'}>
-      <div className="ui-inverse rounded-3xl p-5 backdrop-blur-xl sm:p-8">
+      <div className="ui-auth-card rounded-3xl p-5 shadow-2xl sm:p-8">
         <div className="mb-8">
           <div className="mb-4 flex justify-end gap-2" dir="ltr"><button type="button" onClick={() => setLanguage('en')} aria-pressed={!ar} className={`min-h-11 rounded-xl px-3 ${!ar?'ui-button-primary':'ui-button-secondary'}`}>English</button><button type="button" onClick={() => setLanguage('ar')} aria-pressed={ar} className={`min-h-11 rounded-xl px-3 ${ar?'ui-button-primary':'ui-button-secondary'}`}>العربية</button></div>
           <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-cyan-400/10 text-cyan-300 ring-1 ring-cyan-400/20">
@@ -78,7 +78,7 @@ export function LoginForm() {
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
+              className="ui-field mt-2 w-full rounded-2xl px-4 py-3 transition"
             />
           </div>
 
@@ -93,7 +93,7 @@ export function LoginForm() {
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
-              className="mt-2 w-full rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-white placeholder-slate-500 transition focus:border-cyan-400/50 focus:bg-white/10 focus:outline-none"
+              className="ui-field mt-2 w-full rounded-2xl px-4 py-3 transition"
             />
           </div>
 
@@ -112,10 +112,10 @@ export function LoginForm() {
           </button>
         </form>
 
-        <div className="mt-6 border-t border-white/10 pt-6">
+        <div className="mt-6 border-t border-black pt-6">
           <Link
             href="/forgot-password"
-            className="text-sm text-cyan-400 hover:text-cyan-300 transition"
+            className="ui-link text-sm transition"
           >
             {ar ? 'نسيت كلمة المرور؟' : 'Forgot your password?'}
           </Link>

@@ -82,13 +82,13 @@ export function ReservationDatePicker({
       <button
         type="button"
         onClick={openPicker}
-        className="flex min-h-12 w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-left transition hover:border-white/20 focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field flex min-h-12 w-full items-center gap-3 rounded-xl px-3.5 text-left transition"
         aria-label={label}
       >
-        <CalendarDays className="h-4 w-4 shrink-0 text-cyan-300" />
+        <CalendarDays className="h-4 w-4 shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-bold text-white">{formatVenueDate(value)}</span>
-          <span className="block text-[11px] text-slate-500">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
+          <span className="block truncate text-sm font-bold text-black">{formatVenueDate(value)}</span>
+          <span className="block text-[11px] text-zinc-700">{timezone ? `${timezone} venue date` : 'Venue-local date'}</span>
         </span>
       </button>
 
@@ -110,18 +110,18 @@ export function ReservationDatePicker({
           >
             <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-white/15 sm:hidden" />
             <div className="flex items-center justify-between gap-2">
-              <button type="button" onClick={() => moveMonth(-1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Previous month">
+              <button type="button" onClick={() => moveMonth(-1)} className="ui-button-secondary grid min-h-11 min-w-11 place-items-center rounded-xl p-0" aria-label="Previous month">
                 <ChevronLeft className="h-4 w-4" />
               </button>
               <strong className="text-base">
                 {new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(month)}
               </strong>
-              <button type="button" onClick={() => moveMonth(1)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Next month">
+              <button type="button" onClick={() => moveMonth(1)} className="ui-button-secondary grid min-h-11 min-w-11 place-items-center rounded-xl p-0" aria-label="Next month">
                 <ChevronRight className="h-4 w-4" />
               </button>
             </div>
 
-            <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase text-slate-500">
+            <div className="mt-4 grid grid-cols-7 gap-1 text-center text-[11px] font-bold uppercase text-slate-300">
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day} className="py-1">{day}</span>)}
             </div>
             <div className="mt-1 grid grid-cols-7 gap-1">
@@ -138,10 +138,10 @@ export function ReservationDatePicker({
                     aria-pressed={selected}
                     className={`relative grid min-h-11 place-items-center rounded-xl text-sm font-bold transition ${
                       selected
-                        ? 'bg-cyan-300 text-slate-950'
+                        ? 'border border-white bg-white text-black'
                         : muted
-                          ? 'text-slate-700 hover:bg-white/[0.04]'
-                          : 'text-slate-200 hover:bg-white/[0.08]'
+                          ? 'text-slate-400 hover:bg-slate-900'
+                          : 'text-white hover:bg-slate-900'
                     }`}
                   >
                     {day.getDate()}
@@ -155,16 +155,16 @@ export function ReservationDatePicker({
               <button
                 type="button"
                 onClick={() => { onChange(today); setOpen(false); }}
-                className="min-h-11 flex-1 rounded-xl bg-white px-4 text-sm font-black text-slate-950"
+                className="ui-button-primary min-h-11 flex-1 rounded-xl px-4 text-sm font-black"
               >
                 Today
               </button>
               {allowClear ? (
-                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="min-h-11 rounded-xl border border-white/10 px-4 text-sm font-semibold text-slate-300">
+                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className="ui-button-secondary min-h-11 rounded-xl px-4 text-sm font-semibold">
                   Clear
                 </button>
               ) : null}
-              <button type="button" onClick={() => setOpen(false)} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10" aria-label="Close date picker">
+              <button type="button" onClick={() => setOpen(false)} className="ui-button-secondary grid min-h-11 min-w-11 place-items-center rounded-xl p-0" aria-label="Close date picker">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -199,7 +199,7 @@ export function ReservationTimeInput({
 
   return (
     <label>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">{label}</span>
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white">{label}</span>
       <input
         type="time"
         inputMode="numeric"
@@ -207,12 +207,12 @@ export function ReservationTimeInput({
         list={listId}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1.5 min-h-12 w-full rounded-xl border border-white/10 bg-white/[0.055] px-3.5 text-lg font-bold text-white focus:border-cyan-400/60 focus:outline-none"
+        className="ui-field mt-1.5 min-h-12 w-full rounded-xl px-3.5 text-lg font-bold"
       />
       <datalist id={listId}>
         {suggestions.map((time) => <option value={time} key={time} />)}
       </datalist>
-      <span className="mt-1 block text-[11px] text-slate-500">
+      <span className="mt-1 block text-[11px] text-slate-300">
         {timezone ? `${timezone} · ` : 'Venue-local time · '}{intervalMinutes}-minute suggestions, any minute accepted
       </span>
     </label>
@@ -233,12 +233,12 @@ export function GuestCountInput({
   const numeric = typeof value === 'number' ? value : minimum;
   return (
     <div>
-      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">Number of guests</span>
+      <span className="text-xs font-semibold uppercase tracking-[0.12em] text-white">Number of guests</span>
       <div className="mt-1.5 flex items-stretch gap-2">
         <button
           type="button"
           onClick={() => onChange(Math.max(minimum, numeric - 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
+          className="ui-button-secondary grid min-h-14 min-w-14 place-items-center rounded-xl p-0"
           aria-label="Remove one guest"
         >
           <Minus className="h-5 w-5" />
@@ -252,22 +252,22 @@ export function GuestCountInput({
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
-          className="min-h-14 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.055] px-3 text-center text-2xl font-black text-white focus:border-cyan-400/60 focus:outline-none"
+          className="ui-field min-h-14 min-w-0 flex-1 rounded-xl px-3 text-center text-2xl font-black"
           aria-label="Guest count"
         />
         <button
           type="button"
           onClick={() => onChange(Math.min(maximum, numeric + 1))}
-          className="grid min-h-14 min-w-14 place-items-center rounded-xl border border-white/10 bg-white/[0.04]"
+          className="ui-button-secondary grid min-h-14 min-w-14 place-items-center rounded-xl p-0"
           aria-label="Add one guest"
         >
           <Plus className="h-5 w-5" />
         </button>
-        <button type="button" onClick={() => onChange('')} className="min-h-14 rounded-xl border border-white/10 px-3 text-xs font-semibold text-slate-400">
+        <button type="button" onClick={() => onChange('')} className="ui-button-secondary min-h-14 rounded-xl px-3 text-xs font-semibold">
           Clear
         </button>
       </div>
-      <span className="mt-1 block text-[11px] text-slate-500">Enter any whole number from {minimum} to {maximum}.</span>
+      <span className="mt-1 block text-[11px] text-slate-300">Enter any whole number from {minimum} to {maximum}.</span>
     </div>
   );
 }

@@ -14,7 +14,7 @@ const TRANSITIONS: Record<string, string[]> = {
   seated: ['completed'],
 };
 const inputClass = 'ui-field mt-1.5 min-h-11 w-full rounded-xl px-3.5 text-[15px] transition';
-const labelClass = 'ui-muted text-xs font-semibold uppercase tracking-[0.12em]';
+const labelClass = 'text-xs font-semibold uppercase tracking-[0.12em] text-white';
 const title = (value: string) => value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 
 export type EditableReservation = {
@@ -147,7 +147,7 @@ export function ReservationEditPanel({
       >
         <header className="flex shrink-0 items-start justify-between gap-3 border-b border-white/[0.08] px-4 py-4 sm:px-5">
           <div className="min-w-0">
-            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Reservation summary</p>
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-white">Reservation summary</p>
             <h2 className="mt-1 truncate text-xl font-black">
               {row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : 'Guest'}
             </h2>
@@ -163,7 +163,7 @@ export function ReservationEditPanel({
             {error ? <p role="alert" className="ui-alert ui-alert-error text-sm">{error}</p> : null}
 
             <section>
-              <h3 className="flex items-center gap-2 text-sm font-bold"><UserRound className="h-4 w-4 text-cyan-300" /> Guest</h3>
+              <h3 className="flex items-center gap-2 text-sm font-bold"><UserRound className="h-4 w-4 text-white" /> Guest</h3>
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <label><span className={labelClass}>First name</span><input required maxLength={80} value={form.firstName} onChange={(event) => set('firstName', event.target.value)} className={inputClass} /></label>
                 <label><span className={labelClass}>Last name</span><input required maxLength={80} value={form.lastName} onChange={(event) => set('lastName', event.target.value)} className={inputClass} /></label>
@@ -176,12 +176,12 @@ export function ReservationEditPanel({
             </section>
 
             <section className="border-t border-white/[0.07] pt-5">
-              <h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><UsersRound className="h-4 w-4 text-cyan-300" /> Party</h3>
+              <h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><UsersRound className="h-4 w-4 text-white" /> Party</h3>
               <GuestCountInput value={form.guestCount} onChange={(value) => setForm((current) => ({ ...current, guestCount: value }))} />
             </section>
 
             <section className="space-y-3 border-t border-white/[0.07] pt-5">
-              <h3 className="flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-cyan-300" /> Date and time</h3>
+              <h3 className="flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-white" /> Date and time</h3>
               <ReservationDatePicker value={form.date} onChange={(value) => set('date', value)} timezone={timezone} />
               <ReservationTimeInput value={form.time} onChange={(value) => set('time', value)} timezone={timezone} />
               <label><span className={labelClass}>Expected duration</span><input type="number" inputMode="numeric" min={15} max={720} step={15} required value={form.expectedDurationMinutes} onChange={(event) => set('expectedDurationMinutes', Number(event.target.value))} className={inputClass} /></label>
@@ -203,7 +203,7 @@ export function ReservationEditPanel({
           </div>
         </form>
 
-        <footer className="shrink-0 border-t border-white/[0.08] bg-[#0a0e14]/95 p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
+        <footer className="shrink-0 border-t border-white bg-black p-3.5 pb-[max(0.875rem,env(safe-area-inset-bottom))] sm:px-5">
           <div className="flex gap-2">
             <button type="button" onClick={closeSafely} disabled={saving} className="ui-button-secondary min-h-12 flex-1">Cancel</button>
             <button type="submit" form="reservation-edit-form" disabled={saving || !dirty || form.guestCount === '' || !form.date || !form.time} className="ui-button-primary min-h-12 flex-[1.4]">

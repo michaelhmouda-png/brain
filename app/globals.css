@@ -1,80 +1,101 @@
 @import "tailwindcss";
 
 :root {
-  --background: #f4f3ef;
-  --foreground: #17191c;
-  --brain-canvas: #f4f3ef;
+  --background: #f7f7f5;
+  --foreground: #090909;
+  --brain-canvas: #f7f7f5;
   --brain-surface: #ffffff;
   --brain-surface-muted: #f8f8f6;
-  --brain-ink: #17191c;
-  --brain-muted: #687078;
-  --brain-line: #e5e5e1;
+  --brain-ink: #090909;
+  --brain-muted: #3f3f46;
+  --brain-line: #5f6368;
   --brain-blue: #3568e8;
   --brain-success: #20845b;
   --brain-attention: #c96a14;
   --brain-danger: #c33f3f;
   /* UI Contrast & Accessibility V1 semantic color contract. */
-  --ui-surface-page: #f4f3ef;
+  --ui-surface-page: #f7f7f5;
   --ui-surface-elevated: #ffffff;
   --ui-surface-card: #ffffff;
-  --ui-surface-inset: #f7f7f4;
-  --ui-surface-selected: #e4edf9;
-  --ui-surface-disabled: #d9dde1;
-  --ui-surface-overlay: rgba(7, 12, 20, 0.72);
-  --ui-surface-inverse: #0f172a;
-  --ui-surface-inverse-elevated: #172033;
-  --ui-surface-inverse-inset: #1e293b;
-  --ui-text-primary: #17191c;
-  --ui-text-secondary: #4d555d;
-  --ui-text-muted: #626a72;
-  --ui-text-inverse: #f8fafc;
-  --ui-text-inverse-secondary: #d7e0ea;
-  --ui-text-inverse-muted: #b2bdc9;
-  --ui-text-disabled: #4f5760;
-  --ui-text-link: #174fc4;
-  --ui-border-default: #818a94;
-  --ui-border-strong: #5f6872;
+  --ui-surface-inset: #f2f2f0;
+  --ui-surface-selected: #090909;
+  --ui-surface-disabled: #e5e7eb;
+  --ui-surface-overlay: rgba(0, 0, 0, 0.78);
+  --ui-surface-inverse: #070b12;
+  --ui-surface-inverse-elevated: #0b111b;
+  --ui-surface-inverse-inset: #111827;
+  --ui-text-primary: #090909;
+  --ui-text-secondary: #232323;
+  --ui-text-muted: #3f3f46;
+  --ui-text-inverse: #ffffff;
+  --ui-text-inverse-secondary: #f1f5f9;
+  --ui-text-inverse-muted: #d1d5db;
+  --ui-text-disabled: #111827;
+  --ui-text-link: #003c8f;
+  --ui-border-default: #333333;
+  --ui-border-strong: #090909;
   --ui-border-focus: #005fcc;
-  --ui-border-disabled: #747d86;
-  --ui-border-error: #b42318;
-  --ui-action-primary: #006b85;
-  --ui-action-primary-hover: #00566c;
-  --ui-action-primary-pressed: #004657;
+  --ui-border-disabled: #4b5563;
+  --ui-border-error: #b00020;
+  --ui-field-bg: #ffffff;
+  --ui-field-text: #090909;
+  --ui-field-placeholder: #3f3f46;
+  --ui-field-border: #333333;
+  --ui-field-disabled-bg: #e5e7eb;
+  --ui-field-disabled-text: #111827;
+  --ui-field-disabled-border: #4b5563;
+  --ui-action-primary: #000000;
+  --ui-action-primary-hover: #1f1f1f;
+  --ui-action-primary-pressed: #333333;
   --ui-action-primary-text: #ffffff;
   --ui-action-secondary: #ffffff;
-  --ui-action-secondary-hover: #ecefeb;
-  --ui-action-secondary-text: #343b42;
-  --ui-action-destructive: #b42318;
-  --ui-action-destructive-hover: #8f1d17;
-  --ui-action-destructive-text: #ffffff;
-  --ui-status-success-fg: #12633f;
-  --ui-status-success-bg: #e7f5ed;
-  --ui-status-success-border: #1f7a50;
-  --ui-status-warning-fg: #7a3e00;
-  --ui-status-warning-bg: #fff0d5;
-  --ui-status-warning-border: #a05200;
-  --ui-status-error-fg: #9f231d;
-  --ui-status-error-bg: #ffebe9;
-  --ui-status-error-border: #b42318;
-  --ui-status-info-fg: #164b8f;
-  --ui-status-info-bg: #e9f2ff;
-  --ui-status-info-border: #2b65ad;
-  --ui-status-pending-fg: #5c3c00;
-  --ui-status-pending-bg: #fff2c7;
-  --ui-status-pending-border: #8a5d00;
-  --ui-status-processing-fg: #174a73;
-  --ui-status-processing-bg: #e6f4ff;
-  --ui-status-processing-border: #2770a5;
-  --ui-status-offline-fg: #3f4750;
-  --ui-status-offline-bg: #eef0f2;
-  --ui-status-offline-border: #68727d;
-  --ui-status-review-fg: #5b348b;
-  --ui-status-review-bg: #f3eaff;
-  --ui-status-review-border: #7545a8;
-  --ui-status-failed-fg: #81202a;
-  --ui-status-failed-bg: #ffecef;
-  --ui-status-failed-border: #a42a38;
-  --ui-notification-badge-bg: #b42318;
+  --ui-action-secondary-hover: #e5e7eb;
+  --ui-action-secondary-text: #000000;
+  --ui-action-destructive: #ffffff;
+  --ui-action-destructive-hover: #f3f4f6;
+  --ui-action-destructive-text: #000000;
+  --ui-action-destructive-border: #b00020;
+  --ui-action-destructive-icon: #b00020;
+  --ui-action-disabled-bg: #e5e7eb;
+  --ui-action-disabled-text: #111827;
+  --ui-action-disabled-border: #4b5563;
+  --ui-status-success-fg: #090909;
+  --ui-status-success-bg: #ffffff;
+  --ui-status-success-border: #333333;
+  --ui-status-success-accent: #006b3c;
+  --ui-status-warning-fg: #090909;
+  --ui-status-warning-bg: #ffffff;
+  --ui-status-warning-border: #333333;
+  --ui-status-warning-accent: #8a3f00;
+  --ui-status-error-fg: #090909;
+  --ui-status-error-bg: #ffffff;
+  --ui-status-error-border: #333333;
+  --ui-status-error-accent: #b00020;
+  --ui-status-info-fg: #090909;
+  --ui-status-info-bg: #ffffff;
+  --ui-status-info-border: #333333;
+  --ui-status-info-accent: #004f9e;
+  --ui-status-pending-fg: #090909;
+  --ui-status-pending-bg: #ffffff;
+  --ui-status-pending-border: #333333;
+  --ui-status-pending-accent: #8a3f00;
+  --ui-status-processing-fg: #090909;
+  --ui-status-processing-bg: #ffffff;
+  --ui-status-processing-border: #333333;
+  --ui-status-processing-accent: #005a7a;
+  --ui-status-offline-fg: #090909;
+  --ui-status-offline-bg: #ffffff;
+  --ui-status-offline-border: #333333;
+  --ui-status-offline-accent: #3f3f46;
+  --ui-status-review-fg: #090909;
+  --ui-status-review-bg: #ffffff;
+  --ui-status-review-border: #333333;
+  --ui-status-review-accent: #6b21a8;
+  --ui-status-failed-fg: #090909;
+  --ui-status-failed-bg: #ffffff;
+  --ui-status-failed-border: #333333;
+  --ui-status-failed-accent: #b00020;
+  --ui-notification-badge-bg: #000000;
   --ui-notification-badge-fg: #ffffff;
   --brain-radius-sm: 12px;
   --brain-radius: 18px;
@@ -168,8 +189,8 @@ canvas {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--brain-line) 82%, transparent);
-  background: color-mix(in srgb, var(--brain-canvas) 88%, transparent);
+  border-bottom: 1px solid var(--brain-line);
+  background: var(--ui-surface-page);
   padding: 0 2rem;
   backdrop-filter: blur(18px);
 }
@@ -189,7 +210,7 @@ canvas {
   width: var(--sidebar-width);
   flex-direction: column;
   border-inline-end: 1px solid var(--brain-line);
-  background: #fbfbf9;
+  background: #ffffff;
   padding: 1.25rem 1rem;
 }
 
@@ -264,8 +285,8 @@ canvas {
 }
 
 .brain-nav-item.is-active {
-  background: #e9e8e3;
-  color: #17191c;
+  background: #000000;
+  color: #ffffff;
   font-weight: 650;
 }
 
@@ -375,11 +396,11 @@ canvas {
   min-height: 3.5rem;
   align-items: center;
   gap: .65rem;
-  border: 1px solid #dfdfda;
+  border: 1px solid #000000;
   border-radius: 999px;
-  background: #fff;
+  background: #000000;
   padding: .45rem 1rem .45rem .7rem;
-  color: #1b1f23;
+  color: #ffffff;
   box-shadow: 0 14px 40px rgba(24, 28, 32, .14), 0 2px 6px rgba(24, 28, 32, .08);
   font-size: .82rem;
   font-weight: 650;
@@ -489,20 +510,33 @@ canvas {
 
 .brain-message-user {
   margin-inline-start: 2.25rem;
+  border: 1px solid #ffffff;
   border-radius: 18px 18px 5px 18px;
-  background: #ecece8;
+  background: #000000;
   padding: .8rem 1rem;
-  color: #22262a;
+  color: #ffffff;
 }
 
 [dir='rtl'] .brain-message-user {
   border-radius: 18px 18px 18px 5px;
 }
 
+.brain-message-user .ui-muted {
+  color: #d1d5db;
+}
+
 .brain-message-assistant {
   display: flex;
   gap: .7rem;
-  color: #30353a;
+  border: 1px solid #333333;
+  border-radius: 18px 18px 18px 5px;
+  background: #ffffff;
+  padding: .8rem 1rem;
+  color: #090909;
+}
+
+[dir='rtl'] .brain-message-assistant {
+  border-radius: 18px 18px 5px 18px;
 }
 
 .brain-composer {
@@ -510,7 +544,7 @@ canvas {
   min-height: 3.25rem;
   align-items: center;
   gap: .35rem;
-  border: 1px solid #d9dad7;
+  border: 1px solid #333333;
   border-radius: 17px;
   background: #fff;
   padding: .35rem;
@@ -529,8 +563,9 @@ canvas {
 }
 
 .brain-send-button:disabled {
-  background: #d6d7d4;
-  color: #f7f7f5;
+  border: 1px solid #4b5563;
+  background: #e5e7eb;
+  color: #111827;
 }
 
 .brain-button-primary,
@@ -785,7 +820,7 @@ canvas {
 
 /* Compatibility layer: legacy modules inherit the V3 surface without changing data flow. */
 .brain-v3 .dashboard-main {
-  color: #1e2226;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main > :is(section, div, main) {
@@ -797,8 +832,8 @@ canvas {
 .brain-v3 .dashboard-main [class*="bg-gray-900/"],
 .brain-v3 .dashboard-main [class*="bg-gray-800/"],
 .brain-v3 .dashboard-main [class*="bg-[#080c12]"] {
-  border-color: var(--brain-line);
-  background: #fff;
+  border-color: var(--ui-border-default);
+  background: var(--ui-surface-card);
   box-shadow: var(--brain-shadow);
 }
 
@@ -806,43 +841,47 @@ canvas {
 .brain-v3 .dashboard-main [class~="text-slate-100"],
 .brain-v3 .dashboard-main [class~="text-slate-200"],
 .brain-v3 .dashboard-main [class~="text-gray-200"] {
-  color: #202428;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class~="text-slate-300"],
 .brain-v3 .dashboard-main [class~="text-slate-400"],
+.brain-v3 .dashboard-main [class~="text-slate-500"],
+.brain-v3 .dashboard-main [class~="text-slate-600"],
 .brain-v3 .dashboard-main [class~="text-gray-300"],
-.brain-v3 .dashboard-main [class~="text-gray-400"] {
+.brain-v3 .dashboard-main [class~="text-gray-400"],
+.brain-v3 .dashboard-main [class~="text-gray-500"],
+.brain-v3 .dashboard-main [class~="text-gray-600"] {
   color: var(--ui-text-muted);
 }
 
 .brain-v3 .dashboard-main [class~="text-cyan-200"],
 .brain-v3 .dashboard-main [class~="text-cyan-300"],
 .brain-v3 .dashboard-main [class~="text-cyan-400"] {
-  color: var(--ui-text-link);
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class~="text-emerald-100"],
 .brain-v3 .dashboard-main [class~="text-emerald-200"],
 .brain-v3 .dashboard-main [class~="text-green-400"] {
-  color: var(--ui-status-success-fg);
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class~="text-amber-100"],
 .brain-v3 .dashboard-main [class~="text-amber-200"] {
-  color: var(--ui-status-warning-fg);
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class~="text-rose-100"],
 .brain-v3 .dashboard-main [class~="text-rose-200"],
 .brain-v3 .dashboard-main [class~="text-rose-300"],
 .brain-v3 .dashboard-main [class~="text-red-400"] {
-  color: var(--ui-status-error-fg);
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class~="text-violet-100"],
 .brain-v3 .dashboard-main [class~="text-violet-200"] {
-  color: var(--ui-status-review-fg);
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main [class*="border-white/"] {
@@ -854,51 +893,49 @@ canvas {
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-indigo-"],
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-purple-"] {
   background-color: var(--ui-action-primary);
-  color: #fff;
+  color: var(--ui-action-primary-text);
 }
 
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-green-"],
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-emerald-"] {
-  background-color: var(--ui-status-success-fg);
-  color: #fff;
+  background-color: var(--ui-action-primary);
+  color: var(--ui-action-primary-text);
 }
 
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-red-"],
 .brain-v3 .dashboard-main :is(button, a)[class*="bg-rose-"] {
+  border: 1px solid var(--ui-action-destructive-border);
   background-color: var(--ui-action-destructive);
-  color: #fff;
+  color: var(--ui-action-destructive-text);
 }
 
 .brain-v3 .dashboard-main select,
 .brain-v3 .dashboard-main input,
 .brain-v3 .dashboard-main textarea {
-  border-color: #dcdeda;
+  border-color: var(--ui-field-border);
 }
 
 .brain-v3 .dashboard-main table {
-  color: #34393e;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main thead {
-  color: #737a81;
+  color: var(--ui-text-secondary);
 }
 
 /* Semantic primitives use the existing Brain V3 token layer in both light and inverse contexts. */
 .ui-inverse {
-  --ui-surface-elevated: #172033;
-  --ui-surface-card: #172033;
-  --ui-surface-inset: #1e293b;
-  --ui-surface-selected: #243957;
-  --ui-surface-disabled: #334155;
-  --ui-text-primary: #f8fafc;
-  --ui-text-secondary: #d7e0ea;
-  --ui-text-muted: #b2bdc9;
-  --ui-text-disabled: #d7e0ea;
-  --ui-text-link: #67e8f9;
-  --ui-border-default: #64748b;
-  --ui-border-strong: #94a3b8;
-  --ui-border-focus: #22d3ee;
-  --ui-border-disabled: #94a3b8;
+  --ui-surface-elevated: #0b111b;
+  --ui-surface-card: #0b111b;
+  --ui-surface-inset: #111827;
+  --ui-surface-selected: #ffffff;
+  --ui-text-primary: #ffffff;
+  --ui-text-secondary: #f1f5f9;
+  --ui-text-muted: #d1d5db;
+  --ui-text-link: #ffffff;
+  --ui-border-default: #d1d5db;
+  --ui-border-strong: #ffffff;
+  --ui-border-focus: #ffffff;
   color-scheme: dark;
   background-color: var(--ui-surface-inverse);
   color: var(--ui-text-primary);
@@ -931,34 +968,67 @@ canvas {
 .brain-v3 .dashboard-main .ui-inverse [class~="text-cyan-200"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-cyan-300"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-cyan-400"] {
-  color: #67e8f9;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main .ui-inverse [class~="text-emerald-100"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-emerald-200"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-green-400"] {
-  color: #86efac;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main .ui-inverse [class~="text-amber-100"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-amber-200"] {
-  color: #fde68a;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main .ui-inverse [class~="text-rose-100"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-rose-200"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-rose-300"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-red-400"] {
-  color: #fecdd3;
+  color: var(--ui-text-primary);
 }
 
 .brain-v3 .dashboard-main .ui-inverse [class~="text-violet-100"],
 .brain-v3 .dashboard-main .ui-inverse [class~="text-violet-200"] {
-  color: #ddd6fe;
+  color: var(--ui-text-primary);
 }
 
 .ui-overlay {
   background: var(--ui-surface-overlay);
+}
+
+.ui-auth-card {
+  border: 1px solid var(--ui-border-strong);
+  background: var(--ui-surface-elevated);
+  color: var(--ui-text-primary);
+}
+
+.ui-auth-card [class~="text-white"],
+.ui-auth-card [class~="text-slate-300"] {
+  color: var(--ui-text-primary);
+}
+
+.ui-auth-card [class~="text-slate-400"],
+.ui-auth-card [class~="text-slate-500"] {
+  color: var(--ui-text-muted);
+}
+
+.ui-auth-card [class~="text-cyan-300"],
+.ui-auth-card [class~="text-cyan-400"] {
+  color: var(--ui-text-link);
+}
+
+.ui-auth-card :where(input, select, textarea) {
+  border: 1px solid var(--ui-field-border);
+  background: var(--ui-field-bg);
+  color: var(--ui-field-text);
+  color-scheme: light;
+}
+
+.ui-auth-card :where(input, textarea)::placeholder {
+  color: var(--ui-field-placeholder);
+  opacity: 1;
 }
 
 .ui-field,
@@ -967,16 +1037,17 @@ canvas {
   select,
   textarea
 ) {
-  border: 1px solid var(--ui-border-default);
-  background-color: var(--ui-surface-elevated);
-  color: var(--ui-text-primary);
+  border: 1px solid var(--ui-field-border);
+  background-color: var(--ui-field-bg);
+  color: var(--ui-field-text);
   caret-color: currentColor;
+  color-scheme: light;
   opacity: 1;
 }
 
 .ui-field::placeholder,
 .brain-v3 .dashboard-main :where(input, textarea)::placeholder {
-  color: var(--ui-text-muted);
+  color: var(--ui-field-placeholder);
   opacity: 1;
 }
 
@@ -985,28 +1056,50 @@ canvas {
   select,
   textarea
 ) {
-  border-color: var(--ui-border-default);
-  background-color: var(--ui-surface-inset);
-  color: var(--ui-text-primary);
-  color-scheme: dark;
+  border-color: var(--ui-field-border);
+  background-color: var(--ui-field-bg);
+  color: var(--ui-field-text);
+  color-scheme: light;
+}
+
+.ui-inverse :where(input, textarea)::placeholder {
+  color: var(--ui-field-placeholder);
+  opacity: 1;
 }
 
 .ui-inverse :where(select option, datalist option) {
-  background-color: var(--ui-surface-inverse-elevated);
-  color: var(--ui-text-inverse);
+  background-color: var(--ui-field-bg);
+  color: var(--ui-field-text);
+}
+
+.ui-field :where(option),
+.brain-v3 .dashboard-main :where(select option, datalist option),
+.ui-auth-card :where(select option, datalist option) {
+  background-color: var(--ui-field-bg);
+  color: var(--ui-field-text);
 }
 
 .brain-v3 :where(input[type='checkbox'], input[type='radio']) {
   min-height: 1.25rem;
   min-width: 1.25rem;
-  accent-color: var(--ui-action-primary);
+  outline: 2px solid currentColor;
+  outline-offset: 1px;
+  accent-color: #000000;
 }
 
-.brain-v3 :where(button, input, select, textarea):disabled,
+.brain-v3 :where(input, select, textarea):disabled {
+  border-color: var(--ui-field-disabled-border) !important;
+  background-color: var(--ui-field-disabled-bg) !important;
+  color: var(--ui-field-disabled-text) !important;
+  cursor: not-allowed;
+  opacity: 1 !important;
+}
+
+.brain-v3 :where(button):disabled,
 .brain-v3 [aria-disabled='true'] {
-  border-color: var(--ui-border-disabled) !important;
-  background-color: var(--ui-surface-disabled) !important;
-  color: var(--ui-text-disabled) !important;
+  border-color: var(--ui-action-disabled-border) !important;
+  background-color: var(--ui-action-disabled-bg) !important;
+  color: var(--ui-action-disabled-text) !important;
   cursor: not-allowed;
   opacity: 1 !important;
 }
@@ -1041,7 +1134,7 @@ canvas {
 }
 
 .ui-button-secondary {
-  border-color: var(--ui-border-default);
+  border-color: var(--ui-border-strong);
   background: var(--ui-action-secondary);
   color: var(--ui-action-secondary-text);
 }
@@ -1050,8 +1143,22 @@ canvas {
   background: var(--ui-action-secondary-hover);
 }
 
+.ui-inverse .ui-button-primary {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: #000000;
+}
+
+.ui-inverse .ui-button-primary:hover {
+  background: #e5e7eb;
+}
+
+.ui-inverse .ui-button-primary:active {
+  background: #d1d5db;
+}
+
 .ui-inverse .ui-button-secondary {
-  border-color: var(--ui-border-default);
+  border-color: var(--ui-border-strong);
   background: var(--ui-surface-inverse-elevated);
   color: var(--ui-text-primary);
 }
@@ -1061,63 +1168,87 @@ canvas {
 }
 
 .ui-button-destructive {
+  border-color: var(--ui-action-destructive-border);
   background: var(--ui-action-destructive);
   color: var(--ui-action-destructive-text);
+}
+
+.ui-button-destructive svg {
+  color: var(--ui-action-destructive-icon);
 }
 
 .ui-button-destructive:hover {
   background: var(--ui-action-destructive-hover);
 }
 
+.ui-inverse .ui-button-destructive {
+  border-color: #ff6b7d;
+  background: #070b12;
+  color: #ffffff;
+}
+
+.ui-inverse .ui-button-destructive svg {
+  color: #ff6b7d;
+}
+
+.ui-inverse .ui-button-destructive:hover {
+  background: #111827;
+}
+
 .ui-button-primary:disabled,
 .ui-button-secondary:disabled,
 .ui-button-destructive:disabled {
-  border-color: var(--ui-border-disabled) !important;
-  background: var(--ui-surface-disabled) !important;
-  color: var(--ui-text-disabled) !important;
+  border-color: var(--ui-action-disabled-border) !important;
+  background: var(--ui-action-disabled-bg) !important;
+  color: var(--ui-action-disabled-text) !important;
   cursor: not-allowed;
   opacity: 1 !important;
 }
 
 .ui-alert {
-  border: 1px solid;
+  --ui-alert-accent: var(--ui-status-info-accent);
+  border: 1px solid var(--ui-border-strong);
+  border-inline-start: 4px solid var(--ui-alert-accent);
   border-radius: 14px;
+  background: var(--ui-surface-elevated);
   padding: .85rem 1rem;
+  color: var(--ui-text-primary);
 }
 
 .ui-alert-error {
-  border-color: var(--ui-status-error-border);
-  background: var(--ui-status-error-bg);
-  color: var(--ui-status-error-fg);
+  --ui-alert-accent: var(--ui-status-error-accent);
 }
 
 .ui-alert-warning {
-  border-color: var(--ui-status-warning-border);
-  background: var(--ui-status-warning-bg);
-  color: var(--ui-status-warning-fg);
+  --ui-alert-accent: var(--ui-status-warning-accent);
 }
 
 .ui-alert-success {
-  border-color: var(--ui-status-success-border);
-  background: var(--ui-status-success-bg);
-  color: var(--ui-status-success-fg);
+  --ui-alert-accent: var(--ui-status-success-accent);
 }
 
 .ui-alert-info {
-  border-color: var(--ui-status-info-border);
-  background: var(--ui-status-info-bg);
-  color: var(--ui-status-info-fg);
+  --ui-alert-accent: var(--ui-status-info-accent);
+}
+
+.ui-inverse .ui-alert {
+  border-color: var(--ui-border-strong);
+  border-inline-start-color: var(--ui-alert-accent);
+  background: var(--ui-surface-inverse-elevated);
+  color: var(--ui-text-primary);
 }
 
 .ui-status {
   --ui-status-fg: var(--ui-status-info-fg);
   --ui-status-bg: var(--ui-status-info-bg);
   --ui-status-border: var(--ui-status-info-border);
+  --ui-status-accent: var(--ui-status-info-accent);
   display: inline-flex;
   min-height: 1.75rem;
   align-items: center;
   gap: .35rem;
   border: 1px solid var(--ui-status-border);
+  border-inline-start: 4px solid var(--ui-status-accent);
   border-radius: 999px;
   background: var(--ui-status-bg);
   padding: .2rem .6rem;
@@ -1132,6 +1263,7 @@ canvas {
   height: .85rem;
   width: .85rem;
   flex: 0 0 auto;
+  color: var(--ui-status-accent);
   stroke-width: 2.5;
 }
 
@@ -1141,6 +1273,7 @@ canvas {
   --ui-status-fg: var(--ui-status-success-fg);
   --ui-status-bg: var(--ui-status-success-bg);
   --ui-status-border: var(--ui-status-success-border);
+  --ui-status-accent: var(--ui-status-success-accent);
 }
 
 .ui-status-warning,
@@ -1149,6 +1282,7 @@ canvas {
   --ui-status-fg: var(--ui-status-warning-fg);
   --ui-status-bg: var(--ui-status-warning-bg);
   --ui-status-border: var(--ui-status-warning-border);
+  --ui-status-accent: var(--ui-status-warning-accent);
 }
 
 .ui-status-error,
@@ -1157,6 +1291,7 @@ canvas {
   --ui-status-fg: var(--ui-status-error-fg);
   --ui-status-bg: var(--ui-status-error-bg);
   --ui-status-border: var(--ui-status-error-border);
+  --ui-status-accent: var(--ui-status-error-accent);
 }
 
 .ui-status-info,
@@ -1164,30 +1299,69 @@ canvas {
   --ui-status-fg: var(--ui-status-info-fg);
   --ui-status-bg: var(--ui-status-info-bg);
   --ui-status-border: var(--ui-status-info-border);
+  --ui-status-accent: var(--ui-status-info-accent);
 }
 
 .ui-status-processing {
   --ui-status-fg: var(--ui-status-processing-fg);
   --ui-status-bg: var(--ui-status-processing-bg);
   --ui-status-border: var(--ui-status-processing-border);
+  --ui-status-accent: var(--ui-status-processing-accent);
 }
 
 .ui-status-offline {
   --ui-status-fg: var(--ui-status-offline-fg);
   --ui-status-bg: var(--ui-status-offline-bg);
   --ui-status-border: var(--ui-status-offline-border);
+  --ui-status-accent: var(--ui-status-offline-accent);
 }
 
 .ui-status-review {
   --ui-status-fg: var(--ui-status-review-fg);
   --ui-status-bg: var(--ui-status-review-bg);
   --ui-status-border: var(--ui-status-review-border);
+  --ui-status-accent: var(--ui-status-review-accent);
 }
 
 .ui-status-failed {
   --ui-status-fg: var(--ui-status-failed-fg);
   --ui-status-bg: var(--ui-status-failed-bg);
   --ui-status-border: var(--ui-status-failed-border);
+  --ui-status-accent: var(--ui-status-failed-accent);
+}
+
+.ui-inverse .ui-status {
+  --ui-status-fg: #ffffff;
+  --ui-status-bg: #070b12;
+  --ui-status-border: #d1d5db;
+}
+
+.ui-inverse :is(.ui-status-success, .ui-status-approved, .ui-priority-low) {
+  --ui-status-accent: #4ade80;
+}
+
+.ui-inverse :is(.ui-status-warning, .ui-status-pending, .ui-priority-high) {
+  --ui-status-accent: #fbbf24;
+}
+
+.ui-inverse :is(.ui-status-error, .ui-status-rejected, .ui-priority-critical, .ui-status-failed) {
+  --ui-status-accent: #ff7b8a;
+}
+
+.ui-inverse :is(.ui-status-info, .ui-priority-medium) {
+  --ui-status-accent: #60a5fa;
+}
+
+.ui-inverse .ui-status-processing {
+  --ui-status-accent: #67e8f9;
+}
+
+.ui-inverse .ui-status-offline {
+  --ui-status-accent: #d4d4d8;
+}
+
+.ui-inverse .ui-status-review {
+  --ui-status-accent: #d8b4fe;
 }
 
 .ui-notification-badge {
@@ -1217,7 +1391,9 @@ canvas {
   display: flex;
   width: min(88vw, 23rem);
   flex-direction: column;
-  background: #fbfbf9;
+  border-inline-end: 1px solid #ffffff;
+  background: #070b12;
+  color: #ffffff;
   box-shadow: 20px 0 60px rgba(20, 24, 28, .18);
   animation: brain-slide-menu .2s ease-out;
 }
@@ -1311,8 +1487,8 @@ canvas {
     min-height: calc(4rem + env(safe-area-inset-top));
     align-items: center;
     justify-content: space-between;
-    border-bottom: 1px solid color-mix(in srgb, var(--brain-line) 82%, transparent);
-    background: color-mix(in srgb, #fbfbf9 92%, transparent);
+    border-bottom: 1px solid var(--brain-line);
+    background: #ffffff;
     padding: env(safe-area-inset-top) max(1rem, env(safe-area-inset-right)) 0 max(1rem, env(safe-area-inset-left));
     backdrop-filter: blur(18px);
   }
@@ -1325,8 +1501,8 @@ canvas {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));
     min-height: calc(4.25rem + env(safe-area-inset-bottom));
-    border-top: 1px solid color-mix(in srgb, var(--brain-line) 82%, transparent);
-    background: color-mix(in srgb, #fbfbf9 94%, transparent);
+    border-top: 1px solid var(--brain-line);
+    background: #ffffff;
     padding: .35rem max(.35rem, env(safe-area-inset-right)) env(safe-area-inset-bottom) max(.35rem, env(safe-area-inset-left));
     backdrop-filter: blur(18px);
   }
@@ -1346,8 +1522,8 @@ canvas {
   }
 
   .brain-mobile-nav-item.is-active {
-    background: #eae9e4;
-    color: #1b1f23;
+    background: #000000;
+    color: #ffffff;
   }
 
   .brain-content {
@@ -1397,6 +1573,26 @@ canvas {
 ::selection {
   background: var(--ui-status-info-fg);
   color: #ffffff;
+}
+
+.brain-mobile-menu :is(.brain-brand, .brain-nav-label, .brain-nav-section-toggle, .brain-mobile-nav-item) {
+  color: #ffffff;
+}
+
+.brain-mobile-menu .brain-logo-tile,
+.brain-mobile-menu .brain-mobile-nav-item.is-active {
+  border-color: #ffffff;
+  background: #ffffff;
+  color: #000000;
+}
+
+.brain-mobile-menu .brain-account {
+  border-color: #d1d5db;
+}
+
+.brain-mobile-menu .brain-account-avatar {
+  background: #ffffff;
+  color: #000000;
 }
 
 @media (prefers-reduced-motion: reduce) {

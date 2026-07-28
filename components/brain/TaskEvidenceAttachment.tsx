@@ -451,7 +451,7 @@ export function TaskEvidenceAttachment({
             onClick={resetAndClose}
             disabled={uploading}
             aria-label={t.evidence.close}
-            className="flex h-11 w-11 items-center justify-center rounded-full hover:bg-white/10"
+            className="flex h-11 w-11 items-center justify-center rounded-full border border-white text-white hover:bg-slate-900"
           >
             <X className="h-5 w-5" />
           </button>
@@ -472,7 +472,7 @@ export function TaskEvidenceAttachment({
                       setDamagedQuantity('');
                     }}
                     disabled={uploading || submissionId !== null || tasks.length === 0}
-                    className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"
+                    className="ui-field mt-1 min-h-11 w-full rounded-lg px-3 text-base"
                   >
                     <option value="">{t.evidence.selectTask}</option>
                     {tasks.map((task) => <option key={task.id} value={task.id}>
@@ -482,7 +482,7 @@ export function TaskEvidenceAttachment({
                   </select>
                 </label>}
 
-          {requirement && <fieldset className="space-y-3 rounded-xl border border-cyan-500/20 bg-cyan-500/5 p-4">
+          {requirement && <fieldset className="space-y-3 rounded-xl border border-white bg-black p-4">
             <legend className="px-1 text-sm font-semibold">{t.evidenceC5.instructions}</legend>
             <p className="font-medium">{requirement.countLabel}</p>
             {requirement.instructions && <p className="text-sm text-slate-300">{requirement.instructions}</p>}
@@ -495,7 +495,7 @@ export function TaskEvidenceAttachment({
                   value={quantity}
                   onChange={(event) => setQuantity(event.target.value)}
                   disabled={uploading || submissionId !== null}
-                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"
+                  className="ui-field mt-1 min-h-11 w-full rounded-lg px-3 text-base"
                   required
                 />
               </label>
@@ -503,7 +503,7 @@ export function TaskEvidenceAttachment({
                 <input
                   value={requirement.unit}
                   readOnly
-                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base text-slate-300"
+                  className="ui-field mt-1 min-h-11 w-full rounded-lg px-3 text-base"
                 />
               </label>
               {requirement.damagedQuantityRequested && <label className="text-sm">
@@ -515,7 +515,7 @@ export function TaskEvidenceAttachment({
                   value={damagedQuantity}
                   onChange={(event) => setDamagedQuantity(event.target.value)}
                   disabled={uploading || submissionId !== null}
-                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"
+                  className="ui-field mt-1 min-h-11 w-full rounded-lg px-3 text-base"
                   required
                 />
               </label>}
@@ -525,7 +525,7 @@ export function TaskEvidenceAttachment({
                   maxLength={500}
                   onChange={(event) => setLocationDetails(event.target.value)}
                   disabled={uploading || submissionId !== null}
-                  className="mt-1 min-h-11 w-full rounded-lg border border-slate-700 bg-slate-900 px-3 text-base"
+                  className="ui-field mt-1 min-h-11 w-full rounded-lg px-3 text-base"
                 />
               </label>
             </div>
@@ -535,7 +535,7 @@ export function TaskEvidenceAttachment({
                 maxLength={1000}
                 onChange={(event) => setNotes(event.target.value)}
                 disabled={uploading || submissionId !== null}
-                className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-900 p-3 text-base"
+                className="ui-field mt-1 min-h-20 w-full rounded-lg p-3 text-base"
               />
             </label>
           </fieldset>}
@@ -550,7 +550,7 @@ export function TaskEvidenceAttachment({
                 || selected.length >= TASK_EVIDENCE_MAX_ITEMS
               }
               onClick={() => cameraInput.current?.click()}
-              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-cyan-500/30 bg-cyan-500/10 px-3 text-cyan-200 disabled:opacity-50"
+              className="ui-button-primary flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl px-3"
             >
               <Camera className="h-6 w-6" />
               {selected.length ? t.evidenceC5.addPhotos : t.evidence.takePhoto}
@@ -564,7 +564,7 @@ export function TaskEvidenceAttachment({
                 || selected.length >= TASK_EVIDENCE_MAX_ITEMS
               }
               onClick={() => galleryInput.current?.click()}
-              className="flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl border border-slate-600 bg-slate-800 px-3 text-slate-200 disabled:opacity-50"
+              className="ui-button-secondary flex min-h-20 flex-col items-center justify-center gap-2 rounded-xl px-3"
             >
               <ImagePlus className="h-6 w-6" />
               {t.evidence.chooseGallery}
@@ -589,7 +589,7 @@ export function TaskEvidenceAttachment({
                   type="button"
                   onClick={() => removeItem(item.itemId)}
                   disabled={uploading || submissionId !== null || item.status === 'verified'}
-                  className="absolute end-2 top-2 flex h-11 w-11 items-center justify-center rounded-full bg-black/70 disabled:opacity-50"
+                  className="absolute end-2 top-2 flex h-11 w-11 items-center justify-center rounded-full border border-white bg-black text-white"
                   aria-label={t.evidence.remove}
                 >
                   <X className="h-5 w-5" />
@@ -607,7 +607,7 @@ export function TaskEvidenceAttachment({
                     type="button"
                     onClick={() => moveItem(index, -1)}
                     disabled={uploading || submissionId !== null || index === 0}
-                    className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 disabled:opacity-30"
+                    className="ui-button-secondary flex h-11 w-11 items-center justify-center rounded-lg p-0"
                     aria-label="Move photo earlier"
                   >
                     {language === 'ar' ? <ArrowRight /> : <ArrowLeft />}
@@ -620,7 +620,7 @@ export function TaskEvidenceAttachment({
                       || submissionId !== null
                       || index === selected.length - 1
                     }
-                    className="flex h-11 w-11 items-center justify-center rounded-lg border border-white/10 disabled:opacity-30"
+                    className="ui-button-secondary flex h-11 w-11 items-center justify-center rounded-lg p-0"
                     aria-label="Move photo later"
                   >
                     {language === 'ar' ? <ArrowLeft /> : <ArrowRight />}

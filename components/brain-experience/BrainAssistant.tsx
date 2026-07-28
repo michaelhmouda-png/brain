@@ -316,7 +316,7 @@ export function BrainAssistant({
       </div>
 
       {pendingAction ? (
-        <section className="border-t border-slate-200 bg-amber-50/70 p-5">
+      <section className="border-t-4 border-amber-700 bg-white p-5 text-black">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <Clock3 className="h-4 w-4 text-amber-600" />
             {interpolateMessage(t.assistant.confirmAction, { action: pendingAction.label })}
@@ -369,7 +369,7 @@ export function BrainAssistant({
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
-        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-400">
+        <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-zinc-700">
           <span className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" /> {t.assistant.evidencePrivate}</span>
           <span>{quota ? interpolateMessage(t.assistant.requestsLeft, { count: quota.remaining }) : t.assistant.connecting}</span>
         </div>
