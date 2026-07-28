@@ -94,7 +94,9 @@ test('review role matrix and private signed access are server enforced', () => {
 
 test('successful C3 enqueue reports queued AI verification without claiming human review', () => {
   const assistant = read('components/brain-experience/BrainAssistant.tsx');
-  assert.match(assistant, /Evidence attached to \$\{taskTitle\}\. It is queued for AI verification\. The task was not completed automatically\./);
+  const i18n = read('lib/i18n.ts');
+  assert.match(assistant, /interpolateMessage\(t\.brain\.evidenceQueued, \{ task: taskTitle \}\)/);
+  assert.match(i18n, /evidenceQueued: 'Evidence attached to \{task\}\. It is queued for AI verification\. The task was not completed automatically\.'/);
   assert.doesNotMatch(assistant, /Evidence attached to \$\{taskTitle\}\. It is pending human review/);
 });
 

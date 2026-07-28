@@ -347,7 +347,7 @@ test('reservation experience uses the one shared authenticated navigation and Br
   const shell = read('components/brain-experience/BrainExperienceShell.tsx');
   const sidebar = read('components/DashboardSidebar.tsx');
   assert.match(shell, /className="brain-orb"/);
-  assert.match(sidebar, /aria-label="Quick navigation"/);
+  assert.match(sidebar, /aria-label=\{t\.navigation\.quickLabel\}/);
 });
 
 test('incoming-call workflow verifies signature, scopes destination, and never creates a reservation', async () => {

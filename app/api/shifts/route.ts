@@ -43,24 +43,82 @@ export async function GET(req: NextRequest) {
     const weekStart = url.searchParams.get('weekStart');
 
     if (type === 'schedules' && weekStart) {
-      let schedules;
-      if (employeeId) {
-        schedules = await shiftService.getWeeklySchedule(employeeId, weekStart);
-      } else {
-        // For company-wide view, fetch all active employees' schedules
-        const { data: employees } = await supabase
-          .from('employees')
-          .select('id')
-          .eq('company_id', authorization.companyId)
-          .eq('status', 'active');
-        
-        schedules = [];
-        for (const emp of employees || []) {
-          const empSchedules = await shiftService.getWeeklySchedule(emp.id, weekStart);
-          if (empSchedules) schedules.push(empSchedules);
-        }
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
+        return NextResponse.json({ error: 'Invalid week' }, { status: 400 });
       }
-      return NextResponse.json(Array.isArray(schedules) ? schedules : [schedules]);
+      let scheduleQuery = supabase
+        .from('weekly_schedules')
+        .select('id,employee_id,week_start_date,monday_shift_id,tuesday_shift_id,wednesday_shift_id,thursday_shift_id,friday_shift_id,saturday_shift_id,sunday_shift_id')
+        .eq('company_id', authorization.companyId)
+        .eq('week_start_date', weekStart);
+      if (employeeId) scheduleQuery = scheduleQuery.eq('employee_id', employeeId);
+      const { data: scheduleRows, error: scheduleError } = await scheduleQuery;
+      if (scheduleError) throw new Error('SCHEDULE_QUERY_FAILED');
+
+      const shiftIdKeys = [
+        'monday_shift_id', 'tuesday_shift_id', 'wednesday_shift_id', 'thursday_shift_id',
+        'friday_shift_id', 'saturday_shift_id', 'sunday_shift_id',
+      ] as const;
+      const templateIds = [...new Set((scheduleRows ?? []).flatMap((row) =>
+        shiftIdKeys.map((key) => row[key]).filter((value): value is string => typeof value === 'string')
+      ))];
+      const { data: templates, error: templateError } = templateIds.length
+        ? await supabase.from('shift_templates').select('id,name,start_time,end_time').eq('company_id', authorization.companyId).in('id', templateIds)
+        : { data: [], error: null };
+      if (templateError) throw new Error('SCHEDULE_TEMPLATE_QUERY_FAILED');
+      const templateById = new Map((templates ?? []).map((template) => [template.id, template]));
+
+      const employeeIds = authorization.role === 'employee'
+        ? []
+        : [...new Set((scheduleRows ?? []).map((row) => row.employee_id))];
+      const { data: employees, error: employeeError } = employeeIds.length
+        ? await supabase.from('employees').select('id,first_name,last_name').eq('company_id', authorization.companyId).eq('status', 'active').in('id', employeeIds)
+        : { data: [], error: null };
+      if (employeeError) throw new Error('SCHEDULE_EMPLOYEE_QUERY_FAILED');
+      const employeeById = new Map((employees ?? []).map((employee) => [employee.id, employee]));
+      const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
+      const schedules = (scheduleRows ?? []).map((row) => ({
+        id: row.id,
+        employee_id: row.employee_id,
+        week_start_date: row.week_start_date,
+        employee: authorization.role === 'employee' ? undefined : employeeById.get(row.employee_id) ?? null,
+        days: Object.fromEntries(dayNames.map((day) => {
+          const template = templateById.get(row[`${day}_shift_id` as (typeof shiftIdKeys)[number]] ?? '');
+          return [day, template ? { name: template.name, startTime: template.start_time, endTime: template.end_time } : null];
+        })),
+      }));
+      const { data: company, error: companyError } = await supabase
+        .from('companies')
+        .select('timezone')
+        .eq('id', authorization.companyId)
+        .maybeSingle();
+      if (companyError || typeof company?.timezone !== 'string' || !company.timezone) {
+        throw new Error('SCHEDULE_TIMEZONE_QUERY_FAILED');
+      }
+      try {
+        new Intl.DateTimeFormat('en', { timeZone: company.timezone }).format();
+      } catch {
+        throw new Error('SCHEDULE_TIMEZONE_QUERY_FAILED');
+      }
+      let stats = null;
+      if (authorization.role !== 'employee') {
+        const [{ count: swapsPending, error: swapsError }, { count: timeOffRequests, error: timeOffError }] = await Promise.all([
+          supabase.from('shift_swaps').select('id', { count: 'exact', head: true }).eq('company_id', authorization.companyId).eq('status', 'pending'),
+          supabase.from('time_off_requests').select('id', { count: 'exact', head: true }).eq('company_id', authorization.companyId).eq('status', 'pending'),
+        ]);
+        if (swapsError || timeOffError) throw new Error('SCHEDULE_STATS_QUERY_FAILED');
+        stats = {
+          employeesScheduled: schedules.length,
+          swapsPending: swapsPending ?? 0,
+          timeOffRequests: timeOffRequests ?? 0,
+        };
+      }
+      return NextResponse.json({
+        scope: authorization.role === 'employee' ? 'personal' : 'management',
+        timezone: company.timezone,
+        schedules,
+        stats,
+      });
     }
 
     if (type === 'recurring') {
@@ -108,21 +166,12 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
+    if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return NextResponse.json({ error: 'No company found' }, { status: 403 });
-    }
-
-    const shiftService = new ShiftManagementService(supabase, profile.company_id);
-    const timelineService = new ActivityTimelineService(supabase, profile.company_id);
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
+    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
 
     const body = await req.json();
     const { action, data } = body;
@@ -132,11 +181,11 @@ export async function POST(req: NextRequest) {
         data.employeeId,
         data.weekStartDate,
         data.schedule,
-        user.id
+        authorization.userId
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'schedule_created',
         'schedule',
         schedule.id,
@@ -153,11 +202,11 @@ export async function POST(req: NextRequest) {
         data.dayOfWeek,
         data.startDate,
         data.endDate || null,
-        user.id
+        authorization.userId
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'recurring_shift_created',
         'recurring_shift',
         shift.id,
@@ -175,7 +224,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'clock_in',
         'attendance',
         record.id,
@@ -194,7 +243,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'clock_out',
         'attendance',
         record.id,
@@ -214,7 +263,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'shift_swap_requested',
         'shift_swap',
         swap.id,
@@ -233,7 +282,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'time_off_requested',
         'time_off_request',
         request.id,
@@ -253,7 +302,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'shift_template_created',
         'shift_template',
         template.id,
@@ -273,30 +322,21 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
+    if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('company_id')
-      .eq('user_id', user.id)
-      .single();
-
-    if (!profile?.company_id) {
-      return NextResponse.json({ error: 'No company found' }, { status: 403 });
-    }
-
-    const shiftService = new ShiftManagementService(supabase, profile.company_id);
-    const timelineService = new ActivityTimelineService(supabase, profile.company_id);
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
+    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
 
     const body = await req.json();
     const { action, data } = body;
 
     if (action === 'approve_swap') {
-      const swap = await shiftService.approveShiftSwap(data.swapId, user.id);
+      const swap = await shiftService.approveShiftSwap(data.swapId, authorization.userId);
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'shift_swap_approved',
         'shift_swap',
         swap.id,
@@ -309,11 +349,11 @@ export async function PATCH(req: NextRequest) {
     if (action === 'approve_time_off') {
       const timeOff = await shiftService.approveTimeOffRequest(
         data.requestId,
-        user.id
+        authorization.userId
       );
 
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'time_off_approved',
         'time_off_request',
         timeOff.id,

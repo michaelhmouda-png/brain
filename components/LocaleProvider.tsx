@@ -1,18 +1,44 @@
 'use client';
 
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
-import { messages, normalizeLanguage, type Language, type TranslationMessages } from '@/lib/i18n';
+import { getMessages, normalizeLanguage, type Language, type TranslationMessages } from '@/lib/i18n';
 
 type Role = 'super_admin'|'owner'|'manager'|'employee';
-const LocaleContext = createContext<{ language: Language; role: Role; messages: TranslationMessages }>({ language: 'en', role: 'employee', messages: messages.en });
+type LocaleContextValue = {
+  language: Language;
+  role: Role;
+  companyTimezone: string;
+  messages: TranslationMessages;
+};
+const LocaleContext = createContext<LocaleContextValue>({
+  language: 'en',
+  role: 'employee',
+  companyTimezone: 'UTC',
+  messages: getMessages('en'),
+});
 
-export function LocaleProvider({ language: input, role, children }: { language: Language; role: Role; children: ReactNode }) {
+export function LocaleProvider({
+  language: input,
+  role,
+  companyTimezone,
+  children,
+}: {
+  language: Language;
+  role: Role;
+  companyTimezone: string;
+  children: ReactNode;
+}) {
   const language = normalizeLanguage(input);
+  const messages = getMessages(language);
   useEffect(() => {
     document.documentElement.lang = language;
     document.documentElement.dir = language === 'ar' ? 'rtl' : 'ltr';
   }, [language]);
-  return <LocaleContext.Provider value={{ language, role, messages: messages[language] as TranslationMessages }}>{children}</LocaleContext.Provider>;
+  return (
+    <LocaleContext.Provider value={{ language, role, companyTimezone, messages }}>
+      {children}
+    </LocaleContext.Provider>
+  );
 }
 
 export function useLocale() { return useContext(LocaleContext); }

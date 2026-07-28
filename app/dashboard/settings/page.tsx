@@ -16,11 +16,7 @@ export default function SettingsPage() {
       <LanguageSettings />
       <NotificationSettings />
       {role !== 'employee' && <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-3">
-        {[
-          { label: "Workspace", description: "Venue preferences and branding" },
-          { label: "Notifications", description: "Alert thresholds and channels" },
-          { label: "Security", description: "Access controls and audit" },
-        ].map((item) => (
+        {Object.values(t.settingsCards).map((item) => (
           <article key={item.label} className="rounded-3xl border border-white/10 bg-slate-950/80 p-6 text-slate-300 transition hover:-translate-y-1 hover:bg-slate-900/90">
             <p className="text-lg font-semibold text-white">{item.label}</p>
             <p className="mt-4 text-sm text-slate-400">{item.description}</p>

@@ -798,6 +798,30 @@ canvas {
   to { transform: translateX(0); opacity: 1; }
 }
 
+[dir='rtl'] .brain-drawer {
+  box-shadow: 20px 0 60px rgba(20, 24, 28, .14);
+  animation-name: brain-slide-in-rtl;
+}
+
+[dir='rtl'] .brain-mobile-menu {
+  box-shadow: -20px 0 60px rgba(20, 24, 28, .18);
+  animation-name: brain-slide-menu-rtl;
+}
+
+[dir='rtl'] .brain-directional-icon {
+  transform: scaleX(-1);
+}
+
+@keyframes brain-slide-in-rtl {
+  from { transform: translateX(-24px); opacity: .6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+@keyframes brain-slide-menu-rtl {
+  from { transform: translateX(24px); opacity: .6; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
 @keyframes brain-rise {
   from { transform: translateY(-8px) scale(.99); opacity: .5; }
   to { transform: translateY(0) scale(1); opacity: 1; }

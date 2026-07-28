@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useLocale } from '@/components/LocaleProvider';
+import { interpolateMessage } from '@/lib/i18n';
 
 const categories = ['taskAssignments', 'taskUpdates', 'dueReminders', 'announcements', 'maintenance', 'incidents', 'evidenceReview'] as const;
 type Category = (typeof categories)[number];
@@ -14,7 +15,7 @@ type Preferences = Record<Category, boolean> & {
   timezone: string;
 };
 
-const defaults: Preferences = {
+const defaults = (timezone: string): Preferences => ({
   inAppEnabled: true,
   pushEnabled: false,
   taskAssignments: true,
@@ -27,8 +28,8 @@ const defaults: Preferences = {
   quietHoursEnabled: false,
   quietHoursStart: '22:00',
   quietHoursEnd: '07:00',
-  timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
-};
+  timezone,
+});
 
 function bytes(value: string) {
   const padding = '='.repeat((4 - (value.length % 4)) % 4);
@@ -41,10 +42,33 @@ function booleanPreference(row: Record<string, unknown>, key: string, fallback: 
 }
 
 export function NotificationSettings() {
-  const { messages: t } = useLocale();
-  const [prefs, setPrefs] = useState(defaults);
+  const { companyTimezone, messages: t } = useLocale();
+  const [prefs, setPrefs] = useState(() => defaults(companyTimezone));
   const [state, setState] = useState<'unsupported' | 'not_requested' | 'denied' | 'enabled' | 'expired'>('not_requested');
   const [message, setMessage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  function loadPreferences() {
+    setLoading(true);
+    setLoadFailed(false);
+    fetch('/api/notifications?state=true', { cache: 'no-store', credentials: 'same-origin' })
+      .then((response) => response.ok ? response.json() : Promise.reject(new Error('NOTIFICATION_PREFERENCES_UNAVAILABLE')))
+      .then((value: unknown) => {
+        if (typeof value !== 'object' || value === null || !('preferences' in value) || typeof value.preferences !== 'object' || value.preferences === null) return;
+        const preference = value.preferences as Record<string, unknown>;
+        setPrefs((current) => ({
+          ...current,
+          inAppEnabled: booleanPreference(preference, 'in_app_enabled', current.inAppEnabled),
+          pushEnabled: booleanPreference(preference, 'push_enabled', current.pushEnabled),
+          dueReminders: booleanPreference(preference, 'due_reminders', current.dueReminders),
+          timezone: typeof preference.timezone === 'string' && preference.timezone ? preference.timezone : current.timezone,
+        }));
+      })
+      .catch(() => setLoadFailed(true))
+      .finally(() => setLoading(false));
+  }
 
   useEffect(() => {
     Promise.resolve().then(() => {
@@ -58,18 +82,7 @@ export function NotificationSettings() {
         .then((subscription) => { if (subscription) setState('enabled'); });
     });
 
-    fetch('/api/notifications?state=true', { cache: 'no-store', credentials: 'same-origin' })
-      .then((response) => response.ok ? response.json() : null)
-      .then((value: unknown) => {
-        if (typeof value !== 'object' || value === null || !('preferences' in value) || typeof value.preferences !== 'object' || value.preferences === null) return;
-        const preference = value.preferences as Record<string, unknown>;
-        setPrefs((current) => ({
-          ...current,
-          inAppEnabled: booleanPreference(preference, 'in_app_enabled', current.inAppEnabled),
-          pushEnabled: booleanPreference(preference, 'push_enabled', current.pushEnabled),
-          dueReminders: booleanPreference(preference, 'due_reminders', current.dueReminders),
-        }));
-      });
+    void Promise.resolve().then(loadPreferences);
   }, []);
 
   async function enable() {
@@ -91,9 +104,9 @@ export function NotificationSettings() {
       });
       if (!response.ok) throw new Error('PUSH_SUBSCRIPTION_REJECTED');
       setState('enabled'); setPrefs((current) => ({ ...current, pushEnabled: true }));
-      setMessage('Browser notifications enabled on this device.');
+      setMessage(t.notificationSettings.enabledMessage);
     } catch {
-      setState('expired'); setMessage('Notifications could not be enabled. Retry after checking browser settings.');
+      setState('expired'); setMessage(t.notificationSettings.enableFailed);
     }
   }
 
@@ -108,38 +121,45 @@ export function NotificationSettings() {
   }
 
   async function save() {
-    const response = await fetch('/api/notifications', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preferences', preferences: prefs }) });
-    setMessage(response.ok ? 'Notification preferences saved.' : 'Preferences could not be saved.');
+    setSaving(true);
+    try {
+      const response = await fetch('/api/notifications', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ action: 'preferences', preferences: prefs }) });
+      setMessage(response.ok ? t.notificationSettings.saved : t.notificationSettings.saveFailed);
+    } catch {
+      setMessage(t.notificationSettings.saveFailed);
+    } finally {
+      setSaving(false);
+    }
   }
 
-  const categoryLabel = (category: Category) => category === 'dueReminders'
-    ? t.notifications.due30mPreference
-    : category.replace(/([A-Z])/g, ' $1').toLowerCase();
+  const categoryLabel = (category: Category) => t.notificationSettings.categories[category];
 
   return <section className="rounded-3xl border border-white/10 bg-slate-950/70 p-5">
-    <h2 className="text-xl font-bold">Notification settings</h2>
-    <p className="mt-2 text-sm text-slate-400">Browser and OS permission is required. Permission is requested only when you choose Enable notifications.</p>
-    <p className="mt-2 text-sm text-cyan-200">Permission state: {state.replace('_', ' ')}</p>
-    {state === 'unsupported' && <p className="mt-2 text-sm text-amber-200">Push is not supported by this browser.</p>}
-    {state === 'denied' && <p className="mt-2 text-sm text-amber-200">Permission was denied. Enable notifications in your browser or device settings; HospiBrain will not ask repeatedly.</p>}
-    <p className="mt-2 text-xs text-slate-500">On iPhone, install HospiBrain to the Home Screen and enable notifications from the installed web app where supported.</p>
+    <h2 className="text-xl font-bold">{t.notificationSettings.title}</h2>
+    <p className="mt-2 text-sm text-slate-400">{t.notificationSettings.description}</p>
+    <p className="mt-2 text-sm text-cyan-200">{interpolateMessage(t.notificationSettings.permissionState, { state: t.notificationSettings.states[state] })}</p>
+    {state === 'unsupported' && <p className="mt-2 text-sm text-amber-200">{t.notificationSettings.unsupported}</p>}
+    {state === 'denied' && <p className="mt-2 text-sm text-amber-200">{t.notificationSettings.denied}</p>}
+    <p className="mt-2 text-xs text-slate-500">{t.notificationSettings.iphone}</p>
+    {loading && <p className="mt-3 text-sm text-slate-400" role="status">{t.notificationSettings.loading}</p>}
+    {loadFailed && <p className="mt-3 text-sm text-amber-200" role="alert">{t.notificationSettings.loadFailed} <button type="button" onClick={loadPreferences} className="min-h-11 underline">{t.notificationSettings.retry}</button></p>}
     <div className="mt-4 flex flex-wrap gap-2">
-      {state !== 'enabled' && state !== 'unsupported' && <button type="button" onClick={() => void enable()} className="min-h-11 rounded-xl bg-cyan-600 px-4 font-semibold">Enable notifications</button>}
-      {state === 'enabled' && <button type="button" onClick={() => void disable()} className="min-h-11 rounded-xl border border-white/10 px-4">Disable this device</button>}
+      {state !== 'enabled' && state !== 'unsupported' && <button type="button" onClick={() => void enable()} className="min-h-11 rounded-xl bg-cyan-600 px-4 font-semibold">{t.notificationSettings.enable}</button>}
+      {state === 'enabled' && <button type="button" onClick={() => void disable()} className="min-h-11 rounded-xl border border-white/10 px-4">{t.notificationSettings.disable}</button>}
     </div>
     <div className="mt-5 grid gap-3 sm:grid-cols-2">
       {categories.map((category) => <label key={category} className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3">
         <input type="checkbox" checked={prefs[category]} onChange={(event) => setPrefs((current) => ({ ...current, [category]: event.target.checked }))} />
         <span>{categoryLabel(category)}</span>
       </label>)}
-      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3"><input type="checkbox" checked={prefs.inAppEnabled} onChange={(event) => setPrefs((current) => ({ ...current, inAppEnabled: event.target.checked }))} />In-app notifications</label>
-      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3"><input type="checkbox" checked={prefs.quietHoursEnabled} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursEnabled: event.target.checked }))} />Quiet hours</label>
+      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3"><input type="checkbox" checked={prefs.inAppEnabled} onChange={(event) => setPrefs((current) => ({ ...current, inAppEnabled: event.target.checked }))} />{t.notificationSettings.inApp}</label>
+      <label className="flex min-h-11 items-center gap-3 rounded-xl border border-white/10 px-3"><input type="checkbox" checked={prefs.quietHoursEnabled} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursEnabled: event.target.checked }))} />{t.notificationSettings.quietHours}</label>
     </div>
     {prefs.quietHoursEnabled && <div className="mt-3 grid grid-cols-2 gap-3">
-      <label className="text-sm">Start<input type="time" value={prefs.quietHoursStart} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursStart: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3 text-base" /></label>
-      <label className="text-sm">End<input type="time" value={prefs.quietHoursEnd} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursEnd: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3 text-base" /></label>
+      <label className="text-sm">{t.notificationSettings.start}<input type="time" value={prefs.quietHoursStart} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursStart: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3 text-base" /></label>
+      <label className="text-sm">{t.notificationSettings.end}<input type="time" value={prefs.quietHoursEnd} onChange={(event) => setPrefs((current) => ({ ...current, quietHoursEnd: event.target.value }))} className="mt-1 min-h-11 w-full rounded-xl bg-slate-900 px-3 text-base" /></label>
     </div>}
-    <button type="button" onClick={() => void save()} className="mt-5 min-h-11 rounded-xl bg-cyan-600 px-5 font-semibold">Save preferences</button>
+    <button type="button" onClick={() => void save()} disabled={saving || loading} className="mt-5 min-h-11 rounded-xl bg-cyan-600 px-5 font-semibold disabled:opacity-60">{saving ? t.notificationSettings.saving : t.notificationSettings.save}</button>
     {message && <p role="status" className="mt-3 text-sm text-cyan-200">{message}</p>}
   </section>;
 }

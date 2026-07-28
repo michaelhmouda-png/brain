@@ -9,15 +9,7 @@ import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { ShiftManagementService } from '@/lib/shift-management';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
 import { NextRequest, NextResponse } from 'next/server';
-
-async function getCompanyId(supabase: any, user: any) {
-  const { data: profile } = await supabase
-    .from('profiles')
-    .select('company_id')
-    .eq('user_id', user.id)
-    .single();
-  return profile?.company_id;
-}
+import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
 
 export async function GET(
   req: NextRequest,
@@ -26,16 +18,14 @@ export async function GET(
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
+    if (authorization.role === 'employee' && !authorization.employeeId) return NextResponse.json({ error: 'Employee link required' }, { status: 409 });
 
-    const companyId = await getCompanyId(supabase, user);
-    if (!companyId) return NextResponse.json({ error: 'No company found' }, { status: 403 });
-
-    const shiftService = new ShiftManagementService(supabase, companyId);
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
     const shift = await shiftService.getShiftById(id);
 
-    if (!shift) {
+    if (!shift || authorization.role === 'employee' && shift.employee_id !== authorization.employeeId) {
       return NextResponse.json({ error: 'Shift not found' }, { status: 404 });
     }
 
@@ -53,19 +43,20 @@ export async function PUT(
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
+    if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const companyId = await getCompanyId(supabase, user);
-    if (!companyId) return NextResponse.json({ error: 'No company found' }, { status: 403 });
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
+    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
 
-    const shiftService = new ShiftManagementService(supabase, companyId);
-    const timelineService = new ActivityTimelineService(supabase, companyId);
+    const body: unknown = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'Invalid input' }, { status: 400 });
+    }
+    const { employeeId, shiftDate, startTime, endTime, shiftType, departmentId, notes, status } = body as Record<string, unknown>;
 
-    const body = await req.json();
-    const { employeeId, shiftDate, startTime, endTime, shiftType, departmentId, notes, status } = body;
-
-    const updates: any = {};
+    const updates: Record<string, unknown> = {};
     if (employeeId !== undefined) updates.employee_id = employeeId;
     if (shiftDate !== undefined) updates.shift_date = shiftDate;
     if (startTime !== undefined) updates.start_time = startTime;
@@ -79,7 +70,7 @@ export async function PUT(
 
     if (shift) {
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'shift_updated',
         'shift',
         shift.id,
@@ -101,20 +92,18 @@ export async function DELETE(
   try {
     const { id } = await params;
     const supabase = await createSupabaseServerAuth();
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
-    if (authError || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
+    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
+    if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
 
-    const companyId = await getCompanyId(supabase, user);
-    if (!companyId) return NextResponse.json({ error: 'No company found' }, { status: 403 });
-
-    const shiftService = new ShiftManagementService(supabase, companyId);
-    const timelineService = new ActivityTimelineService(supabase, companyId);
+    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
+    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
 
     const success = await shiftService.deleteShift(id);
 
     if (success) {
       await timelineService.logActivity(
-        user.id,
+        authorization.userId,
         'shift_deleted',
         'shift',
         id,

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { loadPersistedProfileLanguage } from "@/lib/persisted-locale.server";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -27,14 +28,16 @@ export const viewport: Viewport = {
   colorScheme: "light",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const language = await loadPersistedProfileLanguage();
   return (
     <html
-      lang="en"
+      lang={language}
+      dir={language === "ar" ? "rtl" : "ltr"}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full overflow-x-hidden bg-[#f4f3ef] text-slate-950">{children}</body>

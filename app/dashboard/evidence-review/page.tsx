@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
+import { useLocale } from '@/components/LocaleProvider';
 
 type Evidence = Record<string, unknown> & { evidence_id: string; evidence_status: string; task_title: string };
 
@@ -13,6 +14,7 @@ function evidenceRows(value: unknown): Evidence[] {
 }
 
 export default function EvidenceReviewPage() {
+  const { messages: t } = useLocale();
   const router = useRouter();
   const [rows, setRows] = useState<Evidence[]>([]);
   const [loading, setLoading] = useState(true);
@@ -88,7 +90,7 @@ export default function EvidenceReviewPage() {
   return <main className="space-y-5 text-white"><div className="flex flex-wrap items-center justify-between gap-3"><div><h1 className="text-2xl font-bold">Evidence review</h1><p className="text-sm text-slate-400">AI results support a human decision. Manager approval completes the linked active task; AI verification alone never changes task status.</p></div><button onClick={() => void load()} className="min-h-11 rounded-xl border border-white/10 px-4">Refresh</button></div>
     {loading && <p className="text-slate-300">Loading evidence…</p>}{error && <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">{error} <button onClick={() => void load()} className="ml-2 min-h-11 underline">Retry</button></div>}
     {!loading && !error && rows.length === 0 && <div className="rounded-2xl border border-white/10 p-6 text-slate-300">No evidence is awaiting or has completed review.</div>}
-    <div className="grid gap-4 xl:grid-cols-2">{rows.map((row) => { const observations = Array.isArray(row.visible_observations) ? row.visible_observations.filter((item): item is string => typeof item === 'string') : []; const codes = Array.isArray(row.reason_codes) ? row.reason_codes.filter((item): item is string => typeof item === 'string') : []; return <article key={row.evidence_id} className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex justify-between gap-3"><div><h2 className="font-semibold">{row.task_title}</h2><p className="text-xs text-slate-400">Submitted by {typeof row.submitter_name === 'string' ? row.submitter_name : 'Team member'}</p></div><span className="h-fit rounded-full bg-cyan-500/10 px-2 py-1 text-xs text-cyan-200">{row.evidence_status.replaceAll('_', ' ')}</span></div>
+    <div className="grid gap-4 xl:grid-cols-2">{rows.map((row) => { const observations = Array.isArray(row.visible_observations) ? row.visible_observations.filter((item): item is string => typeof item === 'string') : []; const codes = Array.isArray(row.reason_codes) ? row.reason_codes.filter((item): item is string => typeof item === 'string') : []; const evidenceLabel = t.evidenceState[row.evidence_status as keyof typeof t.evidenceState] ?? t.evidenceState.pending_review; return <article key={row.evidence_id} className="overflow-hidden rounded-2xl border border-white/10 bg-slate-950/60 p-4"><div className="flex justify-between gap-3"><div><h2 className="font-semibold">{row.task_title}</h2><p className="text-xs text-slate-400">Submitted by {typeof row.submitter_name === 'string' ? row.submitter_name : 'Team member'}</p></div><span className="h-fit rounded-full bg-cyan-500/10 px-2 py-1 text-xs text-cyan-200">{evidenceLabel}</span></div>
       {urls[row.evidence_id] ? <Image unoptimized src={urls[row.evidence_id]} alt="Private task evidence" width={800} height={600} className="mt-3 max-h-80 w-full rounded-xl bg-black object-contain" /> : <button onClick={() => void showImage(row.evidence_id)} className="mt-3 min-h-11 w-full rounded-xl border border-white/10">Load private image</button>}
       <div className="mt-3 space-y-2 text-sm"><p><span className="text-slate-400">AI verdict:</span> {typeof row.ai_verdict === 'string' ? row.ai_verdict : 'Not available'}</p><p><span className="text-slate-400">Confidence:</span> {typeof row.confidence === 'number' ? `${Math.round(row.confidence * 100)}%` : '—'}</p><p>{typeof row.explanation === 'string' ? row.explanation : 'Analysis has not completed.'}</p>{observations.length > 0 && <ul className="list-disc pl-5 text-slate-300">{observations.map((item) => <li key={item}>{item}</li>)}</ul>}{codes.length > 0 && <p className="text-xs text-amber-200">{codes.join(' · ')}</p>}<p className="text-xs text-slate-500">Attempts: {Array.isArray(row.attempts) ? row.attempts.length : 0} · Audit events: {Array.isArray(row.audit_history) ? row.audit_history.length : 0}</p></div>
       {row.evidence_status === 'verification_failed' && <button onClick={() => void retryVerification(row.evidence_id)} className="mt-4 min-h-11 w-full rounded-xl border border-amber-500/30 text-amber-200">Retry AI analysis</button>}

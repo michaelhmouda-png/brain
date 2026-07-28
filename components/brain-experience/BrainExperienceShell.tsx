@@ -19,34 +19,41 @@ import {
 import type { Profile } from '@/lib/types';
 import { DashboardSidebar, dashboardDestinations } from '@/components/DashboardSidebar';
 import { NotificationBell } from '@/components/NotificationBell';
+import { useLocale } from '@/components/LocaleProvider';
+import type { TranslationMessages } from '@/lib/i18n';
 import { BrainAssistant, type BrainPageContext } from './BrainAssistant';
 import { BrainMark } from './BrainMark';
 
-const moduleNames: Array<[string, string]> = [
-  ['/dashboard/reservations', 'Reservations'],
-  ['/dashboard/timeline', 'Timeline'],
-  ['/dashboard/tasks', 'Tasks'],
-  ['/dashboard/cameras', 'Cameras'],
-  ['/dashboard/employees', 'Employees'],
-  ['/dashboard/inventory', 'Inventory'],
-  ['/dashboard/maintenance', 'Maintenance'],
-  ['/dashboard/incidents', 'Incidents'],
-  ['/dashboard/operations', 'Operations'],
-  ['/dashboard', 'Home'],
+const moduleNames: Array<[string, keyof TranslationMessages['shell']['modules']]> = [
+  ['/dashboard/reservations', 'reservations'],
+  ['/dashboard/timeline', 'timeline'],
+  ['/dashboard/tasks', 'tasks'],
+  ['/dashboard/cameras', 'cameras'],
+  ['/dashboard/employees', 'employees'],
+  ['/dashboard/inventory', 'inventory'],
+  ['/dashboard/maintenance', 'maintenance'],
+  ['/dashboard/incidents', 'incidents'],
+  ['/dashboard/operations', 'operations'],
+  ['/dashboard/shifts', 'schedule'],
+  ['/dashboard/notifications', 'notifications'],
+  ['/dashboard/settings', 'settings'],
+  ['/dashboard', 'home'],
 ];
 
-function resolveModule(pathname: string) {
-  return moduleNames.find(([route]) => route === '/dashboard' ? pathname === route : pathname.startsWith(route))?.[1] ?? 'Brain';
+function resolveModuleKey(pathname: string): keyof TranslationMessages['shell']['modules'] {
+  return moduleNames.find(([route]) => route === '/dashboard' ? pathname === route : pathname.startsWith(route))?.[1] ?? 'brain';
 }
 
-function resolveView(pathname: string) {
+function resolveView(pathname: string, t: TranslationMessages) {
   const segments = pathname.split('/').filter(Boolean).slice(2);
-  if (segments.length === 0) return 'Today';
+  if (segments.length === 0) return t.shell.today;
+  const exactModule = moduleNames.find(([route]) => route === pathname)?.[1];
+  if (exactModule) return t.shell.modules[exactModule];
   const last = segments.at(-1) ?? '';
-  if (/^[0-9a-f-]{36}$/i.test(last)) return 'Details';
-  if (last === 'new') return 'New';
-  if (last === 'calendar') return 'Calendar';
-  return last.replaceAll('-', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
+  if (/^[0-9a-f-]{36}$/i.test(last)) return t.shell.details;
+  if (last === 'new') return t.shell.new;
+  if (last === 'calendar') return t.shell.calendar;
+  return t.shell.details;
 }
 
 function deriveEntity(pathname: string) {
@@ -83,7 +90,13 @@ function text(value: unknown) {
   return typeof value === 'string' ? value : '';
 }
 
-function projectEntityResults(payloads: unknown[], needle: string): EntitySearchResult[] {
+function projectEntityResults(
+  payloads: unknown[],
+  needle: string,
+  t: TranslationMessages,
+  language: 'en' | 'ar',
+  companyTimezone: string,
+): EntitySearchResult[] {
   const [taskPayload, reservationPayload, incidentPayload, maintenancePayload] = payloads;
   const normalized = needle.toLowerCase();
   const results: EntitySearchResult[] = [];
@@ -97,8 +110,8 @@ function projectEntityResults(payloads: unknown[], needle: string): EntitySearch
       id: `task-${text(task.id)}`,
       href: '/dashboard/tasks',
       label,
-      description: `${text(task.status).replaceAll('_', ' ')} task`,
-      kind: 'Task',
+      description: t.status[text(task.status) as keyof typeof t.status] ?? t.shell.task,
+      kind: t.shell.task,
     });
   }
   for (const value of arrayAt(reservationPayload, ['data', 'reservations'])) {
@@ -107,17 +120,30 @@ function projectEntityResults(payloads: unknown[], needle: string): EntitySearch
     if (!reservation || !guest) continue;
     const label = `${text(guest.first_name)} ${text(guest.last_name)}`.trim();
     if (!`${label} ${text(guest.phone_e164)} ${text(reservation.purpose)}`.toLowerCase().includes(normalized)) continue;
+    let description: string = t.shell.reservation;
+    const startsAt = text(reservation.starts_at);
+    if (startsAt) {
+      try {
+        description = new Intl.DateTimeFormat(language === 'ar' ? 'ar-LB' : 'en', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+          timeZone: companyTimezone,
+        }).format(new Date(startsAt));
+      } catch {
+        description = t.shell.reservation;
+      }
+    }
     results.push({
       id: `reservation-${text(reservation.id)}`,
       href: '/dashboard/reservations',
       label,
-      description: `${text(reservation.reservation_date)} · ${text(reservation.reservation_time).slice(0, 5)} · ${text(reservation.status)}`,
-      kind: 'Reservation',
+      description,
+      kind: t.shell.reservation,
     });
   }
   for (const [payload, href, kind] of [
-    [incidentPayload, '/dashboard/incidents', 'Incident'],
-    [maintenancePayload, '/dashboard/maintenance', 'Maintenance'],
+    [incidentPayload, '/dashboard/incidents', t.shell.incident],
+    [maintenancePayload, '/dashboard/maintenance', t.shell.maintenance],
   ] as const) {
     for (const value of arrayAt(payload, ['data'])) {
       const item = record(value);
@@ -129,7 +155,7 @@ function projectEntityResults(payloads: unknown[], needle: string): EntitySearch
         id: `${kind.toLowerCase()}-${text(item.id)}`,
         href,
         label,
-        description: `${kind} · ${text(item.status).replaceAll('_', ' ')}`,
+        description: kind,
         kind,
       });
     }
@@ -170,6 +196,7 @@ export function BrainExperienceShell({
   userName: string | null;
   companyName: string | null;
 }) {
+  const { companyTimezone, language, messages: t } = useLocale();
   const pathname = usePathname();
   const router = useRouter();
   const [searchOpen, setSearchOpen] = useState(false);
@@ -183,26 +210,28 @@ export function BrainExperienceShell({
   const brainCloseRef = useRef<HTMLButtonElement>(null);
   const brainDrawerRef = useRef<HTMLElement>(null);
   const searchDialogRef = useRef<HTMLElement>(null);
-  const currentModule = resolveModule(pathname);
+  const currentModuleKey = resolveModuleKey(pathname);
+  const currentModule = t.shell.modules[currentModuleKey];
   const activeContextOverride = pageContextOverride?.route === pathname ? pageContextOverride : null;
   const context: BrainPageContext = useMemo(() => ({
     route: pathname,
     module: currentModule,
-    view: activeContextOverride?.view || resolveView(pathname),
+    view: activeContextOverride?.view || resolveView(pathname, t),
     entity: activeContextOverride?.entity ?? deriveEntity(pathname),
-    company: companyName || (profile.company_id ? 'Your company' : 'Brain'),
-    location: activeContextOverride?.location || 'Current authorized view',
-    user: profile.full_name || userName || 'You',
-  }), [activeContextOverride, companyName, currentModule, pathname, profile.company_id, profile.full_name, userName]);
+    company: companyName || (profile.company_id ? t.shell.yourCompany : t.navigation.brain),
+    location: activeContextOverride?.location || t.shell.currentAuthorizedView,
+    user: profile.full_name || userName || t.shell.you,
+    moduleKey: currentModuleKey,
+  }), [activeContextOverride, companyName, currentModule, currentModuleKey, pathname, profile.company_id, profile.full_name, t, userName]);
 
   const visibleDestinations = useMemo(() => {
     const normalized = search.trim().toLowerCase();
     if (!normalized) return dashboardDestinations.filter((item) => item.roles.includes(profile.role));
     return dashboardDestinations.filter((item) =>
       item.roles.includes(profile.role) &&
-      `${item.label} ${item.description} ${item.keywords.join(' ')}`.toLowerCase().includes(normalized)
+      `${t.navigation.destinations[item.translationKey].label} ${t.navigation.destinations[item.translationKey].description} ${t.navigation.destinations[item.translationKey].keywords}`.toLowerCase().includes(normalized)
     );
-  }, [profile.role, search]);
+  }, [profile.role, search, t]);
 
   useEffect(() => {
     const needle = search.trim();
@@ -224,7 +253,7 @@ export function BrainExperienceShell({
         management ? request(`/api/maintenance?search=${encodeURIComponent(needle)}&pageSize=8`) : Promise.resolve(null),
       ]);
       if (!controller.signal.aborted) {
-        setEntityResults(projectEntityResults(payloads, needle));
+        setEntityResults(projectEntityResults(payloads, needle, t, language, companyTimezone));
         setEntitySearchLoading(false);
       }
     }, 260);
@@ -232,7 +261,7 @@ export function BrainExperienceShell({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [profile.role, search, searchOpen]);
+  }, [companyTimezone, language, profile.role, search, searchOpen, t]);
 
   useEffect(() => {
     const openBrain = () => setBrainOpen(true);
@@ -323,13 +352,13 @@ export function BrainExperienceShell({
         <header className="brain-topbar">
           <button type="button" onClick={() => setSearchOpen(true)} className="brain-search-trigger">
             <Search className="h-4 w-4" />
-            <span>Search Brain</span>
+            <span>{t.navigation.searchBrain}</span>
             <kbd><Command className="h-3 w-3" />K</kbd>
           </button>
           <div className="flex items-center gap-2">
-            <span className="hidden text-right sm:block">
-              <span className="block text-sm font-semibold text-slate-900">{profile.full_name || 'Brain operator'}</span>
-              <span className="block text-xs capitalize text-slate-500">{profile.role.replaceAll('_', ' ')}</span>
+            <span className="hidden text-end sm:block">
+              <span className="block text-sm font-semibold text-slate-900" dir="auto">{profile.full_name || t.navigation.operator}</span>
+              <span className="block text-xs text-slate-500">{t.role[profile.role]}</span>
             </span>
             <NotificationBell />
           </div>
@@ -343,43 +372,43 @@ export function BrainExperienceShell({
         type="button"
         onClick={() => setBrainOpen(true)}
         className="brain-orb"
-        aria-label="Open Brain"
+        aria-label={t.shell.openBrain}
         aria-haspopup="dialog"
         aria-expanded={brainOpen}
       >
         <BrainMark className="h-7 w-7" />
-        <span className="brain-orb-label">Ask Brain</span>
+        <span className="brain-orb-label">{t.home.askBrain}</span>
       </button>
 
       {brainOpen ? (
         <div className="brain-overlay" role="presentation">
-          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setBrainOpen(false)} aria-label="Close Brain" />
+          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setBrainOpen(false)} aria-label={t.shell.closeBrain} />
           <aside ref={brainDrawerRef} className="brain-drawer" role="dialog" aria-modal="true" aria-labelledby="brain-drawer-title">
             <header className="brain-drawer-header">
               <div className="flex items-center gap-3">
                 <span className="brain-logo-tile"><BrainMark className="h-7 w-7" /></span>
                 <div>
                   <h1 id="brain-drawer-title" className="text-base font-semibold text-slate-950">Brain</h1>
-                  <p className="text-xs text-slate-500">Your operational intelligence</p>
+                  <p className="text-xs text-slate-500">{t.shell.operationalIntelligence}</p>
                 </div>
               </div>
-              <button ref={brainCloseRef} type="button" onClick={() => setBrainOpen(false)} className="brain-icon-button" aria-label="Close Brain">
+              <button ref={brainCloseRef} type="button" onClick={() => setBrainOpen(false)} className="brain-icon-button" aria-label={t.shell.closeBrain}>
                 <X className="h-5 w-5" />
               </button>
             </header>
-            <section className="brain-context-card" aria-label="Current page context">
+            <section className="brain-context-card" aria-label={t.shell.currentPageContext}>
               <div>
-                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">You are viewing</p>
+                <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">{t.shell.viewing}</p>
                 <p className="mt-1 font-semibold text-slate-950">{context.module} · {context.view}</p>
-                <p className="mt-1 text-xs text-slate-500">{context.company}</p>
+                <p className="mt-1 text-xs text-slate-500" dir="auto">{context.company}</p>
               </div>
               <Sparkles className="h-4 w-4 text-blue-600" />
             </section>
             {recentPrompts.length > 0 ? (
               <details className="brain-recent">
-                <summary>Recent conversation</summary>
+                <summary>{t.shell.recentConversation}</summary>
                 <div className="mt-2 space-y-1">
-                  {recentPrompts.map((prompt) => <p key={prompt} className="truncate text-xs text-slate-500">{prompt}</p>)}
+                  {recentPrompts.map((prompt) => <p key={prompt} className="truncate text-xs text-slate-500" dir="auto">{prompt}</p>)}
                 </div>
               </details>
             ) : null}
@@ -390,29 +419,29 @@ export function BrainExperienceShell({
 
       {searchOpen ? (
         <div className="brain-overlay brain-search-overlay" role="presentation">
-          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setSearchOpen(false)} aria-label="Close search" />
+          <button type="button" className="absolute inset-0 cursor-default" onClick={() => setSearchOpen(false)} aria-label={t.shell.closeSearch} />
           <section ref={searchDialogRef} className="brain-command-menu" role="dialog" aria-modal="true" aria-labelledby="brain-search-title">
             <div className="flex items-center gap-3 border-b border-slate-200 px-4">
               <Search className="h-5 w-5 text-slate-400" />
-              <label id="brain-search-title" className="sr-only" htmlFor="brain-global-search">Search Brain</label>
+              <label id="brain-search-title" className="sr-only" htmlFor="brain-global-search">{t.navigation.searchBrain}</label>
               <input
                 ref={searchInputRef}
                 id="brain-global-search"
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search reservations, guests, tasks, people…"
+                placeholder={t.shell.searchPlaceholder}
                 className="h-14 min-w-0 flex-1 bg-transparent text-base text-slate-950 outline-none placeholder:text-slate-400"
               />
-              <button type="button" onClick={() => setSearchOpen(false)} className="brain-key">Esc</button>
+              <button type="button" onClick={() => setSearchOpen(false)} className="brain-key">{t.shell.escape}</button>
             </div>
             <div className="mobile-scroll-region max-h-[min(65dvh,34rem)] overflow-y-auto p-2">
               {search.trim().length >= 2 ? (
                 <>
                   <p className="px-3 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                    Records
+                    {t.shell.records}
                   </p>
                   {entitySearchLoading ? (
-                    <p className="px-3 py-3 text-sm text-slate-500">Searching your authorized workspace…</p>
+                    <p className="px-3 py-3 text-sm text-slate-500">{t.shell.searching}</p>
                   ) : entityResults.length ? entityResults.map((item) => (
                     <Link
                       key={item.id}
@@ -422,18 +451,18 @@ export function BrainExperienceShell({
                     >
                       <span className="brain-search-result-icon"><Search className="h-4 w-4" /></span>
                       <span className="min-w-0 flex-1">
-                        <span className="block font-medium text-slate-900">{item.label}</span>
-                        <span className="block truncate text-xs text-slate-500">{item.kind} · {item.description}</span>
+                        <span className="block font-medium text-slate-900" dir="auto">{item.label}</span>
+                        <span className="block truncate text-xs text-slate-500"><span>{item.kind}</span> · <bdi>{item.description}</bdi></span>
                       </span>
-                      <ArrowRight className="h-4 w-4 text-slate-300" />
+                      <ArrowRight className="brain-directional-icon h-4 w-4 text-slate-300" />
                     </Link>
                   )) : (
-                    <p className="px-3 py-3 text-sm text-slate-500">No matching records in your authorized scope.</p>
+                    <p className="px-3 py-3 text-sm text-slate-500">{t.shell.noRecords}</p>
                   )}
                 </>
               ) : null}
               <p className="px-3 pb-2 pt-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-400">
-                {search ? 'Modules and workflows' : 'Go anywhere'}
+                {search ? t.shell.modulesAndWorkflows : t.shell.goAnywhere}
               </p>
               {visibleDestinations.length ? visibleDestinations.map((item) => {
                 const Icon = item.icon;
@@ -446,16 +475,16 @@ export function BrainExperienceShell({
                   >
                     <span className="brain-search-result-icon"><Icon className="h-4 w-4" /></span>
                     <span className="min-w-0 flex-1">
-                      <span className="block font-medium text-slate-900">{item.label}</span>
-                      <span className="block truncate text-xs text-slate-500">{item.description}</span>
+                      <span className="block font-medium text-slate-900">{t.navigation.destinations[item.translationKey].label}</span>
+                      <span className="block truncate text-xs text-slate-500">{t.navigation.destinations[item.translationKey].description}</span>
                     </span>
-                    <ArrowRight className="h-4 w-4 text-slate-300" />
+                    <ArrowRight className="brain-directional-icon h-4 w-4 text-slate-300" />
                   </Link>
                 );
               }) : entityResults.length === 0 ? (
                 <div className="px-5 py-10 text-center">
-                  <p className="font-medium text-slate-700">No destination found</p>
-                  <p className="mt-1 text-sm text-slate-500">Try a module, workflow, or record type.</p>
+                  <p className="font-medium text-slate-700">{t.shell.noDestination}</p>
+                  <p className="mt-1 text-sm text-slate-500">{t.shell.noDestinationHelp}</p>
                 </div>
               ) : null}
             </div>

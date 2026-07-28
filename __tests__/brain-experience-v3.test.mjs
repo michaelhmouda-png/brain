@@ -21,12 +21,12 @@ test('authenticated pages share one calm light workspace and design-token system
 
 test('navigation exposes five calm primary destinations and keeps the rest contextual', async () => {
   const sidebar = await read('components/DashboardSidebar.tsx');
-  for (const label of ['Home', 'Operations', 'Reservations', 'Guests']) {
-    assert.match(sidebar, new RegExp(`label: '${label}'`));
+  for (const key of ['home', 'operations', 'reservations', 'guests']) {
+    assert.match(sidebar, new RegExp(`translationKey: '${key}'`));
   }
   assert.match(sidebar, /group: 'operations'/);
   assert.match(sidebar, /group: 'organization'/);
-  assert.match(sidebar, /aria-label="Quick navigation"/);
+  assert.match(sidebar, /aria-label=\{t\.navigation\.quickLabel\}/);
   assert.match(sidebar, /dispatch\('brain:open'\)/);
 });
 
@@ -39,9 +39,9 @@ test('Brain Orb is the single persistent assistant and receives safe page contex
     read('app/dashboard/cameras/page.tsx'),
   ]);
   assert.match(shell, /className="brain-orb"/);
-  assert.match(shell, /Current page context/);
+  assert.match(shell, /t\.shell\.currentPageContext/);
   assert.match(shell, /route: pathname/);
-  assert.match(shell, /module,/);
+  assert.match(shell, /module: currentModule/);
   assert.match(shell, /entity: activeContextOverride\?\.entity \?\? deriveEntity\(pathname\)/);
   assert.match(assistant, /contextualizeMessage/);
   assert.match(assistant, /Current module:/);

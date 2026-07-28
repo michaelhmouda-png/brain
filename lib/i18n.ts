@@ -9,7 +9,7 @@ export function normalizeLanguage(value: unknown): Language {
   return isLanguage(value) ? value : 'en';
 }
 
-export const messages = {
+const baseMessages = {
   en: {
     nav: { dashboard: 'Dashboard', brain: 'AI Assistant', tasks: 'My Tasks', notifications: 'My Notifications', shifts: 'My Schedule', settings: 'Settings', cameras: 'Cameras', signOut: 'Sign out', signingOut: 'Signing out...', account: 'Your Account', open: 'Open navigation', close: 'Close navigation' },
     tasks: { eyebrow: 'Tasks', title: 'Operational workflow', description: 'Live tasks in your authorized scope.', refresh: 'Refresh', loading: 'Loading tasks', access: 'Access unavailable', unable: 'Unable to load tasks', retry: 'Try again', emptyTitle: 'No tasks yet', empty: 'No tasks are assigned within your authorized task scope.', session: 'Your session has expired. Please sign in again.', unauthorized: 'Your account is not authorized for a company workspace.', unlinked: 'Your account is not linked to an employee record. Ask an owner or manager to complete the link.', failed: 'Tasks could not be loaded. Check your connection and try again.', unassigned: 'Unassigned', noDue: 'No due date', original: 'Original task', arabicTranslation: 'Arabic translation', translationPending: 'Arabic translation is not available yet.', complete: 'Mark complete', completing: 'Completing...', edit: 'Edit task', editEyebrow: 'Management edit', editTitle: 'Edit task', editTimezone: 'Company timezone', editClose: 'Close task editor', editTaskTitle: 'Title', editDescription: 'Description', editAssignee: 'Assigned employee', editLocation: 'Location', editNoLocation: 'No location', editPriority: 'Priority', editStatus: 'Status', editDueDate: 'Due date', editDueTime: 'Due time', editCancel: 'Cancel', editSave: 'Save changes', editSaving: 'Saving…', editField: 'Field', editConflict: 'This task changed after you opened it. Load the latest values before retrying.', editLoadLatest: 'Load latest values', editForbidden: 'You are not authorized to edit this task.', editLifecycle: 'This status change must use the dedicated task lifecycle.', editAssigneeInvalid: 'Choose an active employee in your company.', editLocationInvalid: 'Choose an active location in your company.', editInvalid: 'Review the highlighted task values and try again.', editFailed: 'The task could not be updated. Retry after checking your connection.' },
@@ -40,4 +40,307 @@ export const messages = {
   },
 } as const;
 
+const v3Messages = {
+  en: {
+    navigation: {
+      brandSubtitle: 'Hospitality OS', search: 'Search', searchBrain: 'Search Brain',
+      primaryLabel: 'Primary navigation', quickLabel: 'Quick navigation', drawerLabel: 'Navigation',
+      navigate: 'Navigate', workspace: 'Workspace', organization: 'Organization', brain: 'Brain',
+      operator: 'Brain operator',
+      destinations: {
+        home: { label: 'Home', description: 'Today’s briefing and priorities', keywords: 'briefing score today' },
+        operations: { label: 'Operations', description: 'Live operational work', keywords: 'overview command center' },
+        reservations: { label: 'Reservations', description: 'Bookings, waitlist, and service calendar', keywords: 'booking calendar waiting list calls' },
+        guests: { label: 'Guests', description: 'Guest profiles and memory', keywords: 'customers people profiles' },
+        tasks: { label: 'Tasks', description: 'Assigned and overdue work', keywords: 'to do overdue work' },
+        schedule: { label: 'Schedule', description: 'Team shifts and coverage', keywords: 'roster employees hours' },
+        notifications: { label: 'Notifications', description: 'Updates that need your attention', keywords: 'alerts inbox' },
+        evidenceReview: { label: 'Evidence review', description: 'Manager review queue', keywords: 'task proof approvals' },
+        inventory: { label: 'Inventory', description: 'Stock health and alerts', keywords: 'stock supplies low stock' },
+        maintenance: { label: 'Maintenance', description: 'Issues, repairs, and equipment', keywords: 'tickets repair' },
+        incidents: { label: 'Incidents', description: 'Operational incident records', keywords: 'reports safety' },
+        cameras: { label: 'Cameras', description: 'Camera Manager and inspections', keywords: 'nvr vision agent' },
+        timeline: { label: 'Timeline', description: 'Durable operational history', keywords: 'events history' },
+        team: { label: 'Team', description: 'Employees and profiles', keywords: 'staff employees people' },
+        announcements: { label: 'Announcements', description: 'Company updates', keywords: 'news posts' },
+        companies: { label: 'Companies', description: 'Hospitality business profiles', keywords: 'brands tenant' },
+        locations: { label: 'Locations', description: 'Venues and service settings', keywords: 'venues branches' },
+        departments: { label: 'Departments', description: 'Team structure', keywords: 'areas organization' },
+        analytics: { label: 'Analytics', description: 'Performance overview', keywords: 'reports metrics' },
+        settings: { label: 'Settings', description: 'Preferences and notifications', keywords: 'account language' },
+      },
+    },
+    shell: {
+      yourCompany: 'Your company', currentAuthorizedView: 'Current authorized view', you: 'You',
+      openBrain: 'Open Brain', closeBrain: 'Close Brain', operationalIntelligence: 'Your operational intelligence',
+      currentPageContext: 'Current page context', viewing: 'You are viewing', recentConversation: 'Recent conversation',
+      closeSearch: 'Close search', searchPlaceholder: 'Search reservations, guests, tasks, people…',
+      escape: 'Esc', records: 'Records', searching: 'Searching your authorized workspace…',
+      noRecords: 'No matching records in your authorized scope.', modulesAndWorkflows: 'Modules and workflows',
+      goAnywhere: 'Go anywhere', noDestination: 'No destination found',
+      noDestinationHelp: 'Try a module, workflow, or record type.', task: 'Task', reservation: 'Reservation',
+      incident: 'Incident', maintenance: 'Maintenance', details: 'Details', new: 'New',
+      calendar: 'Calendar', today: 'Today',
+      modules: {
+        reservations: 'Reservations', timeline: 'Timeline', tasks: 'Tasks', cameras: 'Cameras',
+        employees: 'Employees', inventory: 'Inventory', maintenance: 'Maintenance', incidents: 'Incidents',
+        operations: 'Operations', schedule: 'Schedule', notifications: 'Notifications', settings: 'Settings',
+        home: 'Home', brain: 'Brain',
+      },
+    },
+    assistant: {
+      unavailable: 'Brain is temporarily unavailable.', requestFailed: 'Brain could not complete that request.',
+      cancelFailed: 'Brain could not cancel that action.', actionCancelled: 'The proposed action was cancelled.',
+      greeting: 'How can I help?', contextHelp: 'Brain already knows which part of the operation you are viewing.',
+      suggested: 'Suggested', executing: 'Completing the approved action…', thinking: 'Thinking…',
+      confirmAction: 'Confirm {action}', cancel: 'Cancel', confirm: 'Confirm', inputLabel: 'Ask Brain',
+      placeholder: 'Ask about {module}…', send: 'Send message', evidencePrivate: 'Evidence stays private',
+      requestsLeft: '{count} requests left', connecting: 'Connecting…',
+      compatibilityOpening: 'Opening Brain…',
+      compatibilityHelp: 'Brain now stays with you across the entire operation.',
+      suggestions: {
+        reservations: ['What needs attention today?', 'Summarize the waiting list.', 'What is the next arrival?'],
+        operations: ['What needs attention now?', 'Show everything overdue.', 'Summarize today’s operations.'],
+        tasks: ['What is overdue?', 'What should be prioritized first?', 'Show today’s active work.'],
+        cameras: ['Summarize camera readiness.', 'Which camera needs attention?', 'Explain the latest inspection.'],
+        employees: ['Summarize team coverage.', 'Who has active tasks?', 'What needs a manager’s attention?'],
+        default: ['What needs attention today?', 'Summarize this view.', 'What should I do next?'],
+      },
+    },
+    schedule: {
+      personalTitle: 'My schedule', personalDescription: 'View your shifts and working times.',
+      managementTitle: 'Shift management', managementDescription: 'View company schedules and coverage.',
+      previousWeek: 'Previous week', nextWeek: 'Next week', weekOf: 'Week of {date}',
+      employee: 'Employee', you: 'You', scheduled: 'Scheduled', noShift: 'No shift',
+      noSchedules: 'No shifts for this week.', noManagementSchedules: 'No schedules for this week.',
+      employeesScheduled: 'Employees scheduled', swapsPending: 'Shift swaps pending',
+      timeOffRequests: 'Time off requests', loading: 'Loading schedule…',
+      failed: 'Schedule could not be loaded.', unauthorized: 'You are not authorized to view this schedule.',
+      retry: 'Try again', tableLabel: 'Weekly shifts table',
+      days: { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
+    },
+    notificationSettings: {
+      title: 'Notification settings',
+      description: 'Browser and OS permission is required. Permission is requested only when you choose Enable notifications.',
+      permissionState: 'Permission state: {state}',
+      states: { unsupported: 'Unsupported', not_requested: 'Not requested', denied: 'Denied', enabled: 'Enabled', expired: 'Needs renewal' },
+      unsupported: 'Push is not supported by this browser.',
+      denied: 'Permission was denied. Enable notifications in your browser or device settings; Brain will not ask repeatedly.',
+      iphone: 'On iPhone, install Brain to the Home Screen and enable notifications from the installed web app where supported.',
+      enable: 'Enable notifications', disable: 'Disable this device',
+      enabledMessage: 'Browser notifications enabled on this device.',
+      enableFailed: 'Notifications could not be enabled. Retry after checking browser settings.',
+      saved: 'Notification preferences saved.', saveFailed: 'Preferences could not be saved.',
+      save: 'Save preferences', inApp: 'In-app notifications', quietHours: 'Quiet hours',
+      start: 'Start', end: 'End', unreadCount: '{count} unread notifications',
+      loading: 'Loading preferences…', loadFailed: 'Preferences could not be loaded.',
+      retry: 'Retry', saving: 'Saving…',
+      categories: {
+        taskAssignments: 'Task assignments', taskUpdates: 'Task updates',
+        dueReminders: '30-minute task reminders', announcements: 'Announcements',
+        maintenance: 'Maintenance', incidents: 'Incidents', evidenceReview: 'Evidence review',
+      },
+    },
+    notificationCategory: {
+      task_assignment: 'Task assignment', task_update: 'Task update', due_reminder: 'Task reminder',
+      announcement: 'Announcement', maintenance: 'Maintenance', incident: 'Incident',
+      evidence_review: 'Evidence review', system: 'System',
+    },
+    accountState: {
+      authenticationError: 'Authentication error',
+      authenticationHelp: 'Unable to verify your authentication. Please sign in again.',
+      setupRequired: 'Account setup required',
+      setupHelp: 'Your account has not been set up yet. Please contact your administrator.',
+      userId: 'User ID', inactive: 'Account inactive',
+      inactiveHelp: 'Your account is currently {status}. Please contact your administrator.',
+    },
+    profileStatus: { active: 'Active', inactive: 'Inactive', suspended: 'Suspended' },
+    settingsCards: {
+      workspace: { label: 'Workspace', description: 'Venue preferences and branding' },
+      notifications: { label: 'Notifications', description: 'Alert thresholds and channels' },
+      security: { label: 'Security', description: 'Access controls and audit' },
+    },
+    evidenceState: {
+      pending_upload: 'Pending upload', upload_failed: 'Upload failed', pending_review: 'Pending review',
+      queued: 'Queued', processing: 'Processing', ai_verified: 'AI verified', ai_rejected: 'AI rejected',
+      needs_human_review: 'Needs human review', human_approved: 'Approved',
+      human_rejected: 'Rejected', verification_failed: 'Verification failed',
+    },
+  },
+  ar: {
+    navigation: {
+      brandSubtitle: 'نظام تشغيل الضيافة', search: 'بحث', searchBrain: 'البحث في برين',
+      primaryLabel: 'التنقل الرئيسي', quickLabel: 'التنقل السريع', drawerLabel: 'التنقل',
+      navigate: 'انتقل إلى', workspace: 'مساحة العمل', organization: 'المؤسسة', brain: 'برين',
+      operator: 'مستخدم برين',
+      destinations: {
+        home: { label: 'الرئيسية', description: 'ملخص اليوم والأولويات', keywords: 'ملخص نتيجة اليوم' },
+        operations: { label: 'العمليات', description: 'العمل التشغيلي المباشر', keywords: 'نظرة عامة مركز العمليات' },
+        reservations: { label: 'الحجوزات', description: 'الحجوزات وقائمة الانتظار وتقويم الخدمة', keywords: 'حجز تقويم انتظار مكالمات' },
+        guests: { label: 'الضيوف', description: 'ملفات الضيوف وسجلهم', keywords: 'عملاء أشخاص ملفات' },
+        tasks: { label: 'المهام', description: 'العمل المسند والمتأخر', keywords: 'مهام متأخرة عمل' },
+        schedule: { label: 'الجدول', description: 'ورديات الفريق والتغطية', keywords: 'ورديات موظفون ساعات' },
+        notifications: { label: 'الإشعارات', description: 'تحديثات تحتاج إلى انتباهك', keywords: 'تنبيهات وارد' },
+        evidenceReview: { label: 'مراجعة الأدلة', description: 'قائمة مراجعة المدير', keywords: 'دليل مهمة موافقات' },
+        inventory: { label: 'المخزون', description: 'حالة المخزون والتنبيهات', keywords: 'مخزون لوازم نقص' },
+        maintenance: { label: 'الصيانة', description: 'المشكلات والإصلاحات والمعدات', keywords: 'تذاكر إصلاح' },
+        incidents: { label: 'الحوادث', description: 'سجلات الحوادث التشغيلية', keywords: 'تقارير سلامة' },
+        cameras: { label: 'الكاميرات', description: 'إدارة الكاميرات وعمليات الفحص', keywords: 'مسجل رؤية وكيل' },
+        timeline: { label: 'السجل الزمني', description: 'السجل التشغيلي الدائم', keywords: 'أحداث سجل' },
+        team: { label: 'الفريق', description: 'الموظفون وملفاتهم', keywords: 'طاقم موظفون أشخاص' },
+        announcements: { label: 'الإعلانات', description: 'تحديثات الشركة', keywords: 'أخبار منشورات' },
+        companies: { label: 'الشركات', description: 'ملفات منشآت الضيافة', keywords: 'علامات مستأجر' },
+        locations: { label: 'المواقع', description: 'الفروع وإعدادات الخدمة', keywords: 'فروع مواقع' },
+        departments: { label: 'الأقسام', description: 'هيكل الفريق', keywords: 'مناطق مؤسسة' },
+        analytics: { label: 'التحليلات', description: 'نظرة عامة على الأداء', keywords: 'تقارير مقاييس' },
+        settings: { label: 'الإعدادات', description: 'التفضيلات والإشعارات', keywords: 'حساب لغة' },
+      },
+    },
+    shell: {
+      yourCompany: 'شركتك', currentAuthorizedView: 'العرض المصرح لك به حاليًا', you: 'أنت',
+      openBrain: 'فتح برين', closeBrain: 'إغلاق برين', operationalIntelligence: 'ذكاؤك التشغيلي',
+      currentPageContext: 'سياق الصفحة الحالية', viewing: 'أنت تعرض', recentConversation: 'المحادثة الأخيرة',
+      closeSearch: 'إغلاق البحث', searchPlaceholder: 'ابحث في الحجوزات والضيوف والمهام والأشخاص…',
+      escape: 'Esc', records: 'السجلات', searching: 'جارٍ البحث ضمن مساحة عملك المصرح بها…',
+      noRecords: 'لا توجد سجلات مطابقة ضمن نطاق صلاحياتك.', modulesAndWorkflows: 'الوحدات ومسارات العمل',
+      goAnywhere: 'انتقل إلى أي مكان', noDestination: 'لم يتم العثور على وجهة',
+      noDestinationHelp: 'جرّب اسم وحدة أو مسار عمل أو نوع سجل.', task: 'مهمة', reservation: 'حجز',
+      incident: 'حادث', maintenance: 'صيانة', details: 'التفاصيل', new: 'جديد',
+      calendar: 'التقويم', today: 'اليوم',
+      modules: {
+        reservations: 'الحجوزات', timeline: 'السجل الزمني', tasks: 'المهام', cameras: 'الكاميرات',
+        employees: 'الموظفون', inventory: 'المخزون', maintenance: 'الصيانة', incidents: 'الحوادث',
+        operations: 'العمليات', schedule: 'الجدول', notifications: 'الإشعارات', settings: 'الإعدادات',
+        home: 'الرئيسية', brain: 'برين',
+      },
+    },
+    assistant: {
+      unavailable: 'برين غير متاح مؤقتًا.', requestFailed: 'تعذّر على برين إكمال هذا الطلب.',
+      cancelFailed: 'تعذّر على برين إلغاء هذا الإجراء.', actionCancelled: 'تم إلغاء الإجراء المقترح.',
+      greeting: 'كيف يمكنني مساعدتك؟', contextHelp: 'يعرف برين القسم التشغيلي الذي تعرضه حاليًا.',
+      suggested: 'مقترح', executing: 'جارٍ إكمال الإجراء الموافق عليه…', thinking: 'جارٍ التفكير…',
+      confirmAction: 'تأكيد {action}', cancel: 'إلغاء', confirm: 'تأكيد', inputLabel: 'اسأل برين',
+      placeholder: 'اسأل عن {module}…', send: 'إرسال الرسالة', evidencePrivate: 'تبقى الأدلة خاصة',
+      requestsLeft: '{count} طلبات متبقية', connecting: 'جارٍ الاتصال…',
+      compatibilityOpening: 'جارٍ فتح برين…',
+      compatibilityHelp: 'برين يبقى معك الآن في كل أنحاء التشغيل.',
+      suggestions: {
+        reservations: ['ما الذي يحتاج إلى انتباه اليوم؟', 'لخّص قائمة الانتظار.', 'ما هو الوصول التالي؟'],
+        operations: ['ما الذي يحتاج إلى الانتباه الآن؟', 'اعرض كل ما هو متأخر.', 'لخّص عمليات اليوم.'],
+        tasks: ['ما المهام المتأخرة؟', 'ما الذي يجب إعطاؤه الأولوية؟', 'اعرض عمل اليوم النشط.'],
+        cameras: ['لخّص جاهزية الكاميرات.', 'أي كاميرا تحتاج إلى الانتباه؟', 'اشرح نتيجة الفحص الأخيرة.'],
+        employees: ['لخّص تغطية الفريق.', 'من لديه مهام نشطة؟', 'ما الذي يحتاج إلى انتباه المدير؟'],
+        default: ['ما الذي يحتاج إلى انتباه اليوم؟', 'لخّص هذا العرض.', 'ماذا أفعل بعد ذلك؟'],
+      },
+    },
+    schedule: {
+      personalTitle: 'جدولي', personalDescription: 'عرض وردياتك ومواعيد عملك.',
+      managementTitle: 'إدارة الورديات', managementDescription: 'عرض جداول الشركة والتغطية.',
+      previousWeek: 'الأسبوع السابق', nextWeek: 'الأسبوع التالي', weekOf: 'أسبوع {date}',
+      employee: 'الموظف', you: 'أنت', scheduled: 'مجدول', noShift: 'لا توجد وردية',
+      noSchedules: 'لا توجد ورديات لك هذا الأسبوع.', noManagementSchedules: 'لا توجد جداول لهذا الأسبوع.',
+      employeesScheduled: 'الموظفون المجدولون', swapsPending: 'طلبات تبديل الورديات',
+      timeOffRequests: 'طلبات الإجازة', loading: 'جارٍ تحميل الجدول…',
+      failed: 'تعذّر تحميل الجدول.', unauthorized: 'ليست لديك صلاحية عرض هذا الجدول.',
+      retry: 'حاول مجددًا', tableLabel: 'جدول الورديات الأسبوعي',
+      days: { monday: 'الاثنين', tuesday: 'الثلاثاء', wednesday: 'الأربعاء', thursday: 'الخميس', friday: 'الجمعة', saturday: 'السبت', sunday: 'الأحد' },
+    },
+    notificationSettings: {
+      title: 'إعدادات الإشعارات',
+      description: 'يلزم إذن المتصفح ونظام التشغيل. لن نطلب الإذن إلا عند اختيار تفعيل الإشعارات.',
+      permissionState: 'حالة الإذن: {state}',
+      states: { unsupported: 'غير مدعوم', not_requested: 'لم يُطلب', denied: 'مرفوض', enabled: 'مفعّل', expired: 'يحتاج إلى تجديد' },
+      unsupported: 'هذا المتصفح لا يدعم الإشعارات الفورية.',
+      denied: 'تم رفض الإذن. فعّل الإشعارات من إعدادات المتصفح أو الجهاز؛ لن يكرر برين الطلب.',
+      iphone: 'على iPhone، أضف برين إلى الشاشة الرئيسية ثم فعّل الإشعارات من تطبيق الويب المثبّت حيث يكون ذلك مدعومًا.',
+      enable: 'تفعيل الإشعارات', disable: 'تعطيل هذا الجهاز',
+      enabledMessage: 'تم تفعيل إشعارات المتصفح على هذا الجهاز.',
+      enableFailed: 'تعذّر تفعيل الإشعارات. تحقق من إعدادات المتصفح ثم حاول مجددًا.',
+      saved: 'تم حفظ تفضيلات الإشعارات.', saveFailed: 'تعذّر حفظ التفضيلات.',
+      save: 'حفظ التفضيلات', inApp: 'الإشعارات داخل التطبيق', quietHours: 'ساعات الهدوء',
+      start: 'البداية', end: 'النهاية', unreadCount: '{count} إشعارات غير مقروءة',
+      loading: 'جارٍ تحميل التفضيلات…', loadFailed: 'تعذّر تحميل التفضيلات.',
+      retry: 'إعادة المحاولة', saving: 'جارٍ الحفظ…',
+      categories: {
+        taskAssignments: 'إسناد المهام', taskUpdates: 'تحديثات المهام',
+        dueReminders: 'تذكيرات المهام قبل 30 دقيقة', announcements: 'الإعلانات',
+        maintenance: 'الصيانة', incidents: 'الحوادث', evidenceReview: 'مراجعة الأدلة',
+      },
+    },
+    notificationCategory: {
+      task_assignment: 'إسناد مهمة', task_update: 'تحديث مهمة', due_reminder: 'تذكير بمهمة',
+      announcement: 'إعلان', maintenance: 'صيانة', incident: 'حادث',
+      evidence_review: 'مراجعة دليل', system: 'النظام',
+    },
+    accountState: {
+      authenticationError: 'خطأ في المصادقة',
+      authenticationHelp: 'تعذّر التحقق من تسجيل دخولك. يرجى تسجيل الدخول مجددًا.',
+      setupRequired: 'يلزم إعداد الحساب', setupHelp: 'لم يتم إعداد حسابك بعد. تواصل مع المسؤول.',
+      userId: 'معرّف المستخدم', inactive: 'الحساب غير نشط',
+      inactiveHelp: 'حسابك حاليًا {status}. تواصل مع المسؤول.',
+    },
+    profileStatus: { active: 'نشط', inactive: 'غير نشط', suspended: 'موقوف' },
+    settingsCards: {
+      workspace: { label: 'مساحة العمل', description: 'تفضيلات الموقع والهوية' },
+      notifications: { label: 'الإشعارات', description: 'حدود التنبيهات وقنواتها' },
+      security: { label: 'الأمان', description: 'ضوابط الوصول والسجل' },
+    },
+    evidenceState: {
+      pending_upload: 'بانتظار الرفع', upload_failed: 'فشل الرفع', pending_review: 'بانتظار المراجعة',
+      queued: 'في قائمة الانتظار', processing: 'قيد المعالجة', ai_verified: 'تم التحقق بالذكاء الاصطناعي',
+      ai_rejected: 'رفضه الذكاء الاصطناعي', needs_human_review: 'تحتاج إلى مراجعة بشرية',
+      human_approved: 'مقبول', human_rejected: 'مرفوض', verification_failed: 'فشل التحقق',
+    },
+  },
+} as const;
+
+export const messages = {
+  en: { ...baseMessages.en, ...v3Messages.en },
+  ar: { ...baseMessages.ar, ...v3Messages.ar },
+} as const;
+
 export type TranslationMessages = (typeof messages)['en'];
+
+type TranslationCatalog = Record<string, unknown>;
+
+function collectCatalogProblems(reference: TranslationCatalog, candidate: TranslationCatalog, prefix = ''): string[] {
+  const problems: string[] = [];
+  for (const [key, expected] of Object.entries(reference)) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    const actual = candidate[key];
+    if (typeof expected === 'string') {
+      if (typeof actual !== 'string' || !actual.trim()) problems.push(path);
+    } else if (Array.isArray(expected)) {
+      if (!Array.isArray(actual) || actual.length !== expected.length || actual.some((item) => typeof item !== 'string' || !item.trim())) problems.push(path);
+    } else if (expected && typeof expected === 'object') {
+      if (!actual || typeof actual !== 'object' || Array.isArray(actual)) problems.push(path);
+      else problems.push(...collectCatalogProblems(expected as TranslationCatalog, actual as TranslationCatalog, path));
+    }
+  }
+  for (const key of Object.keys(candidate)) {
+    if (!(key in reference)) problems.push(prefix ? `${prefix}.${key}` : key);
+  }
+  return problems;
+}
+
+export function validateTranslationCatalog(
+  reference: TranslationCatalog = messages.en,
+  candidate: TranslationCatalog = messages.ar,
+): string[] {
+  return collectCatalogProblems(reference, candidate);
+}
+
+export function getMessages(language: Language): TranslationMessages {
+  const problems = validateTranslationCatalog();
+  if (problems.length > 0) {
+    if (process.env.NODE_ENV !== 'production') console.error('[i18n] I18N_CATALOG_INCOMPLETE', { keys: problems });
+    throw new Error('I18N_CATALOG_INCOMPLETE');
+  }
+  return messages[language] as TranslationMessages;
+}
+
+export function interpolateMessage(template: string, values: Record<string, string | number>): string {
+  return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (match, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? String(values[key]) : match
+  );
+}

@@ -11,6 +11,8 @@ import {
   X,
 } from 'lucide-react';
 import { TaskEvidenceAttachment } from '@/components/brain/TaskEvidenceAttachment';
+import { useLocale } from '@/components/LocaleProvider';
+import { interpolateMessage } from '@/lib/i18n';
 import { BrainMark } from './BrainMark';
 
 type CommandState = 'idle' | 'thinking' | 'confirming' | 'executing' | 'done' | 'failed';
@@ -37,6 +39,7 @@ type ChatQuota = {
 
 export type BrainPageContext = {
   route: string;
+  moduleKey: 'reservations' | 'timeline' | 'tasks' | 'cameras' | 'employees' | 'inventory' | 'maintenance' | 'incidents' | 'operations' | 'schedule' | 'notifications' | 'settings' | 'home' | 'brain';
   module: string;
   view: string;
   entity: string | null;
@@ -53,16 +56,11 @@ const CONFIRMATIONS = new Set([
   'go ahead',
   'do it',
   'ok',
+  'تأكيد',
+  'نعم',
+  'تابع',
+  'موافق',
 ]);
-
-const contextualSuggestions: Record<string, string[]> = {
-  Reservations: ['What needs attention today?', 'Summarize the waiting list.', 'What is the next arrival?'],
-  Operations: ['What needs attention now?', 'Show everything overdue.', 'Summarize today’s operations.'],
-  Tasks: ['What is overdue?', 'What should be prioritized first?', 'Show today’s active work.'],
-  Cameras: ['Summarize camera readiness.', 'Which camera needs attention?', 'Explain the latest inspection.'],
-  Employees: ['Summarize team coverage.', 'Who has active tasks?', 'What needs a manager’s attention?'],
-  default: ['What needs attention today?', 'Summarize this view.', 'What should I do next?'],
-};
 
 function parseQuota(value: unknown): ChatQuota | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
@@ -101,6 +99,7 @@ export function BrainAssistant({
   context: BrainPageContext;
   onConversationActivity?: (preview: string) => void;
 }) {
+  const { language, messages: t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [quota, setQuota] = useState<ChatQuota | null>(null);
@@ -109,10 +108,13 @@ export function BrainAssistant({
   const [error, setError] = useState<string | null>(null);
   const messagesRef = useRef<HTMLDivElement>(null);
   const submitted = useRef(new Set<string>());
-  const suggestions = useMemo(
-    () => contextualSuggestions[context.module] ?? contextualSuggestions.default,
-    [context.module],
-  );
+  const suggestions = useMemo(() => {
+    const key = context.moduleKey === 'reservations' || context.moduleKey === 'operations' ||
+      context.moduleKey === 'tasks' || context.moduleKey === 'cameras' || context.moduleKey === 'employees'
+      ? context.moduleKey
+      : 'default';
+    return t.assistant.suggestions[key];
+  }, [context.moduleKey, t]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -127,16 +129,16 @@ export function BrainAssistant({
         const nextQuota = payload && typeof payload === 'object' && 'quota' in payload
           ? parseQuota((payload as { quota: unknown }).quota)
           : null;
-        if (!response.ok || !nextQuota) throw new Error('Brain is temporarily unavailable.');
+        if (!response.ok || !nextQuota) throw new Error(t.assistant.unavailable);
         setQuota(nextQuota);
       })
       .catch((reason: unknown) => {
         if (!controller.signal.aborted) {
-          setError(reason instanceof Error ? reason.message : 'Brain is temporarily unavailable.');
+          setError(reason instanceof Error ? reason.message : t.assistant.unavailable);
         }
       });
     return () => controller.abort();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     const node = messagesRef.current;
@@ -191,7 +193,7 @@ export function BrainAssistant({
       const nextQuota = parseQuota(record.quota);
       if (nextQuota) setQuota(nextQuota);
       if (!response.ok || typeof record.message !== 'string') {
-        throw new Error(typeof record.error === 'string' ? record.error : 'Brain could not complete that request.');
+        throw new Error(t.assistant.requestFailed);
       }
       setMessages((current) => [...current, {
         id: crypto.randomUUID(),
@@ -217,7 +219,7 @@ export function BrainAssistant({
       setState('done');
     } catch (reason) {
       if (confirming && pendingAction) submitted.current.delete(pendingAction.id);
-      setError(reason instanceof Error ? reason.message : 'Brain could not complete that request.');
+      setError(reason instanceof Error ? reason.message : t.assistant.requestFailed);
       setState('failed');
     }
   };
@@ -232,17 +234,17 @@ export function BrainAssistant({
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ proposalId: pendingAction.id, decision: 'reject' }),
       });
-      if (!response.ok) throw new Error('Brain could not cancel that action.');
+      if (!response.ok) throw new Error(t.assistant.cancelFailed);
       setPendingAction(null);
       setState('idle');
       setMessages((current) => [...current, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: 'The proposed action was cancelled.',
+        content: t.assistant.actionCancelled,
         timestamp: new Date(),
       }]);
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : 'Brain could not cancel that action.');
+      setError(reason instanceof Error ? reason.message : t.assistant.cancelFailed);
       setState('failed');
     }
   };
@@ -262,14 +264,14 @@ export function BrainAssistant({
                 <BrainMark className="h-8 w-8 text-slate-950" />
               </div>
               <h2 className="mt-5 text-2xl font-semibold tracking-[-0.03em] text-slate-950">
-                How can I help?
+                {t.assistant.greeting}
               </h2>
               <p className="mt-2 max-w-sm text-sm leading-6 text-slate-500">
-                Brain already knows which part of the operation you are viewing.
+                {t.assistant.contextHelp}
               </p>
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Suggested</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{t.assistant.suggested}</p>
               {suggestions.map((suggestion) => (
                 <button
                   key={suggestion}
@@ -291,7 +293,7 @@ export function BrainAssistant({
                 <div>
                   <p className="whitespace-pre-wrap text-sm leading-6">{message.content}</p>
                   <time className="mt-1 block text-[11px] opacity-50">
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    {message.timestamp.toLocaleTimeString(language === 'ar' ? 'ar-LB' : 'en', { hour: '2-digit', minute: '2-digit' })}
                   </time>
                 </div>
               </article>
@@ -299,7 +301,7 @@ export function BrainAssistant({
             {(state === 'thinking' || state === 'executing') ? (
               <div className="flex items-center gap-2 text-sm text-slate-500">
                 <LoaderCircle className="h-4 w-4 animate-spin" />
-                {state === 'executing' ? 'Completing the approved action…' : 'Thinking…'}
+                {state === 'executing' ? t.assistant.executing : t.assistant.thinking}
               </div>
             ) : null}
             {error ? (
@@ -316,7 +318,7 @@ export function BrainAssistant({
         <section className="border-t border-slate-200 bg-amber-50/70 p-5">
           <div className="flex items-center gap-2 text-sm font-semibold text-slate-900">
             <Clock3 className="h-4 w-4 text-amber-600" />
-            Confirm {pendingAction.label}
+            {interpolateMessage(t.assistant.confirmAction, { action: pendingAction.label })}
           </div>
           <dl className="mt-3 space-y-2">
             {pendingAction.rows.map((row) => (
@@ -328,10 +330,10 @@ export function BrainAssistant({
           </dl>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button type="button" onClick={() => void rejectAction()} className="brain-button-secondary">
-              <X className="h-4 w-4" /> Cancel
+              <X className="h-4 w-4" /> {t.assistant.cancel}
             </button>
             <button type="button" onClick={() => void send('Confirm')} className="brain-button-primary">
-              <Check className="h-4 w-4" /> Confirm
+              <Check className="h-4 w-4" /> {t.assistant.confirm}
             </button>
           </div>
         </section>
@@ -344,16 +346,16 @@ export function BrainAssistant({
             onUploaded={(taskTitle) => setMessages((current) => [...current, {
               id: crypto.randomUUID(),
               role: 'assistant',
-              content: `Evidence attached to ${taskTitle}. It is queued for AI verification. The task was not completed automatically.`,
+              content: interpolateMessage(t.brain.evidenceQueued, { task: taskTitle }),
               timestamp: new Date(),
             }])}
           />
-          <label className="sr-only" htmlFor="brain-drawer-input">Ask Brain</label>
+          <label className="sr-only" htmlFor="brain-drawer-input">{t.assistant.inputLabel}</label>
           <input
             id="brain-drawer-input"
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder={`Ask about ${context.module.toLowerCase()}…`}
+            placeholder={interpolateMessage(t.assistant.placeholder, { module: context.module })}
             disabled={!quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
             className="min-w-0 flex-1 bg-transparent px-1 text-base text-slate-950 outline-none placeholder:text-slate-400"
           />
@@ -361,14 +363,14 @@ export function BrainAssistant({
             type="submit"
             disabled={!input.trim() || !quota || quota.remaining <= 0 || state === 'thinking' || state === 'executing'}
             className="brain-send-button"
-            aria-label="Send message"
+            aria-label={t.assistant.send}
           >
             <ArrowUp className="h-4 w-4" />
           </button>
         </div>
         <div className="mt-2 flex items-center justify-between px-1 text-[11px] text-slate-400">
-          <span className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" /> Evidence stays private</span>
-          <span>{quota ? `${quota.remaining} requests left` : 'Connecting…'}</span>
+          <span className="inline-flex items-center gap-1"><Paperclip className="h-3 w-3" /> {t.assistant.evidencePrivate}</span>
+          <span>{quota ? interpolateMessage(t.assistant.requestsLeft, { count: quota.remaining }) : t.assistant.connecting}</span>
         </div>
       </form>
     </div>

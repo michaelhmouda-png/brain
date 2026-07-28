@@ -142,7 +142,7 @@ test('notification processing never mutates tasks or consumes Brain quota', () =
 
 test('settings reuse dueReminders and provide exact English and Arabic labels', () => {
   assert.match(settings, /dueReminders: booleanPreference\([\s\S]+?'due_reminders'/);
-  assert.match(settings, /t\.notifications\.due30mPreference/);
+  assert.match(settings, /t\.notificationSettings\.categories\[category\]/);
   assert.match(i18n, /due30mPreference: '30-minute task reminders'/);
   assert.match(i18n, /due30mPreference: 'تذكيرات المهام قبل 30 دقيقة'/);
   assert.doesNotMatch(settings, /due30mReminders|thirtyMinuteReminders/);

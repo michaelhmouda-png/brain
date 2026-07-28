@@ -213,7 +213,8 @@ test('UI replaces fake feeds with mobile Camera Manager states and centralized A
   assert.match(page, /c\.noCameras/);
   assert.match(page, /Connection testing will become available|c\.agentNotice/);
   assert.match(i18n, /title: 'الكاميرات'/);
-  assert.match(sidebar, /t\.nav\.cameras/);
+  assert.match(sidebar, /translationKey: 'cameras'/);
+  assert.match(sidebar, /t\.navigation\.destinations\[item\.translationKey\]/);
   assert.doesNotMatch(page, /fake|livestream|<video|rtsp:\/\//i);
 });
 

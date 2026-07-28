@@ -38,10 +38,8 @@ import { BrainMark } from '@/components/brain-experience/BrainMark';
 type Role = Profile['role'];
 
 export type DashboardDestination = {
+  translationKey: keyof ReturnType<typeof useLocale>['messages']['navigation']['destinations'];
   href: string;
-  label: string;
-  description: string;
-  keywords: string[];
   icon: LucideIcon;
   group: 'primary' | 'operations' | 'organization';
   roles: Role[];
@@ -51,26 +49,26 @@ const managementRoles: Role[] = ['manager', 'owner', 'super_admin'];
 const everyRole: Role[] = ['employee', ...managementRoles];
 
 export const dashboardDestinations: DashboardDestination[] = [
-  { href: '/dashboard', label: 'Home', description: 'Today’s briefing and priorities', keywords: ['briefing', 'score', 'today'], icon: Home, group: 'primary', roles: everyRole },
-  { href: '/dashboard/operations', label: 'Operations', description: 'Live operational work', keywords: ['overview', 'command center'], icon: LayoutGrid, group: 'primary', roles: managementRoles },
-  { href: '/dashboard/reservations', label: 'Reservations', description: 'Bookings, waitlist, and service calendar', keywords: ['booking', 'calendar', 'waiting list', 'calls'], icon: CalendarDays, group: 'primary', roles: managementRoles },
-  { href: '/dashboard/customers', label: 'Guests', description: 'Guest profiles and memory', keywords: ['customers', 'people', 'profiles'], icon: CircleUserRound, group: 'primary', roles: managementRoles },
-  { href: '/dashboard/tasks', label: 'Tasks', description: 'Assigned and overdue work', keywords: ['to do', 'overdue', 'work'], icon: CheckSquare2, group: 'operations', roles: everyRole },
-  { href: '/dashboard/shifts', label: 'Schedule', description: 'Team shifts and coverage', keywords: ['roster', 'employees', 'hours'], icon: Clock3, group: 'operations', roles: everyRole },
-  { href: '/dashboard/notifications', label: 'Notifications', description: 'Updates that need your attention', keywords: ['alerts', 'inbox'], icon: Bell, group: 'operations', roles: everyRole },
-  { href: '/dashboard/evidence-review', label: 'Evidence review', description: 'Manager review queue', keywords: ['task proof', 'approvals'], icon: ClipboardCheck, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/inventory', label: 'Inventory', description: 'Stock health and alerts', keywords: ['stock', 'supplies', 'low stock'], icon: PackageOpen, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/maintenance', label: 'Maintenance', description: 'Issues, repairs, and equipment', keywords: ['tickets', 'repair'], icon: Wrench, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/incidents', label: 'Incidents', description: 'Operational incident records', keywords: ['reports', 'safety'], icon: ShieldAlert, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/cameras', label: 'Cameras', description: 'Camera Manager and inspections', keywords: ['nvr', 'vision', 'agent'], icon: Camera, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/timeline', label: 'Timeline', description: 'Durable operational history', keywords: ['events', 'history'], icon: Sparkles, group: 'operations', roles: managementRoles },
-  { href: '/dashboard/employees', label: 'Team', description: 'Employees and profiles', keywords: ['staff', 'employees', 'people'], icon: Users, group: 'organization', roles: managementRoles },
-  { href: '/dashboard/announcements', label: 'Announcements', description: 'Company updates', keywords: ['news', 'posts'], icon: Megaphone, group: 'organization', roles: managementRoles },
-  { href: '/dashboard/companies', label: 'Companies', description: 'Hospitality business profiles', keywords: ['brands', 'tenant'], icon: Building2, group: 'organization', roles: ['owner', 'super_admin'] },
-  { href: '/dashboard/locations', label: 'Locations', description: 'Venues and service settings', keywords: ['venues', 'branches'], icon: Hotel, group: 'organization', roles: managementRoles },
-  { href: '/dashboard/departments', label: 'Departments', description: 'Team structure', keywords: ['areas', 'organization'], icon: LayoutGrid, group: 'organization', roles: managementRoles },
-  { href: '/dashboard/analytics', label: 'Analytics', description: 'Performance overview', keywords: ['reports', 'metrics'], icon: BarChart3, group: 'organization', roles: managementRoles },
-  { href: '/dashboard/settings', label: 'Settings', description: 'Preferences and notifications', keywords: ['account', 'language'], icon: Settings, group: 'organization', roles: everyRole },
+  { translationKey: 'home', href: '/dashboard', icon: Home, group: 'primary', roles: everyRole },
+  { translationKey: 'operations', href: '/dashboard/operations', icon: LayoutGrid, group: 'primary', roles: managementRoles },
+  { translationKey: 'reservations', href: '/dashboard/reservations', icon: CalendarDays, group: 'primary', roles: managementRoles },
+  { translationKey: 'guests', href: '/dashboard/customers', icon: CircleUserRound, group: 'primary', roles: managementRoles },
+  { translationKey: 'tasks', href: '/dashboard/tasks', icon: CheckSquare2, group: 'operations', roles: everyRole },
+  { translationKey: 'schedule', href: '/dashboard/shifts', icon: Clock3, group: 'operations', roles: everyRole },
+  { translationKey: 'notifications', href: '/dashboard/notifications', icon: Bell, group: 'operations', roles: everyRole },
+  { translationKey: 'evidenceReview', href: '/dashboard/evidence-review', icon: ClipboardCheck, group: 'operations', roles: managementRoles },
+  { translationKey: 'inventory', href: '/dashboard/inventory', icon: PackageOpen, group: 'operations', roles: managementRoles },
+  { translationKey: 'maintenance', href: '/dashboard/maintenance', icon: Wrench, group: 'operations', roles: managementRoles },
+  { translationKey: 'incidents', href: '/dashboard/incidents', icon: ShieldAlert, group: 'operations', roles: managementRoles },
+  { translationKey: 'cameras', href: '/dashboard/cameras', icon: Camera, group: 'operations', roles: managementRoles },
+  { translationKey: 'timeline', href: '/dashboard/timeline', icon: Sparkles, group: 'operations', roles: managementRoles },
+  { translationKey: 'team', href: '/dashboard/employees', icon: Users, group: 'organization', roles: managementRoles },
+  { translationKey: 'announcements', href: '/dashboard/announcements', icon: Megaphone, group: 'organization', roles: managementRoles },
+  { translationKey: 'companies', href: '/dashboard/companies', icon: Building2, group: 'organization', roles: ['owner', 'super_admin'] },
+  { translationKey: 'locations', href: '/dashboard/locations', icon: Hotel, group: 'organization', roles: managementRoles },
+  { translationKey: 'departments', href: '/dashboard/departments', icon: LayoutGrid, group: 'organization', roles: managementRoles },
+  { translationKey: 'analytics', href: '/dashboard/analytics', icon: BarChart3, group: 'organization', roles: managementRoles },
+  { translationKey: 'settings', href: '/dashboard/settings', icon: Settings, group: 'organization', roles: everyRole },
 ];
 
 function dispatch(name: 'brain:open' | 'brain:search') {
@@ -124,6 +122,7 @@ export function DashboardSidebar({
 
   const navLink = (item: DashboardDestination, mobile = false) => {
     const Icon = item.icon;
+    const copy = t.navigation.destinations[item.translationKey];
     return (
       <Link
         key={item.href}
@@ -133,7 +132,7 @@ export function DashboardSidebar({
         aria-current={active(item.href) ? 'page' : undefined}
       >
         <Icon className="h-[18px] w-[18px] shrink-0" />
-        <span>{item.href === '/dashboard/cameras' ? t.nav.cameras : item.label}</span>
+        <span>{copy.label}</span>
       </Link>
     );
   };
@@ -141,29 +140,29 @@ export function DashboardSidebar({
   return (
     <>
       <aside className="brain-sidebar">
-        <Link href="/dashboard" className="brain-brand" aria-label="Brain home">
+        <Link href="/dashboard" className="brain-brand" aria-label={t.navigation.destinations.home.label}>
           <span className="brain-logo-tile"><BrainMark className="h-7 w-7" /></span>
           <span>
             <span className="block text-[15px] font-semibold tracking-[-0.02em] text-slate-950">Brain</span>
-            <span className="block text-[11px] text-slate-500">Hospitality OS</span>
+            <span className="block text-[11px] text-slate-500">{t.navigation.brandSubtitle}</span>
           </span>
         </Link>
 
         <button type="button" onClick={() => dispatch('brain:search')} className="brain-sidebar-search">
           <Search className="h-4 w-4" />
-          <span>Search</span>
+          <span>{t.navigation.search}</span>
           <kbd>⌘K</kbd>
         </button>
 
-        <nav className="mobile-scroll-region min-h-0 flex-1 overflow-y-auto" aria-label="Primary navigation">
+        <nav className="mobile-scroll-region min-h-0 flex-1 overflow-y-auto" aria-label={t.navigation.primaryLabel}>
           <div className="space-y-1">{primary.map((item) => navLink(item))}</div>
           <div className="brain-nav-section">
-            <p className="brain-nav-label">Workspace</p>
+            <p className="brain-nav-label">{t.navigation.workspace}</p>
             <div className="space-y-1">{operations.map((item) => navLink(item))}</div>
           </div>
           <div className="brain-nav-section">
             <button type="button" onClick={() => setMoreOpen((value) => !value)} className="brain-nav-section-toggle" aria-expanded={moreOpen}>
-              <span>Organization</span>
+              <span>{t.navigation.organization}</span>
               <ChevronDown className={`h-4 w-4 transition ${moreOpen ? 'rotate-180' : ''}`} />
             </button>
             {moreOpen ? <div className="mt-1 space-y-1">{organization.map((item) => navLink(item))}</div> : null}
@@ -173,8 +172,8 @@ export function DashboardSidebar({
         <div className="brain-account">
           <div className="brain-account-avatar">{(profile.full_name || userName || 'B').charAt(0).toUpperCase()}</div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium text-slate-900">{profile.full_name || userName || 'Brain operator'}</p>
-            <p className="truncate text-xs capitalize text-slate-500">{profile.role.replaceAll('_', ' ')}</p>
+            <p className="truncate text-sm font-medium text-slate-900" dir="auto">{profile.full_name || userName || t.navigation.operator}</p>
+            <p className="truncate text-xs text-slate-500">{t.role[profile.role]}</p>
           </div>
           <button type="button" disabled={pending} onClick={signOut} className="brain-account-action" aria-label={t.nav.signOut}>
             <LogOut className="h-4 w-4" />
@@ -183,12 +182,12 @@ export function DashboardSidebar({
       </aside>
 
       <header className="brain-mobile-header">
-        <Link href="/dashboard" className="brain-brand" aria-label="Brain home">
+        <Link href="/dashboard" className="brain-brand" aria-label={t.navigation.destinations.home.label}>
           <span className="brain-logo-tile"><BrainMark className="h-6 w-6" /></span>
           <span className="text-sm font-semibold text-slate-950">Brain</span>
         </Link>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={() => dispatch('brain:search')} className="brain-icon-button" aria-label="Search Brain">
+          <button type="button" onClick={() => dispatch('brain:search')} className="brain-icon-button" aria-label={t.navigation.searchBrain}>
             <Search className="h-5 w-5" />
           </button>
           <button type="button" onClick={() => setMenuOpen(true)} className="brain-icon-button" aria-label={t.nav.open} aria-expanded={menuOpen}>
@@ -197,18 +196,18 @@ export function DashboardSidebar({
         </div>
       </header>
 
-      <nav className="brain-mobile-nav" aria-label="Quick navigation">
+      <nav className="brain-mobile-nav" aria-label={t.navigation.quickLabel}>
         {mobileQuick.map((item) => navLink(item, true))}
         <button type="button" onClick={() => dispatch('brain:open')} className="brain-mobile-nav-item">
           <BrainMark className="h-[18px] w-[18px]" />
-          <span>Brain</span>
+          <span>{t.navigation.brain}</span>
         </button>
       </nav>
 
       {menuOpen ? (
         <div className="brain-overlay z-[80]" role="presentation">
           <button type="button" className="absolute inset-0 cursor-default" onClick={() => setMenuOpen(false)} aria-label={t.nav.close} />
-          <aside className="brain-mobile-menu" role="dialog" aria-modal="true" aria-label="Navigation">
+          <aside className="brain-mobile-menu" role="dialog" aria-modal="true" aria-label={t.navigation.drawerLabel}>
             <header className="flex items-center justify-between border-b border-slate-200 p-4">
               <span className="brain-brand">
                 <span className="brain-logo-tile"><BrainMark className="h-6 w-6" /></span>
@@ -220,15 +219,15 @@ export function DashboardSidebar({
             </header>
             <nav className="mobile-scroll-region min-h-0 flex-1 space-y-6 overflow-y-auto p-4">
               <div>
-                <p className="brain-nav-label">Navigate</p>
+                <p className="brain-nav-label">{t.navigation.navigate}</p>
                 <div className="mt-2 space-y-1">{primary.map((item) => navLink(item))}</div>
               </div>
               <div>
-                <p className="brain-nav-label">Workspace</p>
+                <p className="brain-nav-label">{t.navigation.workspace}</p>
                 <div className="mt-2 space-y-1">{operations.map((item) => navLink(item))}</div>
               </div>
               <div>
-                <p className="brain-nav-label">Organization</p>
+                <p className="brain-nav-label">{t.navigation.organization}</p>
                 <div className="mt-2 space-y-1">{organization.map((item) => navLink(item))}</div>
               </div>
             </nav>
