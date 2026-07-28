@@ -99,6 +99,7 @@ const v3Messages = {
       compatibilityOpening: 'Opening Brain…',
       compatibilityHelp: 'Brain now stays with you across the entire operation.',
       suggestions: {
+        employee: ['Explain my tasks today.', 'Give me a recipe.', 'How should I clean this equipment safely?', 'What should I prepare before closing the kitchen?'],
         reservations: ['What needs attention today?', 'Summarize the waiting list.', 'What is the next arrival?'],
         operations: ['What needs attention now?', 'Show everything overdue.', 'Summarize today’s operations.'],
         tasks: ['What is overdue?', 'What should be prioritized first?', 'Show today’s active work.'],
@@ -225,6 +226,7 @@ const v3Messages = {
       compatibilityOpening: 'جارٍ فتح برين…',
       compatibilityHelp: 'برين يبقى معك الآن في كل أنحاء التشغيل.',
       suggestions: {
+        employee: ['اشرح لي مهامي اليوم.', 'أعطني وصفة.', 'كيف أنظف هذه المعدّة؟', 'ما هي خطوات إغلاق المطبخ؟'],
         reservations: ['ما الذي يحتاج إلى انتباه اليوم؟', 'لخّص قائمة الانتظار.', 'ما هو الوصول التالي؟'],
         operations: ['ما الذي يحتاج إلى الانتباه الآن؟', 'اعرض كل ما هو متأخر.', 'لخّص عمليات اليوم.'],
         tasks: ['ما المهام المتأخرة؟', 'ما الذي يجب إعطاؤه الأولوية؟', 'اعرض عمل اليوم النشط.'],

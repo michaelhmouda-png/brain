@@ -99,7 +99,7 @@ export function BrainAssistant({
   context: BrainPageContext;
   onConversationActivity?: (preview: string) => void;
 }) {
-  const { language, messages: t } = useLocale();
+  const { language, role, messages: t } = useLocale();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [quota, setQuota] = useState<ChatQuota | null>(null);
@@ -109,12 +109,13 @@ export function BrainAssistant({
   const messagesRef = useRef<HTMLDivElement>(null);
   const submitted = useRef(new Set<string>());
   const suggestions = useMemo(() => {
+    if (role === 'employee') return t.assistant.suggestions.employee;
     const key = context.moduleKey === 'reservations' || context.moduleKey === 'operations' ||
       context.moduleKey === 'tasks' || context.moduleKey === 'cameras' || context.moduleKey === 'employees'
       ? context.moduleKey
       : 'default';
     return t.assistant.suggestions[key];
-  }, [context.moduleKey, t]);
+  }, [context.moduleKey, role, t]);
 
   useEffect(() => {
     const controller = new AbortController();
