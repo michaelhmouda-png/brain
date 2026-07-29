@@ -81,10 +81,10 @@ test('confirmation footer is sticky, opaque, separated, and safe-area aware', as
   assert.match(footer, /inset-block-end:\s*0/);
   assert.match(footer, /flex:\s*0 0 auto/);
   assert.match(footer, /border-top:/);
-  assert.match(footer, /background:\s*#fbfbf9/);
+  assert.match(footer, /background:\s*var\(--brain-navigation\)/);
   assert.match(footer, /safe-area-inset-bottom/);
   assert.match(assistant, /disabled=\{state === 'executing'\}/);
-  assert.match(css, /\.brain-button-primary:disabled,[\s\S]*opacity:\s*\.62/);
+  assert.match(css, /\.brain-button-primary:disabled,[\s\S]*background:\s*var\(--brain-surface-disabled\)[\s\S]*opacity:\s*1/);
 });
 
 test('long, two-item, ten-item, and maximum batch proposals remain complete and wrap safely', async () => {

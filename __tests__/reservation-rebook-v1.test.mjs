@@ -147,7 +147,7 @@ test('availability remains honestly unknown and no unsupported side effects are 
   assert.doesNotMatch(implementation, /sendSms|sendEmail|sendWhatsApp|openai|snapshot_request|nvr_|assigned_table_id\s*:/i);
 });
 
-test('the light mobile-safe editor is localized, RTL-aware, and opens the new reservation', () => {
+test('the mobile-safe editor is localized, RTL-aware, and opens the new reservation', () => {
   assert.equal(validateTranslationCatalog().length, 0);
   assert.match(panel, /bg-\[#fbfbf8\]/);
   assert.match(panel, /text-slate-950/);
