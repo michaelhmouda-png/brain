@@ -13,6 +13,7 @@ const editorSource = read('components/reservations/ReservationEditPanel.tsx');
 const inputsSource = read('components/reservations/ReservationInputs.tsx');
 const calendarSource = read('app/dashboard/reservations/calendar/page.tsx');
 const i18nSource = read('lib/i18n.ts');
+const globalsSource = read('app/globals.css');
 
 const rows = [
   {
@@ -125,8 +126,8 @@ test('mobile action bar is compact, safe-area aware, and preserves the global na
     assert.match(consoleSource, new RegExp(`aria-label=\\{copy\\.toolbar\\.${key}\\}`));
   }
   assert.match(consoleSource, /data-reservation-mobile-actions/);
-  assert.match(consoleSource, /bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(consoleSource, /z-40 flex min-w-0 items-stretch gap-1\.5 sm:hidden/);
+  assert.match(consoleSource, /bottom-\[calc\(4\.375rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(consoleSource, /z-40 flex min-w-0 items-stretch gap-1 sm:hidden/);
   assert.match(consoleSource, /min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300/);
   assert.doesNotMatch(consoleSource, /data-reservation-mobile-actions[\s\S]{0,240}grid-cols-5/);
   assert.doesNotMatch(consoleSource, /replaceState|router\.replace|global mobile navigation/i);
@@ -158,6 +159,53 @@ test('390px and 430px mobile contracts remain RTL-safe without horizontal overfl
   assert.match(consoleSource, /min-w-11 shrink-0/);
   assert.match(consoleSource, /rtl:rotate-180/);
   assert.doesNotMatch(consoleSource, /\bw-\[(?:390|430)px\]|min-w-\[(?:390|430)px\]/);
+});
+
+test('mobile reservation cards use the compact three-row host-desk hierarchy', () => {
+  assert.match(consoleSource, /className="sm:hidden"[\s\S]+grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(consoleSource, /scroll-mb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\][\s\S]+px-3 py-2\.5/);
+  assert.match(consoleSource, /line-clamp-2 min-w-0 text-sm font-bold leading-5/);
+  assert.match(consoleSource, /row\.purpose !== 'regular'/);
+  assert.match(consoleSource, /min-w-0 truncate text-xs text-amber-100\/75/);
+  assert.match(consoleSource, /className="hidden items-start gap-3 sm:flex sm:gap-4"/);
+});
+
+test('mobile cards expose at most one primary action and move secondary actions into details', () => {
+  assert.match(consoleSource, /const mobilePrimaryAction = row\.status === 'pending'/);
+  assert.match(consoleSource, /actions\.find\(\(action\) => action\.primary\)/);
+  assert.match(consoleSource, /void transition\(row, mobilePrimaryAction\.status\)/);
+  assert.match(editorSource, /const TRANSITIONS: Record<string, string\[\]>/);
+  assert.match(editorSource, /allowedStatuses\.map/);
+  assert.match(editorSource, /onRebook && \['cancelled', 'no_show'\]\.includes\(row\.status\)/);
+  assert.match(editorSource, /row\.history\?\.length/);
+});
+
+test('mobile card dates are redundant and hidden while phone values stay bidi-safe', () => {
+  assert.match(consoleSource, /hidden whitespace-nowrap text-\[11px\][\s\S]+formatDay\(row\.requested_date, locale\)/);
+  assert.match(consoleSource, /className="mt-0\.5 whitespace-nowrap text-\[11px\][\s\S]+formatDay\(row\.reservation_date, locale\)/);
+  assert.match(consoleSource, /dir="ltr"[\s\S]+whitespace-nowrap[\s\S]+<bdi>/);
+});
+
+test('reservation list clears both fixed mobile layers and the final card can scroll above them', () => {
+  assert.match(consoleSource, /data-reservation-list[\s\S]+scroll-pb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(consoleSource, /pb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(consoleSource, /sm:scroll-pb-0 sm:pb-0/);
+  assert.match(consoleSource, /scroll-mb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
+});
+
+test('mobile totals and header are compact while retaining desktop dimensions', () => {
+  assert.match(consoleSource, /grid grid-cols-3 gap-1 border-b[\s\S]+px-3 py-1\.5 sm:gap-2 sm:px-6 sm:py-3/);
+  assert.match(consoleSource, /px-1\.5 py-1\.5 sm:rounded-2xl sm:px-4 sm:py-3/);
+  assert.match(consoleSource, /hidden items-center gap-2[\s\S]+sm:flex/);
+  assert.match(consoleSource, /compactOnMobile/);
+  assert.match(inputsSource, /compactOnMobile \? 'min-h-11 gap-2 px-3 sm:min-h-12 sm:gap-3 sm:px-3\.5'/);
+});
+
+test('source-controlled floating controls cannot cover Reservation mobile actions', () => {
+  assert.match(consoleSource, /data-reservation-desk/);
+  assert.match(consoleSource, /data-reservation-mobile-actions[\s\S]+z-40/);
+  assert.match(globalsSource, /@media \(max-width: 1023px\)[\s\S]+\.brain-mobile-nav\s*\{[\s\S]+z-index:\s*50/);
+  assert.match(globalsSource, /@media \(max-width: 1023px\)[\s\S]+\.brain-orb\s*\{[\s\S]+display:\s*none/);
 });
 
 test('detail, status history, cancellation confirmation, and rebook use existing paths', () => {

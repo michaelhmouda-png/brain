@@ -230,12 +230,12 @@ function Metric({
   hint: string;
 }) {
   return (
-    <div className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.035] px-2 py-2 sm:rounded-2xl sm:px-4 sm:py-3">
+    <div className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-white/[0.035] px-1.5 py-1.5 sm:rounded-2xl sm:px-4 sm:py-3">
       <div className="flex items-baseline justify-between gap-2 sm:gap-3">
-        <span className="text-xl font-black tracking-tight text-white sm:text-2xl">{value}</span>
+        <span className="text-lg font-black leading-none tracking-tight text-white sm:text-2xl sm:leading-normal">{value}</span>
         <span className="hidden text-[11px] text-slate-500 sm:inline">{hint}</span>
       </div>
-      <p className="mt-0.5 truncate text-[11px] font-medium text-slate-400 sm:text-xs">
+      <p className="mt-1 truncate text-[10px] font-medium leading-none text-slate-400 sm:mt-0.5 sm:text-xs sm:leading-normal">
         <span className="sm:hidden">{mobileLabel ?? label}</span>
         <span className="hidden sm:inline">{label}</span>
       </p>
@@ -580,17 +580,19 @@ export function ReservationConsole() {
   }
 
   return (
-    <main className="min-h-[calc(100dvh-6rem)] min-w-0 max-w-full overflow-x-clip pb-[8.25rem] sm:px-5 sm:pb-24 lg:px-0 lg:pb-10">
+    <main data-reservation-desk className="min-h-[calc(100dvh-6rem)] min-w-0 max-w-full overflow-x-clip pb-0 sm:px-5 sm:pb-24 lg:px-0 lg:pb-10">
       <div className="overflow-hidden bg-[var(--surface-nav)] sm:rounded-[28px] sm:border sm:border-white/[0.09] sm:shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
-        <header className="border-b border-white/[0.07] px-3 py-3 sm:px-6 sm:py-5">
-          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+        <header className="border-b border-white/[0.07] px-3 py-2 sm:px-6 sm:py-5">
+          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300">
+              <div className="hidden items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300 sm:flex">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
                 {copy.eyebrow}
               </div>
-              <h1 className="mt-1.5 truncate text-2xl font-black tracking-tight sm:text-3xl">{copy.title}</h1>
-              <p className="mt-1 text-sm text-slate-400">{timezone || copy.venueLocalTime} · {copy.availabilityStaffConfirmed}</p>
+              <h1 className="truncate text-xl font-black tracking-tight sm:mt-1.5 sm:text-3xl">{copy.title}</h1>
+              <p className="mt-0.5 text-[11px] text-slate-400 sm:mt-1 sm:text-sm">
+                {timezone || copy.venueLocalTime}<span className="hidden sm:inline"> · {copy.availabilityStaffConfirmed}</span>
+              </p>
             </div>
             <div className="flex w-full items-center gap-2 sm:w-auto">
               <label className="relative min-w-0 flex-1 sm:w-56">
@@ -626,7 +628,7 @@ export function ReservationConsole() {
               </button>
             </div>
           </div>
-          <div className="mt-3 flex items-center gap-2 sm:mt-4">
+          <div className="mt-2 flex items-center gap-1.5 sm:mt-4 sm:gap-2">
             <button
               type="button"
               onClick={() => setSelectedDate((current) => shiftVenueDate(current, -1))}
@@ -648,6 +650,7 @@ export function ReservationConsole() {
                 label={copy.selectedDate}
                 locale={locale}
                 copy={copy.dateCopy}
+                compactOnMobile
               />
             </div>
             <button
@@ -661,7 +664,7 @@ export function ReservationConsole() {
           </div>
         </header>
 
-        <section className="grid grid-cols-3 gap-1.5 border-b border-white/[0.07] px-3 py-2 sm:gap-2 sm:px-6 sm:py-3">
+        <section className="grid grid-cols-3 gap-1 border-b border-white/[0.07] px-3 py-1.5 sm:gap-2 sm:px-6 sm:py-3">
           <Metric label={copy.reservationCount} value={dailyMetrics.activeReservations} hint={copy.today} />
           <Metric label={copy.guestCount} mobileLabel={copy.guests} value={dailyMetrics.expectedGuests} hint={copy.activeCovers} />
           <Metric label={copy.waitingCount} value={dailyMetrics.waitingListCount} hint={`${dailyMetrics.waitingListGuests} ${copy.guests}`} />
@@ -735,17 +738,17 @@ export function ReservationConsole() {
               </div>
             ) : null}
 
-            <div data-reservation-list className="mobile-scroll-region divide-y divide-white/[0.065]">
+            <div data-reservation-list className="mobile-scroll-region scroll-pb-[calc(7.75rem+env(safe-area-inset-bottom))] divide-y divide-white/[0.065] pb-[calc(7.75rem+env(safe-area-inset-bottom))] sm:scroll-pb-0 sm:pb-0">
               {listLoading ? (
                 <div className="grid place-items-center px-4 py-12 text-slate-500">
                   <div className="text-center"><LoaderCircle className="mx-auto h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{copy.loading}</p></div>
                 </div>
               ) : filter === 'waiting' && visibleWaitlistRows.length ? visibleWaitlistRows.map((row) => (
-                <article key={row.id} className="px-3 py-3 transition hover:bg-white/[0.025] sm:px-6 sm:py-4">
+                <article key={row.id} className="px-3 py-2.5 transition hover:bg-white/[0.025] sm:px-6 sm:py-4">
                   <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
-                      <p className="text-xl font-black tracking-tight text-white">{shortTime(row.preferred_time)}</p>
-                      <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">{formatDay(row.requested_date, locale)}</p>
+                    <div className="w-[52px] shrink-0 pt-0.5 text-start sm:w-[72px] sm:text-center">
+                      <p className="whitespace-nowrap text-lg font-black tracking-tight text-white sm:text-xl">{shortTime(row.preferred_time)}</p>
+                      <p className="mt-0.5 hidden whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:block">{formatDay(row.requested_date, locale)}</p>
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -766,6 +769,9 @@ export function ReservationConsole() {
               )) : visibleRows.length ? visibleRows.map((row) => {
                 const guestName = row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : copy.guest;
                 const actions = statusActions[row.status] ?? [];
+                const mobilePrimaryAction = row.status === 'pending'
+                  ? actions.find((action) => action.primary)
+                  : undefined;
                 return (
                   <article
                     key={row.id}
@@ -779,12 +785,54 @@ export function ReservationConsole() {
                         void openDetails(row);
                       }
                     }}
-                    className="group cursor-pointer px-3 py-3 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:px-6 sm:py-4"
+                    className="group scroll-mb-[calc(7.75rem+env(safe-area-inset-bottom))] cursor-pointer px-3 py-2.5 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:scroll-mb-0 sm:px-6 sm:py-4"
                   >
-                    <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="sm:hidden">
+                      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+                        <p className="whitespace-nowrap text-lg font-black leading-6 tracking-tight text-white">{shortTime(row.reservation_time)}</p>
+                        <h2 className="line-clamp-2 min-w-0 text-sm font-bold leading-5 text-white">{guestName}</h2>
+                        <span className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase leading-4 tracking-wide ${statusTone[row.status] ?? statusTone.completed}`}>
+                          {copy.status[row.status as keyof typeof copy.status] ?? row.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-400">
+                        <span className="inline-flex shrink-0 items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
+                        <span className="min-w-0 truncate">{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
+                        {row.purpose !== 'regular' ? <span className="min-w-0 truncate text-cyan-100/75">{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span> : null}
+                        {mobilePrimaryAction ? (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              void transition(row, mobilePrimaryAction.status);
+                            }}
+                            disabled={updatingId === row.id}
+                            className="ms-auto min-h-11 shrink-0 rounded-lg bg-cyan-300 px-3 text-xs font-bold text-slate-950 transition hover:bg-cyan-200 disabled:opacity-50"
+                          >
+                            {updatingId === row.id ? copy.actions.saving : copy.actions[mobilePrimaryAction.action]}
+                          </button>
+                        ) : null}
+                      </div>
+                      {row.notes ? (
+                        <p className="mt-1 min-w-0 truncate text-xs text-amber-100/75">
+                          <NotebookPen className="me-1 inline h-3.5 w-3.5 align-text-bottom text-amber-300" aria-hidden />
+                          <span className="font-semibold">{copy.hasNotes}:</span> {row.notes}
+                        </p>
+                      ) : row.guest?.phone_e164 ? (
+                        <a
+                          onClick={(event) => event.stopPropagation()}
+                          href={`tel:${row.guest.phone_e164}`}
+                          dir="ltr"
+                          className="mt-1 inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs text-slate-500 hover:text-cyan-200"
+                        >
+                          <Phone className="h-3.5 w-3.5" /> <bdi>{row.guest.phone_e164}</bdi>
+                        </a>
+                      ) : null}
+                    </div>
+                    <div className="hidden items-start gap-3 sm:flex sm:gap-4">
                       <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
                         <p className="text-xl font-black tracking-tight text-white">{shortTime(row.reservation_time)}</p>
-                        <p className="mt-0.5 text-[11px] font-medium uppercase tracking-wide text-slate-500">
+                        <p className="mt-0.5 whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-slate-500">
                           {row.reservation_date === venueDate(timezone) ? copy.today : formatDay(row.reservation_date, locale)}
                         </p>
                       </div>
@@ -814,7 +862,7 @@ export function ReservationConsole() {
                         ) : null}
                         {row.creator?.full_name ? <p className="mt-2 text-xs text-slate-500">{copy.createdBy} · {row.creator.full_name}</p> : null}
                         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} className="inline-flex min-h-9 items-center gap-1.5 rounded-lg text-sm text-slate-400 hover:text-cyan-200">
+                          <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} dir="ltr" className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg text-sm text-slate-400 hover:text-cyan-200">
                             <Phone className="h-3.5 w-3.5" /> <bdi>{row.guest?.phone_e164 ?? copy.noPhone}</bdi>
                           </a>
                           {actions.length || ['cancelled', 'no_show'].includes(row.status) ? (
@@ -878,7 +926,7 @@ export function ReservationConsole() {
       <nav
         aria-label={copy.eyebrow}
         data-reservation-mobile-actions
-        className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 flex min-w-0 items-stretch gap-1.5 sm:hidden"
+        className="fixed inset-x-3 bottom-[calc(4.375rem+env(safe-area-inset-bottom))] z-40 flex min-w-0 items-stretch gap-1 sm:hidden"
       >
         <button
           type="button"
@@ -1056,6 +1104,12 @@ export function ReservationConsole() {
           row={editingRow as EditableReservation}
           timezone={timezone}
           onClose={() => setEditingRow(null)}
+          onRebook={['cancelled', 'no_show'].includes(editingRow.status) ? () => {
+            const row = editingRow;
+            setEditingRow(null);
+            void prepareRebook(row);
+          } : undefined}
+          rebooking={preparingRebookId === editingRow.id}
           onSaved={async () => {
             setMessage({ kind: 'success', text: copy.details.save });
             await Promise.all([loadReservations(), loadDailySummary()]);

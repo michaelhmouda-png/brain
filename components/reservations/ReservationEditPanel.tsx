@@ -77,15 +77,20 @@ export function ReservationEditPanel({
   timezone,
   onClose,
   onSaved,
+  onRebook,
+  rebooking = false,
 }: {
   row: EditableReservation;
   timezone?: string;
   onClose(): void;
   onSaved(): Promise<void>;
+  onRebook?(): void;
+  rebooking?: boolean;
 }) {
   const { language, messages } = useLocale();
   const copy = messages.reservationDesk;
   const detailCopy = copy.details;
+  const rebookCopy = messages.reservationRebook;
   const locale = language === 'ar' ? 'ar-LB' : 'en';
   const baseline = useMemo(() => initialForm(row), [row]);
   const [form, setForm] = useState(baseline);
@@ -214,6 +219,16 @@ export function ReservationEditPanel({
             <section className="border-t border-white/[0.07] pt-5">
               <label><span className={labelClass}>{detailCopy.status}</span><select value={form.status} onChange={(event) => set('status', event.target.value)} className={inputClass}>{allowedStatuses.map((status) => <option value={status} key={status}>{copy.status[status as keyof typeof copy.status] ?? status}</option>)}</select></label>
               <p className="mt-2 text-xs text-slate-500">{detailCopy.statusHelp}</p>
+              {onRebook && ['cancelled', 'no_show'].includes(row.status) ? (
+                <button
+                  type="button"
+                  onClick={onRebook}
+                  disabled={saving || rebooking}
+                  className="mt-3 min-h-11 rounded-xl border border-cyan-300/35 bg-cyan-300/10 px-4 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20 focus:outline-none focus:ring-2 focus:ring-cyan-300 disabled:opacity-50"
+                >
+                  {rebooking ? rebookCopy.preparing : rebookCopy.action}
+                </button>
+              ) : null}
             </section>
 
             <section className="border-t border-white/[0.07] pt-5">

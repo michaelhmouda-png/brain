@@ -49,6 +49,7 @@ export function ReservationDatePicker({
   tone = 'dark',
   locale,
   copy,
+  compactOnMobile = false,
 }: {
   value: string;
   onChange(value: string): void;
@@ -57,6 +58,7 @@ export function ReservationDatePicker({
   label?: string;
   tone?: 'dark' | 'light';
   locale?: string;
+  compactOnMobile?: boolean;
   copy?: {
     chooseDate: string;
     venueDate: string;
@@ -100,7 +102,9 @@ export function ReservationDatePicker({
       <button
         type="button"
         onClick={openPicker}
-        className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3.5 transition focus:outline-none ${
+        className={`flex w-full items-center rounded-xl border transition focus:outline-none ${
+          compactOnMobile ? 'min-h-11 gap-2 px-3 sm:min-h-12 sm:gap-3 sm:px-3.5' : 'min-h-12 gap-3 px-3.5'
+        } ${
           tone === 'light'
             ? 'border-slate-300 bg-white text-start text-slate-950 hover:border-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
             : 'border-white/10 bg-white/[0.055] text-start hover:border-white/20 focus:border-cyan-400/60'
@@ -110,7 +114,7 @@ export function ReservationDatePicker({
         <CalendarDays className={`h-4 w-4 shrink-0 ${tone === 'light' ? 'text-cyan-700' : 'text-cyan-300'}`} />
         <span className="min-w-0 flex-1">
           <span className={`block truncate text-sm font-bold ${tone === 'light' ? 'text-slate-950' : 'text-white'}`}>{formatVenueDate(value, locale, copy?.chooseDate)}</span>
-          <span className={`block text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>{timezone ? `${timezone} · ${copy?.venueDate ?? 'venue date'}` : copy?.venueDate ?? 'Venue-local date'}</span>
+          <span className={`${compactOnMobile ? 'hidden sm:block' : 'block'} text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>{timezone ? `${timezone} · ${copy?.venueDate ?? 'venue date'}` : copy?.venueDate ?? 'Venue-local date'}</span>
         </span>
       </button>
 
