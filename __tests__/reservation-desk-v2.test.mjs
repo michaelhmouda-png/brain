@@ -133,9 +133,9 @@ test('mobile action bar is compact, safe-area aware, and preserves the global na
   assert.doesNotMatch(consoleSource, /replaceState|router\.replace|global mobile navigation/i);
 });
 
-test('mobile desk has no fixed blank region and keeps content immediately after the summary', () => {
-  assert.match(consoleSource, /className="sm:min-h-\[600px\]"/);
-  assert.doesNotMatch(consoleSource, /className="min-h-\[600px\]"/);
+test('mobile desk has no fixed blank region and keeps the list immediately after flat counters', () => {
+  assert.match(consoleSource, /<section className="grid grid-cols-\[1fr_1fr_0\.78fr\][\s\S]+<section className="min-w-0">[\s\S]+data-reservation-list/);
+  assert.doesNotMatch(consoleSource, /min-h-\[(?:600|700|800)px\]/);
   assert.doesNotMatch(consoleSource, /min-h-72/);
   assert.match(consoleSource, /data-reservation-list/);
   assert.match(consoleSource, /px-6 py-10 text-center sm:py-16/);
@@ -161,43 +161,49 @@ test('390px and 430px mobile contracts remain RTL-safe without horizontal overfl
   assert.doesNotMatch(consoleSource, /\bw-\[(?:390|430)px\]|min-w-\[(?:390|430)px\]/);
 });
 
-test('mobile reservation cards use the compact three-row host-desk hierarchy', () => {
-  assert.match(consoleSource, /className="sm:hidden"[\s\S]+grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
-  assert.match(consoleSource, /scroll-mb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\][\s\S]+px-3 py-2\.5/);
+test('reservation cards use one compact responsive host-desk hierarchy', () => {
+  assert.match(consoleSource, /data-reservation-card[\s\S]+grid-cols-\[auto_minmax\(0,1fr\)_auto\]/);
+  assert.match(consoleSource, /scroll-mb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\][\s\S]+bg-\[#0d1622\] p-3/);
   assert.match(consoleSource, /line-clamp-2 min-w-0 text-sm font-bold leading-5/);
   assert.match(consoleSource, /row\.purpose !== 'regular'/);
-  assert.match(consoleSource, /min-w-0 truncate text-xs text-amber-100\/75/);
-  assert.match(consoleSource, /className="hidden items-start gap-3 sm:flex sm:gap-4"/);
+  assert.match(consoleSource, /min-w-0 truncate text-xs text-amber-100\/70/);
+  assert.doesNotMatch(consoleSource, /className="sm:hidden"[\s\S]{0,4000}className="hidden items-start gap-3 sm:flex/);
+  assert.equal((consoleSource.match(/data-reservation-card/g) ?? []).length, 2);
 });
 
 test('mobile cards expose at most one primary action and move secondary actions into details', () => {
-  assert.match(consoleSource, /const mobilePrimaryAction = row\.status === 'pending'/);
-  assert.match(consoleSource, /actions\.find\(\(action\) => action\.primary\)/);
-  assert.match(consoleSource, /void transition\(row, mobilePrimaryAction\.status\)/);
+  assert.match(consoleSource, /const primaryAction = row\.status === 'pending'/);
+  assert.match(consoleSource, /statusActions\[row\.status\][\s\S]+\.find\(\(action\) => action\.primary\)/);
+  assert.match(consoleSource, /void transition\(row, primaryAction\.status\)/);
+  assert.match(consoleSource, /aria-label=\{copy\.actions\[primaryAction\.action\]\}/);
+  assert.doesNotMatch(consoleSource, /actions\.map\(\(action\)/);
   assert.match(editorSource, /const TRANSITIONS: Record<string, string\[\]>/);
   assert.match(editorSource, /allowedStatuses\.map/);
   assert.match(editorSource, /onRebook && \['cancelled', 'no_show'\]\.includes\(row\.status\)/);
   assert.match(editorSource, /row\.history\?\.length/);
 });
 
-test('mobile card dates are redundant and hidden while phone values stay bidi-safe', () => {
-  assert.match(consoleSource, /hidden whitespace-nowrap text-\[11px\][\s\S]+formatDay\(row\.requested_date, locale\)/);
-  assert.match(consoleSource, /className="mt-0\.5 whitespace-nowrap text-\[11px\][\s\S]+formatDay\(row\.reservation_date, locale\)/);
-  assert.match(consoleSource, /dir="ltr"[\s\S]+whitespace-nowrap[\s\S]+<bdi>/);
+test('card dates and raw phone values are omitted while the phone action stays bidi-safe', () => {
+  assert.doesNotMatch(consoleSource, /formatDay\(row\.(?:requested_date|reservation_date), locale\)/);
+  assert.match(consoleSource, /href=\{`tel:\$\{row\.guest\.phone_e164\}`\}[\s\S]+dir="ltr"/);
+  assert.match(consoleSource, /aria-label=\{`\$\{copy\.form\.phone\}: \$\{row\.guest\.phone_e164\}`\}/);
+  assert.doesNotMatch(consoleSource, /<bdi>\{row\.guest\.phone_e164\}<\/bdi>/);
 });
 
 test('reservation list clears both fixed mobile layers and the final card can scroll above them', () => {
   assert.match(consoleSource, /data-reservation-list[\s\S]+scroll-pb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
   assert.match(consoleSource, /pb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(consoleSource, /sm:scroll-pb-0 sm:pb-0/);
+  assert.match(consoleSource, /sm:scroll-pb-0 sm:pb-3/);
   assert.match(consoleSource, /scroll-mb-\[calc\(7\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
 });
 
-test('mobile totals and header are compact while retaining desktop dimensions', () => {
-  assert.match(consoleSource, /grid grid-cols-3 gap-1 border-b[\s\S]+px-3 py-1\.5 sm:gap-2 sm:px-6 sm:py-3/);
-  assert.match(consoleSource, /px-1\.5 py-1\.5 sm:rounded-2xl sm:px-4 sm:py-3/);
-  assert.match(consoleSource, /hidden items-center gap-2[\s\S]+sm:flex/);
-  assert.match(consoleSource, /compactOnMobile/);
+test('mobile header and flat counters stay compact while desktop actions remain available', () => {
+  assert.match(consoleSource, /<header className="border-b[\s\S]+px-3 py-2\.5 sm:px-4 sm:py-3/);
+  assert.match(consoleSource, /w-\[min\(10\.5rem,44vw\)\]/);
+  assert.match(consoleSource, /grid grid-cols-\[1fr_1fr_0\.78fr\] border-b/);
+  assert.match(consoleSource, /min-w-0 px-2 py-2 text-center sm:px-4 sm:py-3/);
+  assert.match(consoleSource, /hidden min-h-11 items-center gap-2[\s\S]+sm:flex/);
+  assert.match(consoleSource, /compactOnMobile[\s\S]+copy\.reservationCount[\s\S]+copy\.guests[\s\S]+copy\.waitingCount/);
   assert.match(inputsSource, /compactOnMobile \? 'min-h-11 gap-2 px-3 sm:min-h-12 sm:gap-3 sm:px-3\.5'/);
 });
 

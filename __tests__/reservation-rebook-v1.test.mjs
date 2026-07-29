@@ -10,6 +10,7 @@ const service = read('lib/reservations/service.server.ts');
 const route = read('app/api/reservations/[id]/rebook/route.ts');
 const detailRoute = read('app/api/reservations/[id]/route.ts');
 const consoleSource = read('components/reservations/ReservationConsole.tsx');
+const editor = read('components/reservations/ReservationEditPanel.tsx');
 const panel = read('components/reservations/ReservationRebookPanel.tsx');
 const inputs = read('components/reservations/ReservationInputs.tsx');
 
@@ -156,6 +157,7 @@ test('the mobile-safe editor is localized, RTL-aware, and opens the new reservat
   assert.match(panel, /rtl:sm:justify-start/);
   assert.match(inputs, /rtl:rotate-180/);
   assert.match(consoleSource, /setEditingRow\(payload\.data as ReservationRow\)/);
-  assert.match(consoleSource, /rebookCopy\.action/);
+  assert.match(consoleSource, /onRebook=\{\['cancelled', 'no_show'\]\.includes\(editingRow\.status\)/);
+  assert.match(editor, /onRebook && \['cancelled', 'no_show'\]\.includes\(row\.status\)/);
   assert.match(panel, /messages\.reservationRebook/);
 });

@@ -29,6 +29,15 @@ export function formatVenueDate(value: string, locale?: string, emptyLabel = 'Ch
   }).format(dateFromIso(value));
 }
 
+export function formatCompactVenueDate(value: string, locale?: string, emptyLabel = 'Choose a date') {
+  if (!value) return emptyLabel;
+  return new Intl.DateTimeFormat(locale, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+  }).format(dateFromIso(value));
+}
+
 function daysForMonth(month: Date) {
   const first = new Date(month.getFullYear(), month.getMonth(), 1, 12);
   const start = new Date(first);
@@ -113,7 +122,14 @@ export function ReservationDatePicker({
       >
         <CalendarDays className={`h-4 w-4 shrink-0 ${tone === 'light' ? 'text-cyan-700' : 'text-cyan-300'}`} />
         <span className="min-w-0 flex-1">
-          <span className={`block truncate text-sm font-bold ${tone === 'light' ? 'text-slate-950' : 'text-white'}`}>{formatVenueDate(value, locale, copy?.chooseDate)}</span>
+          <span className={`block truncate text-sm font-bold ${tone === 'light' ? 'text-slate-950' : 'text-white'}`}>
+            {compactOnMobile ? (
+              <>
+                <span className="sm:hidden">{formatCompactVenueDate(value, locale, copy?.chooseDate)}</span>
+                <span className="hidden sm:inline">{formatVenueDate(value, locale, copy?.chooseDate)}</span>
+              </>
+            ) : formatVenueDate(value, locale, copy?.chooseDate)}
+          </span>
           <span className={`${compactOnMobile ? 'hidden sm:block' : 'block'} text-[11px] ${tone === 'light' ? 'text-slate-600' : 'text-slate-500'}`}>{timezone ? `${timezone} · ${copy?.venueDate ?? 'venue date'}` : copy?.venueDate ?? 'Venue-local date'}</span>
         </span>
       </button>
@@ -275,12 +291,14 @@ export function GuestCountInput({
   maximum = 100,
   tone = 'dark',
   copy,
+  compactOnMobile = false,
 }: {
   value: number | '';
   onChange(value: number | ''): void;
   minimum?: number;
   maximum?: number;
   tone?: 'dark' | 'light';
+  compactOnMobile?: boolean;
   copy?: {
     label: string;
     remove: string;
@@ -297,7 +315,7 @@ export function GuestCountInput({
         <button
           type="button"
           onClick={() => onChange(Math.max(minimum, numeric - 1))}
-          className={`grid min-h-14 min-w-14 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
+          className={`grid place-items-center rounded-xl border ${compactOnMobile ? 'min-h-11 min-w-11 sm:min-h-14 sm:min-w-14' : 'min-h-14 min-w-14'} ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
           aria-label={copy?.remove ?? 'Remove one guest'}
         >
           <Minus className="h-5 w-5" />
@@ -311,7 +329,7 @@ export function GuestCountInput({
           value={value}
           onFocus={(event) => event.currentTarget.select()}
           onChange={(event) => onChange(event.target.value === '' ? '' : Number(event.target.value))}
-          className={`min-h-14 min-w-0 flex-1 rounded-xl border px-3 text-center text-2xl font-black focus:outline-none ${
+          className={`${compactOnMobile ? 'min-h-11 sm:min-h-14' : 'min-h-14'} min-w-0 flex-1 rounded-xl border px-3 text-center text-2xl font-black focus:outline-none ${
             tone === 'light'
               ? 'border-slate-300 bg-white text-slate-950 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
               : 'border-white/10 bg-white/[0.055] text-white focus:border-cyan-400/60'
@@ -321,12 +339,12 @@ export function GuestCountInput({
         <button
           type="button"
           onClick={() => onChange(Math.min(maximum, numeric + 1))}
-          className={`grid min-h-14 min-w-14 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
+          className={`grid place-items-center rounded-xl border ${compactOnMobile ? 'min-h-11 min-w-11 sm:min-h-14 sm:min-w-14' : 'min-h-14 min-w-14'} ${tone === 'light' ? 'border-slate-300 bg-white text-slate-800 hover:bg-slate-100' : 'border-white/10 bg-white/[0.04]'}`}
           aria-label={copy?.add ?? 'Add one guest'}
         >
           <Plus className="h-5 w-5" />
         </button>
-        <button type="button" onClick={() => onChange('')} className={`min-h-14 rounded-xl border px-3 text-xs font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-white/10 text-slate-400'}`}>
+        <button type="button" onClick={() => onChange('')} className={`${compactOnMobile ? 'min-h-11 sm:min-h-14' : 'min-h-14'} rounded-xl border px-3 text-xs font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700 hover:bg-slate-100' : 'border-white/10 text-slate-400'}`}>
           {copy?.clear ?? 'Clear'}
         </button>
       </div>

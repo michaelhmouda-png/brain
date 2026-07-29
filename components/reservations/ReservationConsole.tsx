@@ -17,7 +17,6 @@ import {
   RefreshCw,
   Search,
   SlidersHorizontal,
-  Sparkles,
   UserRound,
   UsersRound,
   X,
@@ -45,7 +44,6 @@ import { normalizePhone } from '@/lib/reservations/phone';
 import { venueDate } from '@/lib/reservations/time';
 
 const PURPOSES = ['regular', 'birthday', 'anniversary', 'business', 'engagement', 'bachelor', 'bachelorette', 'family', 'event', 'other'] as const;
-const QUICK_PURPOSES = ['regular', 'birthday', 'business', 'event'] as const;
 const SOURCES = ['manual', 'phone', 'whatsapp', 'instagram', 'website', 'google', 'walk_in', 'other'] as const;
 const SEATING = ['no_preference', 'indoor', 'outdoor', 'bar', 'vip'] as const;
 const COUNTRY_CODES = [
@@ -167,12 +165,22 @@ function createInitialForm(locationId = ''): {
 
 const statusTone: Record<string, string> = {
   pending: 'border-amber-300/20 bg-amber-300/10 text-amber-200',
-  confirmed: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200',
+  confirmed: 'border-cyan-300/20 bg-cyan-300/10 text-cyan-200',
   waitlisted: 'border-violet-300/20 bg-violet-300/10 text-violet-200',
-  seated: 'border-cyan-300/20 bg-cyan-300/10 text-cyan-200',
-  completed: 'border-slate-300/15 bg-slate-300/5 text-slate-300',
+  seated: 'border-emerald-300/20 bg-emerald-300/10 text-emerald-200',
+  completed: 'border-emerald-300/15 bg-emerald-300/[0.07] text-emerald-200/80',
   cancelled: 'border-rose-300/20 bg-rose-300/10 text-rose-200',
   no_show: 'border-orange-300/20 bg-orange-300/10 text-orange-200',
+};
+
+const cardTone: Record<string, string> = {
+  pending: 'border-amber-300/25 hover:border-amber-300/40',
+  confirmed: 'border-cyan-300/20 hover:border-cyan-300/35',
+  waitlisted: 'border-violet-300/20 hover:border-violet-300/35',
+  seated: 'border-emerald-300/20 hover:border-emerald-300/35',
+  completed: 'border-emerald-300/10 opacity-80 hover:border-emerald-300/25',
+  cancelled: 'border-rose-300/15 opacity-75 hover:border-rose-300/30',
+  no_show: 'border-orange-300/15 opacity-75 hover:border-orange-300/30',
 };
 
 const statusActions: Record<string, { action: 'confirm' | 'waitlist' | 'seat' | 'complete' | 'cancel' | 'noShow'; status: string; primary?: boolean }[]> = {
@@ -193,52 +201,19 @@ const statusActions: Record<string, { action: 'confirm' | 'waitlist' | 'seat' | 
   seated: [{ action: 'complete', status: 'completed', primary: true }],
 };
 
-function Choice({
-  active,
-  children,
-  onClick,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-  onClick(): void;
-}) {
-  return (
-    <button
-      type="button"
-      aria-pressed={active}
-      onClick={onClick}
-      className={`min-h-10 rounded-xl border px-3 text-sm font-semibold transition ${
-        active
-          ? 'border-cyan-300/50 bg-cyan-300 text-slate-950 shadow-[0_8px_24px_rgba(34,211,238,0.16)]'
-          : 'border-white/10 bg-white/[0.035] text-slate-300 hover:border-white/20 hover:bg-white/[0.07]'
-      }`}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Metric({
+function Counter({
   label,
-  mobileLabel,
   value,
-  hint,
+  divider = false,
 }: {
   label: string;
-  mobileLabel?: string;
   value: string | number;
-  hint: string;
+  divider?: boolean;
 }) {
   return (
-    <div className="min-w-0 flex-1 rounded-lg border border-white/[0.08] bg-white/[0.035] px-1.5 py-1.5 sm:rounded-2xl sm:px-4 sm:py-3">
-      <div className="flex items-baseline justify-between gap-2 sm:gap-3">
-        <span className="text-lg font-black leading-none tracking-tight text-white sm:text-2xl sm:leading-normal">{value}</span>
-        <span className="hidden text-[11px] text-slate-500 sm:inline">{hint}</span>
-      </div>
-      <p className="mt-1 truncate text-[10px] font-medium leading-none text-slate-400 sm:mt-0.5 sm:text-xs sm:leading-normal">
-        <span className="sm:hidden">{mobileLabel ?? label}</span>
-        <span className="hidden sm:inline">{label}</span>
-      </p>
+    <div className={`min-w-0 px-2 py-2 text-center sm:px-4 sm:py-3 ${divider ? 'border-e border-white/[0.08]' : ''}`}>
+      <p className="truncate text-[10px] font-bold uppercase tracking-[0.12em] text-slate-500 sm:text-xs">{label}</p>
+      <p className="mt-0.5 text-2xl font-black leading-none tracking-tight text-white sm:text-3xl">{value}</p>
     </div>
   );
 }
@@ -581,97 +556,89 @@ export function ReservationConsole() {
 
   return (
     <main data-reservation-desk className="min-h-[calc(100dvh-6rem)] min-w-0 max-w-full overflow-x-clip pb-0 sm:px-5 sm:pb-24 lg:px-0 lg:pb-10">
-      <div className="overflow-hidden bg-[var(--surface-nav)] sm:rounded-[28px] sm:border sm:border-white/[0.09] sm:shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
-        <header className="border-b border-white/[0.07] px-3 py-2 sm:px-6 sm:py-5">
-          <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-            <div className="min-w-0">
-              <div className="hidden items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300 sm:flex">
-                <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
-                {copy.eyebrow}
-              </div>
-              <h1 className="truncate text-xl font-black tracking-tight sm:mt-1.5 sm:text-3xl">{copy.title}</h1>
-              <p className="mt-0.5 text-[11px] text-slate-400 sm:mt-1 sm:text-sm">
-                {timezone || copy.venueLocalTime}<span className="hidden sm:inline"> · {copy.availabilityStaffConfirmed}</span>
-              </p>
-            </div>
-            <div className="flex w-full items-center gap-2 sm:w-auto">
-              <label className="relative min-w-0 flex-1 sm:w-56">
-                <span className="sr-only">{copy.activeLocation}</span>
-                <MapPin aria-hidden className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
-                <select
-                  value={locationId}
-                  onChange={(event) => {
-                    setLocationId(event.target.value);
-                    setForm((current) => ({ ...current, locationId: event.target.value }));
-                  }}
-                  className="min-h-11 w-full appearance-none rounded-xl border border-white/10 bg-white/[0.055] ps-9 pe-9 text-sm font-semibold"
-                >
-                  {!locations.length ? <option value="">{copy.noActiveLocation}</option> : null}
-                  {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
-                </select>
-                <ChevronDown aria-hidden className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
-              </label>
-              <Link
-                href="/dashboard/reservations/calendar"
-                className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 bg-white/[0.04] text-slate-300 transition hover:bg-white/[0.08]"
-                aria-label={copy.openCalendar}
-              >
-                <CalendarDays className="h-5 w-5" />
-              </Link>
-              <button
-                type="button"
-                onClick={openComposer}
-                className="hidden min-h-11 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950 shadow-[0_10px_30px_rgba(34,211,238,0.18)] transition hover:bg-cyan-200 sm:flex"
-              >
-                <Plus className="h-4 w-4" /> {copy.newBooking}
-                <kbd className="rounded bg-slate-950/10 px-1.5 py-0.5 text-[10px]">N</kbd>
-              </button>
-            </div>
+      <header className="border-b border-white/[0.08] bg-[var(--surface-nav)] px-3 py-2.5 sm:px-4 sm:py-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="min-w-0 flex-1">
+            <h1 className="truncate text-xl font-black tracking-tight text-white sm:text-2xl">{copy.title}</h1>
+            <p className="mt-0.5 truncate text-[11px] text-slate-500">{timezone || copy.venueLocalTime}</p>
           </div>
-          <div className="mt-2 flex items-center gap-1.5 sm:mt-4 sm:gap-2">
+          <div className="w-[min(10.5rem,44vw)] min-w-0">
+            <ReservationDatePicker
+              value={selectedDate}
+              onChange={(value) => {
+                if (!value) return;
+                setSelectedDate(value);
+                setFilter('all');
+              }}
+              timezone={timezone}
+              allowClear={false}
+              label={copy.selectedDate}
+              locale={locale}
+              copy={copy.dateCopy}
+              compactOnMobile
+            />
+          </div>
+          <Link
+            href="/dashboard/reservations/calendar"
+            className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300 transition hover:border-cyan-300/30 hover:text-cyan-200"
+            aria-label={copy.openCalendar}
+          >
+            <CalendarDays className="h-4 w-4" />
+          </Link>
+          <button
+            type="button"
+            onClick={openComposer}
+            className="hidden min-h-11 items-center gap-2 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950 transition hover:bg-cyan-200 sm:flex"
+          >
+            <Plus className="h-4 w-4" /> {copy.newBooking}
+            <kbd className="rounded bg-slate-950/10 px-1.5 py-0.5 text-[10px]">N</kbd>
+          </button>
+        </div>
+        <div className="mt-2 flex min-w-0 items-center gap-1.5">
+          <label className="relative min-w-0 flex-1">
+            <span className="sr-only">{copy.activeLocation}</span>
+            <MapPin aria-hidden className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-300" />
+            <select
+              value={locationId}
+              onChange={(event) => {
+                setLocationId(event.target.value);
+                setForm((current) => ({ ...current, locationId: event.target.value }));
+              }}
+              className="min-h-11 w-full appearance-none rounded-xl border border-white/10 bg-white/[0.04] ps-9 pe-9 text-sm font-semibold text-white"
+            >
+              {!locations.length ? <option value="">{copy.noActiveLocation}</option> : null}
+              {locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
+            </select>
+            <ChevronDown aria-hidden className="pointer-events-none absolute end-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
+          </label>
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               onClick={() => setSelectedDate((current) => shiftVenueDate(current, -1))}
-              className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06] sm:min-h-12 sm:min-w-12"
+              className="grid min-h-11 min-w-11 place-items-center rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
               aria-label={copy.previousDate}
             >
               <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
             </button>
-            <div className="min-w-0 flex-1 sm:max-w-md">
-              <ReservationDatePicker
-                value={selectedDate}
-                onChange={(value) => {
-                  if (!value) return;
-                  setSelectedDate(value);
-                  setFilter('all');
-                }}
-                timezone={timezone}
-                allowClear={false}
-                label={copy.selectedDate}
-                locale={locale}
-                copy={copy.dateCopy}
-                compactOnMobile
-              />
-            </div>
             <button
               type="button"
               onClick={() => setSelectedDate((current) => shiftVenueDate(current, 1))}
-              className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06] sm:min-h-12 sm:min-w-12"
+              className="grid min-h-11 min-w-11 place-items-center rounded-full border border-white/10 text-slate-300 hover:bg-white/[0.06]"
               aria-label={copy.nextDate}
             >
               <ChevronRight className="h-4 w-4 rtl:rotate-180" />
             </button>
           </div>
-        </header>
+        </div>
+      </header>
 
-        <section className="grid grid-cols-3 gap-1 border-b border-white/[0.07] px-3 py-1.5 sm:gap-2 sm:px-6 sm:py-3">
-          <Metric label={copy.reservationCount} value={dailyMetrics.activeReservations} hint={copy.today} />
-          <Metric label={copy.guestCount} mobileLabel={copy.guests} value={dailyMetrics.expectedGuests} hint={copy.activeCovers} />
-          <Metric label={copy.waitingCount} value={dailyMetrics.waitingListCount} hint={`${dailyMetrics.waitingListGuests} ${copy.guests}`} />
-        </section>
+      <section className="grid grid-cols-[1fr_1fr_0.78fr] border-b border-white/[0.08] bg-[#080d14]" aria-label={copy.today}>
+        <Counter label={copy.reservationCount} value={dailyMetrics.activeReservations} divider />
+        <Counter label={copy.guests} value={dailyMetrics.expectedGuests} divider />
+        <Counter label={copy.waitingCount} value={dailyMetrics.waitingListCount} />
+      </section>
 
-        <div className="sm:min-h-[600px]">
-          <section className="min-w-0">
+      <section className="min-w-0">
             <div className={`border-b border-white/[0.07] px-3 py-2 sm:block sm:px-6 sm:py-3 ${mobileControls ? 'block' : 'hidden'}`}>
               <nav className={`-mx-1 gap-1 overflow-x-auto px-1 pb-2 sm:flex ${mobileControls === 'filters' ? 'flex' : 'hidden'}`} aria-label={copy.toolbar.filters}>
                 {FILTERS.map((item) => (
@@ -738,192 +705,122 @@ export function ReservationConsole() {
               </div>
             ) : null}
 
-            <div data-reservation-list className="mobile-scroll-region scroll-pb-[calc(7.75rem+env(safe-area-inset-bottom))] divide-y divide-white/[0.065] pb-[calc(7.75rem+env(safe-area-inset-bottom))] sm:scroll-pb-0 sm:pb-0">
-              {listLoading ? (
-                <div className="grid place-items-center px-4 py-12 text-slate-500">
-                  <div className="text-center"><LoaderCircle className="mx-auto h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{copy.loading}</p></div>
-                </div>
-              ) : filter === 'waiting' && visibleWaitlistRows.length ? visibleWaitlistRows.map((row) => (
-                <article key={row.id} className="px-3 py-2.5 transition hover:bg-white/[0.025] sm:px-6 sm:py-4">
-                  <div className="flex items-start gap-3 sm:gap-4">
-                    <div className="w-[52px] shrink-0 pt-0.5 text-start sm:w-[72px] sm:text-center">
-                      <p className="whitespace-nowrap text-lg font-black tracking-tight text-white sm:text-xl">{shortTime(row.preferred_time)}</p>
-                      <p className="mt-0.5 hidden whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-slate-500 sm:block">{formatDay(row.requested_date, locale)}</p>
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <h2 className="font-bold text-white">{copy.waitingParty}</h2>
-                          <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-400">
-                            <span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
-                            <span>{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span>
-                            <span>{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
-                          </p>
-                        </div>
-                        <span className="rounded-full border border-violet-300/20 bg-violet-300/10 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-violet-200">{copy.status[row.status as keyof typeof copy.status] ?? row.status}</span>
-                      </div>
-                      <p className="mt-3 text-xs text-slate-500">{copy.waitingProtected}</p>
-                    </div>
-                  </div>
-                </article>
-              )) : visibleRows.length ? visibleRows.map((row) => {
-                const guestName = row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : copy.guest;
-                const actions = statusActions[row.status] ?? [];
-                const mobilePrimaryAction = row.status === 'pending'
-                  ? actions.find((action) => action.primary)
-                  : undefined;
-                return (
-                  <article
-                    key={row.id}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`Open ${guestName} reservation`}
-                    onClick={() => void openDetails(row)}
-                    onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
-                        event.preventDefault();
-                        void openDetails(row);
-                      }
-                    }}
-                    className="group scroll-mb-[calc(7.75rem+env(safe-area-inset-bottom))] cursor-pointer px-3 py-2.5 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:scroll-mb-0 sm:px-6 sm:py-4"
-                  >
-                    <div className="sm:hidden">
-                      <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
-                        <p className="whitespace-nowrap text-lg font-black leading-6 tracking-tight text-white">{shortTime(row.reservation_time)}</p>
-                        <h2 className="line-clamp-2 min-w-0 text-sm font-bold leading-5 text-white">{guestName}</h2>
-                        <span className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase leading-4 tracking-wide ${statusTone[row.status] ?? statusTone.completed}`}>
-                          {copy.status[row.status as keyof typeof copy.status] ?? row.status}
-                        </span>
-                      </div>
-                      <div className="mt-1 flex min-w-0 items-center gap-2 text-xs text-slate-400">
-                        <span className="inline-flex shrink-0 items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
-                        <span className="min-w-0 truncate">{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
-                        {row.purpose !== 'regular' ? <span className="min-w-0 truncate text-cyan-100/75">{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span> : null}
-                        {mobilePrimaryAction ? (
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              void transition(row, mobilePrimaryAction.status);
-                            }}
-                            disabled={updatingId === row.id}
-                            className="ms-auto min-h-11 shrink-0 rounded-lg bg-cyan-300 px-3 text-xs font-bold text-slate-950 transition hover:bg-cyan-200 disabled:opacity-50"
-                          >
-                            {updatingId === row.id ? copy.actions.saving : copy.actions[mobilePrimaryAction.action]}
-                          </button>
-                        ) : null}
-                      </div>
-                      {row.notes ? (
-                        <p className="mt-1 min-w-0 truncate text-xs text-amber-100/75">
-                          <NotebookPen className="me-1 inline h-3.5 w-3.5 align-text-bottom text-amber-300" aria-hidden />
-                          <span className="font-semibold">{copy.hasNotes}:</span> {row.notes}
-                        </p>
-                      ) : row.guest?.phone_e164 ? (
-                        <a
-                          onClick={(event) => event.stopPropagation()}
-                          href={`tel:${row.guest.phone_e164}`}
-                          dir="ltr"
-                          className="mt-1 inline-flex min-h-11 items-center gap-1 whitespace-nowrap text-xs text-slate-500 hover:text-cyan-200"
-                        >
-                          <Phone className="h-3.5 w-3.5" /> <bdi>{row.guest.phone_e164}</bdi>
-                        </a>
-                      ) : null}
-                    </div>
-                    <div className="hidden items-start gap-3 sm:flex sm:gap-4">
-                      <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
-                        <p className="text-xl font-black tracking-tight text-white">{shortTime(row.reservation_time)}</p>
-                        <p className="mt-0.5 whitespace-nowrap text-[11px] font-medium uppercase tracking-wide text-slate-500">
-                          {row.reservation_date === venueDate(timezone) ? copy.today : formatDay(row.reservation_date, locale)}
-                        </p>
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-2">
-                              <h2 className="truncate text-base font-bold text-white sm:text-lg">{guestName}</h2>
-                              {row.notes ? <NotebookPen className="h-3.5 w-3.5 shrink-0 text-amber-300" aria-label="Has notes" /> : null}
-                            </div>
-                            <p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-slate-400">
-                              <span className="inline-flex items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
-                              <span>{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span>
-                              <span>{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
-                              <span className="hidden sm:inline">{copy.source[row.source as keyof typeof copy.source] ?? row.source}</span>
-                            </p>
-                          </div>
-                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide ${statusTone[row.status] ?? statusTone.completed}`}>
-                            {copy.status[row.status as keyof typeof copy.status] ?? row.status}
-                          </span>
-                        </div>
-                        {row.purpose_details ? <p className="mt-2 text-sm text-cyan-100/75">{row.purpose_details}</p> : null}
-                        {row.notes ? (
-                          <p className="mt-2 break-words rounded-lg border border-amber-300/10 bg-amber-300/[0.045] px-3 py-2 text-sm leading-relaxed text-amber-100/80">
-                            <span className="font-bold">{copy.hasNotes}:</span> {row.notes}
-                          </p>
-                        ) : null}
-                        {row.creator?.full_name ? <p className="mt-2 text-xs text-slate-500">{copy.createdBy} · {row.creator.full_name}</p> : null}
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <a onClick={(event) => event.stopPropagation()} href={`tel:${row.guest?.phone_e164 ?? ''}`} dir="ltr" className="inline-flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-lg text-sm text-slate-400 hover:text-cyan-200">
-                            <Phone className="h-3.5 w-3.5" /> <bdi>{row.guest?.phone_e164 ?? copy.noPhone}</bdi>
-                          </a>
-                          {actions.length || ['cancelled', 'no_show'].includes(row.status) ? (
-                            <div className="flex flex-wrap gap-1.5">
-                              {actions.map((action) => (
-                                <button
-                                  type="button"
-                                  key={action.status}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void transition(row, action.status);
-                                  }}
-                                  disabled={updatingId === row.id}
-                                  className={`min-h-9 rounded-lg px-3 text-xs font-bold transition disabled:opacity-50 ${
-                                    action.primary
-                                      ? 'bg-cyan-300 text-slate-950 hover:bg-cyan-200'
-                                      : 'border border-white/10 text-slate-300 hover:bg-white/[0.07]'
-                                  }`}
-                                >
-                                  {updatingId === row.id ? copy.actions.saving : copy.actions[action.action]}
-                                </button>
-                              ))}
-                              {['cancelled', 'no_show'].includes(row.status) ? (
-                                <button
-                                  type="button"
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    void prepareRebook(row);
-                                  }}
-                                  disabled={preparingRebookId === row.id}
-                                  className="min-h-9 rounded-lg border border-cyan-300/35 bg-cyan-300/10 px-3 text-xs font-bold text-cyan-100 transition hover:bg-cyan-300/20 focus:outline-none focus:ring-2 focus:ring-cyan-300 disabled:opacity-50"
-                                >
-                                  {preparingRebookId === row.id ? rebookCopy.preparing : rebookCopy.action}
-                                </button>
-                              ) : null}
-                            </div>
-                          ) : <span className="text-xs text-slate-600">{preparingDetailsId === row.id ? copy.loading : copy.tapToView}</span>}
-                        </div>
-                      </div>
-                    </div>
-                  </article>
-                );
-              }) : (
-                <div className="grid place-items-center px-6 py-10 text-center sm:py-16">
-                  <div>
-                    <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-dashed border-white/15 text-slate-500">
-                      <ListFilter className="h-5 w-5" />
-                    </div>
-                    <h2 className="mt-4 font-bold text-white">{copy.emptyTitle}</h2>
-                    <p className="mt-1 max-w-xs text-sm text-slate-500">{copy.emptyHelp}</p>
-                    <button type="button" onClick={openComposer} className="mt-4 min-h-10 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950">{copy.newBooking}</button>
-                  </div>
-                </div>
-              )}
+        <div data-reservation-list className="mobile-scroll-region scroll-pb-[calc(7.75rem+env(safe-area-inset-bottom))] space-y-2 bg-[#050a11] px-2 py-2 pb-[calc(7.75rem+env(safe-area-inset-bottom))] sm:px-3 sm:py-3 sm:scroll-pb-0 sm:pb-3">
+          {listLoading ? (
+            <div className="grid place-items-center px-4 py-12 text-slate-500">
+              <div className="text-center"><LoaderCircle className="mx-auto h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{copy.loading}</p></div>
             </div>
-          </section>
+          ) : filter === 'waiting' && visibleWaitlistRows.length ? visibleWaitlistRows.map((row) => (
+            <article key={row.id} data-reservation-card className="scroll-mb-[calc(7.75rem+env(safe-area-inset-bottom))] rounded-xl border border-violet-300/20 bg-[#0d1622] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.18)] sm:scroll-mb-0">
+              <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+                <p className="whitespace-nowrap text-lg font-black leading-6 text-white">{shortTime(row.preferred_time)}</p>
+                <h2 className="line-clamp-2 min-w-0 text-sm font-bold leading-5 text-white">{copy.waitingParty}</h2>
+                <span className="shrink-0 whitespace-nowrap rounded-full border border-violet-300/20 bg-violet-300/10 px-2 py-0.5 text-[10px] font-bold uppercase leading-4 tracking-wide text-violet-200">{copy.status[row.status as keyof typeof copy.status] ?? row.status}</span>
+              </div>
+              <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-slate-400">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.05] text-slate-300"><UserRound className="h-4 w-4" /></span>
+                <span className="inline-flex shrink-0 items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
+                <span className="min-w-0 truncate">{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
+                {row.purpose !== 'regular' ? <span className="min-w-0 truncate text-violet-200/75">{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span> : null}
+              </div>
+              <p className="mt-2 truncate text-xs text-slate-500">{copy.waitingProtected}</p>
+            </article>
+          )) : visibleRows.length ? visibleRows.map((row) => {
+            const guestName = row.guest ? `${row.guest.first_name} ${row.guest.last_name}` : copy.guest;
+            const primaryAction = row.status === 'pending'
+              ? (statusActions[row.status] ?? []).find((action) => action.primary)
+              : undefined;
+            const sourceBadge = row.creator?.full_name
+              ?? (copy.source[row.source as keyof typeof copy.source] ?? row.source);
+            return (
+              <article
+                key={row.id}
+                data-reservation-card
+                role="button"
+                tabIndex={0}
+                aria-label={`${guestName}: ${copy.tapToView}`}
+                onClick={() => void openDetails(row)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    void openDetails(row);
+                  }
+                }}
+                className={`group scroll-mb-[calc(7.75rem+env(safe-area-inset-bottom))] cursor-pointer rounded-xl border bg-[#0d1622] p-3 shadow-[0_10px_24px_rgba(0,0,0,0.18)] transition focus:outline-none focus:ring-2 focus:ring-cyan-300/50 sm:scroll-mb-0 sm:p-4 ${cardTone[row.status] ?? 'border-white/[0.08] hover:border-white/[0.16]'}`}
+              >
+                <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2">
+                  <p className="whitespace-nowrap text-lg font-black leading-6 tracking-tight text-white sm:text-xl">{shortTime(row.reservation_time)}</p>
+                  <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                    <h2 className="line-clamp-2 min-w-0 text-sm font-bold leading-5 text-white sm:text-base">{guestName}</h2>
+                    <span className="max-w-24 truncate rounded bg-white/[0.06] px-1.5 py-0.5 text-[10px] font-semibold leading-4 text-slate-400">{sourceBadge}</span>
+                  </div>
+                  <span className={`shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase leading-4 tracking-wide ${statusTone[row.status] ?? statusTone.completed}`}>
+                    {copy.status[row.status as keyof typeof copy.status] ?? row.status}
+                  </span>
+                </div>
 
+                <div className="mt-2 flex min-w-0 items-center gap-2 text-xs text-slate-400">
+                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-white/[0.05] text-slate-300"><UserRound className="h-4 w-4" /></span>
+                  <span className="inline-flex shrink-0 items-center gap-1"><UsersRound className="h-3.5 w-3.5" />{row.guest_count}</span>
+                  <span className="min-w-0 truncate">{copy.seating[row.seating_preference as keyof typeof copy.seating] ?? row.seating_preference}</span>
+                  {row.purpose !== 'regular' ? <span className="min-w-0 truncate text-cyan-100/75">{copy.purpose[row.purpose as keyof typeof copy.purpose] ?? row.purpose}</span> : null}
+                </div>
+
+                {row.notes || row.purpose_details ? (
+                  <p className="mt-2 min-w-0 truncate text-xs text-amber-100/70">
+                    <NotebookPen className="me-1 inline h-3.5 w-3.5 align-text-bottom text-amber-300" aria-hidden />
+                    {row.notes ?? row.purpose_details}
+                  </p>
+                ) : null}
+
+                <div className="mt-1 flex min-h-11 min-w-0 items-center gap-1">
+                  {row.guest?.phone_e164 ? (
+                    <a
+                      onClick={(event) => event.stopPropagation()}
+                      href={`tel:${row.guest.phone_e164}`}
+                      dir="ltr"
+                      aria-label={`${copy.form.phone}: ${row.guest.phone_e164}`}
+                      title={row.guest.phone_e164}
+                      className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full text-slate-500 transition hover:bg-white/[0.06] hover:text-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-300"
+                    >
+                      <Phone className="h-4 w-4" />
+                    </a>
+                  ) : null}
+                  <span className="min-w-0 flex-1 truncate text-xs text-slate-600">{preparingDetailsId === row.id ? copy.loading : copy.tapToView}</span>
+                  {primaryAction ? (
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void transition(row, primaryAction.status);
+                      }}
+                      disabled={updatingId === row.id}
+                      aria-label={copy.actions[primaryAction.action]}
+                      title={copy.actions[primaryAction.action]}
+                      className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full bg-cyan-300 text-slate-950 transition hover:bg-cyan-200 focus:outline-none focus:ring-2 focus:ring-cyan-100 disabled:opacity-50"
+                    >
+                      {updatingId === row.id ? <LoaderCircle className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                    </button>
+                  ) : null}
+                </div>
+              </article>
+            );
+          }) : (
+            <div className="grid place-items-center px-6 py-10 text-center sm:py-16">
+              <div>
+                <div className="mx-auto grid h-12 w-12 place-items-center rounded-full border border-dashed border-white/15 text-slate-500">
+                  <ListFilter className="h-5 w-5" />
+                </div>
+                <h2 className="mt-3 font-bold text-white">{copy.emptyTitle}</h2>
+                <p className="mt-1 max-w-xs text-sm text-slate-500">{copy.emptyHelp}</p>
+                <button type="button" onClick={openComposer} className="mt-4 min-h-11 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950">{copy.newBooking}</button>
+              </div>
+            </div>
+          )}
         </div>
-      </div>
+      </section>
 
-      <nav
+      {!composerOpen && !editingRow && !rebookingRow ? <nav
         aria-label={copy.eyebrow}
         data-reservation-mobile-actions
         className="fixed inset-x-3 bottom-[calc(4.375rem+env(safe-area-inset-bottom))] z-40 flex min-w-0 items-stretch gap-1 sm:hidden"
@@ -937,20 +834,20 @@ export function ReservationConsole() {
           }}
           aria-label={copy.toolbar.search}
           aria-pressed={mobileControls === 'search'}
-          className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200"
+          className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200"
         >
           <Search className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => setMobileControls((current) => current === 'filters' ? null : 'filters')} aria-label={copy.toolbar.filters} aria-pressed={mobileControls === 'filters'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
+        <button type="button" onClick={() => setMobileControls((current) => current === 'filters' ? null : 'filters')} aria-label={copy.toolbar.filters} aria-pressed={mobileControls === 'filters'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
           <SlidersHorizontal className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => setMobileControls((current) => current === 'sort' ? null : 'sort')} aria-label={copy.toolbar.sort} aria-pressed={mobileControls === 'sort'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
+        <button type="button" onClick={() => setMobileControls((current) => current === 'sort' ? null : 'sort')} aria-label={copy.toolbar.sort} aria-pressed={mobileControls === 'sort'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-full border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
           <ArrowDownUp className="h-4 w-4" />
         </button>
         <button type="button" onClick={openComposer} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-3 text-sm font-black text-slate-950 shadow-[0_10px_28px_rgba(34,211,238,0.22)]">
           <Plus className="h-4 w-4 shrink-0" /> <span className="truncate">{copy.newBooking}</span>
         </button>
-      </nav>
+      </nav> : null}
 
       {composerOpen ? (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm" role="presentation">
@@ -960,11 +857,8 @@ export function ReservationConsole() {
             aria-label={copy.form.title}
             className="absolute inset-0 flex max-h-dvh w-full min-w-0 max-w-full flex-col border-white/10 bg-[#0a0e14] shadow-2xl sm:inset-y-3 sm:start-auto sm:end-3 sm:w-[min(560px,calc(100vw-1.5rem))] sm:rounded-[28px] sm:border"
           >
-            <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-4 py-3.5 sm:px-5">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">{copy.form.mode}</p>
-                <h2 className="mt-0.5 text-xl font-black">{copy.form.title}</h2>
-              </div>
+            <header className="flex shrink-0 items-center justify-between border-b border-white/[0.07] px-4 py-2.5 sm:px-5 sm:py-3.5">
+              <h2 className="text-xl font-black">{copy.form.title}</h2>
               <div className="flex items-center gap-1">
                 <button type="button" onClick={clearComposer} disabled={saving} className="min-h-10 rounded-xl px-3 text-xs font-semibold text-slate-400 hover:bg-white/[0.05]">{copy.form.clear}</button>
                 <button type="button" onClick={() => setComposerOpen(false)} disabled={saving} className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05]" aria-label={copy.form.close}>
@@ -981,28 +875,28 @@ export function ReservationConsole() {
               }}
               className="mobile-scroll-region min-h-0 min-w-0 flex-1 overflow-y-auto"
             >
-              <div className="space-y-6 px-4 py-5 sm:px-5">
+              <div className="space-y-4 px-4 py-4 sm:space-y-6 sm:px-5 sm:py-5">
                 <button
                   type="button"
                   role="switch"
                   aria-checked={form.source === 'walk_in'}
                   onClick={() => set('source', form.source === 'walk_in' ? 'phone' : 'walk_in')}
-                  className={`flex w-full items-center justify-between rounded-2xl border p-3.5 text-start transition ${form.source === 'walk_in' ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : 'border-white/[0.08] bg-white/[0.025]'}`}
+                  className={`flex w-full items-center justify-between rounded-xl border p-3 text-start transition sm:rounded-2xl sm:p-3.5 ${form.source === 'walk_in' ? 'border-cyan-300/35 bg-cyan-300/[0.08]' : 'border-white/[0.08] bg-white/[0.025]'}`}
                 >
                   <span><strong className="block text-sm">{copy.form.walkIn}</strong><span className="mt-0.5 block text-xs text-slate-500">{copy.form.walkInHelp}</span></span>
                   <span className={`relative h-6 w-11 rounded-full transition ${form.source === 'walk_in' ? 'bg-cyan-300' : 'bg-slate-700'}`}><span className={`absolute top-1 start-1 h-4 w-4 rounded-full bg-slate-950 transition ${form.source === 'walk_in' ? 'translate-x-5 rtl:-translate-x-5' : ''}`} /></span>
                 </button>
 
                 <section>
-                  <div className="mb-3 flex items-center justify-between">
+                  <div className="mb-2 flex items-center justify-between sm:mb-3">
                     <h3 className="flex items-center gap-2 text-sm font-bold"><UserRound className="h-4 w-4 text-cyan-300" /> {copy.form.guestDetails}</h3>
                     {guestLookupLoading ? <span className="flex items-center gap-1 text-[11px] text-slate-500"><LoaderCircle className="h-3 w-3 animate-spin" /> {copy.form.checkingHistory}</span> : null}
                   </div>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                     <label><span className={labelClass}>{copy.form.firstName}</span><input ref={firstNameRef} required maxLength={80} autoComplete="given-name" value={form.firstName} onChange={(event) => set('firstName', event.target.value)} className={inputClass} /></label>
                     <label><span className={labelClass}>{copy.form.lastName}</span><input required maxLength={80} autoComplete="family-name" value={form.lastName} onChange={(event) => set('lastName', event.target.value)} className={inputClass} /></label>
                   </div>
-                  <div className="mt-3 grid grid-cols-[116px_minmax(0,1fr)] gap-2">
+                  <div className="mt-2 grid grid-cols-[106px_minmax(0,1fr)] gap-2 sm:mt-3 sm:grid-cols-[116px_minmax(0,1fr)]">
                     <label>
                       <span className={labelClass}>{copy.form.countryCode}</span>
                       <input list="reservation-country-codes" required value={form.countryCallingCode} onChange={(event) => { setGuestMemory(null); set('countryCallingCode', event.target.value); }} className={inputClass} />
@@ -1020,42 +914,47 @@ export function ReservationConsole() {
                   ) : null}
                 </section>
 
-                <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="mb-3 flex items-center gap-2 text-sm font-bold"><UsersRound className="h-4 w-4 text-cyan-300" /> {copy.form.party}</h3>
-                  <GuestCountInput value={form.guestCount} onChange={(value) => set('guestCount', value)} copy={copy.guestCountCopy} />
+                <section className="border-t border-white/[0.07] pt-4 sm:pt-5">
+                  <h3 className="mb-2 flex items-center gap-2 text-sm font-bold sm:mb-3"><UsersRound className="h-4 w-4 text-cyan-300" /> {copy.form.party}</h3>
+                  <GuestCountInput value={form.guestCount} onChange={(value) => set('guestCount', value)} copy={copy.guestCountCopy} compactOnMobile />
                 </section>
 
-                <label className="block border-t border-white/[0.07] pt-5"><span className={labelClass}>{copy.form.notes}</span><textarea maxLength={2000} rows={3} value={form.notes} onChange={(event) => set('notes', event.target.value)} placeholder={copy.form.notesPlaceholder} className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.045] p-3 text-sm placeholder:text-slate-600 focus:border-cyan-300/40 focus:outline-none" /></label>
+                <label className="block border-t border-white/[0.07] pt-4 sm:pt-5"><span className={labelClass}>{copy.form.notes}</span><textarea maxLength={2000} rows={2} value={form.notes} onChange={(event) => set('notes', event.target.value)} placeholder={copy.form.notesPlaceholder} className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-white/[0.045] p-3 text-sm placeholder:text-slate-600 focus:border-cyan-300/40 focus:outline-none sm:min-h-24" /></label>
 
-                <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="text-sm font-bold">{copy.form.seating}</h3>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">{SEATING.map((preference) => <Choice key={preference} active={form.seatingPreference === preference} onClick={() => set('seatingPreference', preference)}>{copy.seating[preference]}</Choice>)}</div>
+                <section className="border-t border-white/[0.07] pt-4 sm:pt-5">
+                  <label>
+                    <span className={labelClass}>{copy.form.seating}</span>
+                    <select value={form.seatingPreference} onChange={(event) => set('seatingPreference', event.target.value)} className={inputClass}>
+                      {SEATING.map((preference) => <option key={preference} value={preference}>{copy.seating[preference]}</option>)}
+                    </select>
+                  </label>
                 </section>
 
-                <section className="border-t border-white/[0.07] pt-5">
-                  <h3 className="flex items-center gap-2 text-sm font-bold"><Sparkles className="h-4 w-4 text-cyan-300" /> {copy.form.occasion}</h3>
-                  <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
-                    {QUICK_PURPOSES.map((purpose) => <Choice key={purpose} active={form.purpose === purpose} onClick={() => set('purpose', purpose)}>{copy.purpose[purpose]}</Choice>)}
-                    <select value={form.purpose} onChange={(event) => set('purpose', event.target.value)} className="min-h-10 min-w-[105px] rounded-xl border border-white/10 bg-white/[0.055] px-2 text-sm">{PURPOSES.map((purpose) => <option key={purpose} value={purpose}>{copy.purpose[purpose]}</option>)}</select>
-                  </div>
+                <section className="border-t border-white/[0.07] pt-4 sm:pt-5">
+                  <label>
+                    <span className={labelClass}>{copy.form.occasion}</span>
+                    <select value={form.purpose} onChange={(event) => set('purpose', event.target.value)} className={inputClass}>
+                      {PURPOSES.map((purpose) => <option key={purpose} value={purpose}>{copy.purpose[purpose]}</option>)}
+                    </select>
+                  </label>
                   {form.purpose !== 'regular' ? <label className="mt-3 block"><span className={labelClass}>{copy.form.occasionDetails}</span><input maxLength={500} value={form.purposeDetails} onChange={(event) => set('purposeDetails', event.target.value)} placeholder={copy.form.occasionPlaceholder} className={inputClass} /></label> : null}
                 </section>
 
-                <section className="border-t border-white/[0.07] pt-5">
+                <section className="border-t border-white/[0.07] pt-4 sm:pt-5">
                   <h3 className="flex items-center gap-2 text-sm font-bold"><CalendarDays className="h-4 w-4 text-cyan-300" /> {copy.form.when}</h3>
-                  <div className="mt-3 space-y-3">
+                  <div className="mt-2 space-y-2 sm:mt-3 sm:space-y-3">
                     <ReservationDatePicker value={form.date} onChange={(value) => set('date', value)} timezone={timezone} locale={locale} copy={copy.dateCopy} />
                     <ReservationTimeInput value={form.time} onChange={(value) => set('time', value)} timezone={timezone} label={copy.form.when} hint={copy.timeHint} />
                   </div>
                   <label className="mt-3 block"><span className={labelClass}>{copy.form.duration}</span><select value={form.expectedDurationMinutes} onChange={(event) => set('expectedDurationMinutes', Number(event.target.value))} className={inputClass}>{[60, 90, 120, 150, 180, 240].map((minutes) => <option key={minutes} value={minutes}>{minutes} {copy.form.durationUnit}</option>)}</select></label>
                 </section>
 
-                <section className="grid grid-cols-2 gap-2 border-t border-white/[0.07] pt-5">
+                <section className="grid grid-cols-1 gap-2 border-t border-white/[0.07] pt-4 sm:grid-cols-2 sm:pt-5">
                   <label><span className={labelClass}>{copy.form.location}</span><select required value={form.locationId} onChange={(event) => set('locationId', event.target.value)} className={inputClass}><option value="">{copy.form.selectLocation}</option>{locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}</select></label>
                   <label><span className={labelClass}>{copy.form.source}</span><select value={form.source} onChange={(event) => set('source', event.target.value)} className={inputClass}>{SOURCES.map((source) => <option key={source} value={source}>{copy.source[source]}</option>)}</select></label>
                 </section>
 
-                <section className="border-t border-white/[0.07] pt-5">
+                <section className="border-t border-white/[0.07] pt-4 sm:pt-5">
                   <button
                     type="button"
                     role="switch"

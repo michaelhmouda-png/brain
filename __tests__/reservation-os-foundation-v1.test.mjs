@@ -203,8 +203,8 @@ test('reservation location loading uses one canonical active company-scoped quer
 
 test('Reservation Desk V2 remains an operator console over the existing secured APIs', () => {
   assert.match(reservationConsole, /translations\.reservationDesk/);
-  assert.match(reservationConsole, /copy\.form\.mode/);
   assert.match(reservationConsole, /copy\.form\.title/);
+  assert.match(reservationConsole, /aria-checked=\{form\.source === 'walk_in'\}/);
   assert.match(reservationConsole, /copy\.form\.returningGuest/);
   assert.match(reservationConsole, /copy\.form\.availabilityUnknown/);
   assert.match(reservationConsole, /submittingRef\.current/);
