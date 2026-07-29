@@ -8,7 +8,6 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
-  List,
   ListFilter,
   LoaderCircle,
   MapPin,
@@ -221,20 +220,25 @@ function Choice({
 
 function Metric({
   label,
+  mobileLabel,
   value,
   hint,
 }: {
   label: string;
+  mobileLabel?: string;
   value: string | number;
   hint: string;
 }) {
   return (
-    <div className="min-w-0 flex-1 rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-3">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="text-2xl font-black tracking-tight text-white">{value}</span>
-        <span className="text-[11px] text-slate-500">{hint}</span>
+    <div className="min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.035] px-2 py-2 sm:rounded-2xl sm:px-4 sm:py-3">
+      <div className="flex items-baseline justify-between gap-2 sm:gap-3">
+        <span className="text-xl font-black tracking-tight text-white sm:text-2xl">{value}</span>
+        <span className="hidden text-[11px] text-slate-500 sm:inline">{hint}</span>
       </div>
-      <p className="mt-0.5 text-xs font-medium text-slate-400">{label}</p>
+      <p className="mt-0.5 truncate text-[11px] font-medium text-slate-400 sm:text-xs">
+        <span className="sm:hidden">{mobileLabel ?? label}</span>
+        <span className="hidden sm:inline">{label}</span>
+      </p>
     </div>
   );
 }
@@ -576,10 +580,10 @@ export function ReservationConsole() {
   }
 
   return (
-    <main className="min-h-[calc(100dvh-6rem)] px-3 pb-40 sm:px-5 sm:pb-24 lg:px-0 lg:pb-10">
-      <div className="overflow-hidden rounded-[28px] border border-white/[0.09] bg-[var(--surface-nav)] shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
-        <header className="border-b border-white/[0.07] px-4 py-4 sm:px-6 sm:py-5">
-          <div className="flex flex-wrap items-center justify-between gap-4">
+    <main className="min-h-[calc(100dvh-6rem)] min-w-0 max-w-full overflow-x-clip pb-[8.25rem] sm:px-5 sm:pb-24 lg:px-0 lg:pb-10">
+      <div className="overflow-hidden bg-[var(--surface-nav)] sm:rounded-[28px] sm:border sm:border-white/[0.09] sm:shadow-[0_32px_100px_rgba(0,0,0,0.42)]">
+        <header className="border-b border-white/[0.07] px-3 py-3 sm:px-6 sm:py-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.2em] text-cyan-300">
                 <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,0.7)]" />
@@ -622,11 +626,11 @@ export function ReservationConsole() {
               </button>
             </div>
           </div>
-          <div className="mt-4 flex items-center gap-2">
+          <div className="mt-3 flex items-center gap-2 sm:mt-4">
             <button
               type="button"
               onClick={() => setSelectedDate((current) => shiftVenueDate(current, -1))}
-              className="grid min-h-12 min-w-12 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+              className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06] sm:min-h-12 sm:min-w-12"
               aria-label={copy.previousDate}
             >
               <ChevronLeft className="h-4 w-4 rtl:rotate-180" />
@@ -649,7 +653,7 @@ export function ReservationConsole() {
             <button
               type="button"
               onClick={() => setSelectedDate((current) => shiftVenueDate(current, 1))}
-              className="grid min-h-12 min-w-12 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06]"
+              className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10 text-slate-300 hover:bg-white/[0.06] sm:min-h-12 sm:min-w-12"
               aria-label={copy.nextDate}
             >
               <ChevronRight className="h-4 w-4 rtl:rotate-180" />
@@ -657,15 +661,15 @@ export function ReservationConsole() {
           </div>
         </header>
 
-        <section className="grid grid-cols-3 gap-2 border-b border-white/[0.07] px-4 py-3 sm:px-6">
+        <section className="grid grid-cols-3 gap-1.5 border-b border-white/[0.07] px-3 py-2 sm:gap-2 sm:px-6 sm:py-3">
           <Metric label={copy.reservationCount} value={dailyMetrics.activeReservations} hint={copy.today} />
-          <Metric label={copy.guestCount} value={dailyMetrics.expectedGuests} hint={copy.activeCovers} />
+          <Metric label={copy.guestCount} mobileLabel={copy.guests} value={dailyMetrics.expectedGuests} hint={copy.activeCovers} />
           <Metric label={copy.waitingCount} value={dailyMetrics.waitingListCount} hint={`${dailyMetrics.waitingListGuests} ${copy.guests}`} />
         </section>
 
-        <div className="min-h-[600px]">
+        <div className="sm:min-h-[600px]">
           <section className="min-w-0">
-            <div className="border-b border-white/[0.07] px-4 py-3 sm:px-6">
+            <div className={`border-b border-white/[0.07] px-3 py-2 sm:block sm:px-6 sm:py-3 ${mobileControls ? 'block' : 'hidden'}`}>
               <nav className={`-mx-1 gap-1 overflow-x-auto px-1 pb-2 sm:flex ${mobileControls === 'filters' ? 'flex' : 'hidden'}`} aria-label={copy.toolbar.filters}>
                 {FILTERS.map((item) => (
                   <button
@@ -684,7 +688,7 @@ export function ReservationConsole() {
                 ))}
               </nav>
               <div className={`mt-1 items-center gap-2 sm:flex ${mobileControls === 'search' || mobileControls === 'sort' ? 'flex' : 'hidden'}`}>
-                <label className="relative flex-1">
+                <label className={`relative min-w-0 flex-1 sm:flex ${mobileControls === 'search' ? 'flex' : 'hidden'}`}>
                   <span className="sr-only">{copy.searchLabel}</span>
                   <Search aria-hidden className="pointer-events-none absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500" />
                   <input
@@ -698,7 +702,7 @@ export function ReservationConsole() {
                 <select
                   value={sort}
                   onChange={(event) => setSort(event.target.value as ReservationDeskSort)}
-                  className={`min-h-10 rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 text-sm text-slate-300 ${mobileControls === 'sort' ? 'block' : 'hidden sm:block'}`}
+                  className={`min-h-10 min-w-0 flex-1 rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 text-sm text-slate-300 sm:block sm:flex-none ${mobileControls === 'sort' ? 'block' : 'hidden'}`}
                   aria-label={copy.sort.label}
                 >
                   {(['time_asc', 'time_desc', 'guest_name', 'party_size'] as const).map((item) => (
@@ -709,7 +713,7 @@ export function ReservationConsole() {
                   type="button"
                   onClick={() => void loadReservations()}
                   disabled={listLoading}
-                  className="grid min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05]"
+                  className="hidden min-h-10 min-w-10 place-items-center rounded-xl border border-white/[0.08] text-slate-400 hover:bg-white/[0.05] sm:grid"
                   aria-label={copy.refresh}
                 >
                   <RefreshCw className={`h-4 w-4 ${listLoading ? 'animate-spin' : ''}`} />
@@ -731,13 +735,13 @@ export function ReservationConsole() {
               </div>
             ) : null}
 
-            <div className="mobile-scroll-region divide-y divide-white/[0.065]">
+            <div data-reservation-list className="mobile-scroll-region divide-y divide-white/[0.065]">
               {listLoading ? (
-                <div className="grid min-h-72 place-items-center text-slate-500">
+                <div className="grid place-items-center px-4 py-12 text-slate-500">
                   <div className="text-center"><LoaderCircle className="mx-auto h-6 w-6 animate-spin" /><p className="mt-3 text-sm">{copy.loading}</p></div>
                 </div>
               ) : filter === 'waiting' && visibleWaitlistRows.length ? visibleWaitlistRows.map((row) => (
-                <article key={row.id} className="px-4 py-4 transition hover:bg-white/[0.025] sm:px-6">
+                <article key={row.id} className="px-3 py-3 transition hover:bg-white/[0.025] sm:px-6 sm:py-4">
                   <div className="flex items-start gap-3 sm:gap-4">
                     <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
                       <p className="text-xl font-black tracking-tight text-white">{shortTime(row.preferred_time)}</p>
@@ -775,7 +779,7 @@ export function ReservationConsole() {
                         void openDetails(row);
                       }
                     }}
-                    className="group cursor-pointer px-4 py-4 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:px-6"
+                    className="group cursor-pointer px-3 py-3 transition hover:bg-white/[0.04] focus:bg-white/[0.04] focus:outline-none sm:px-6 sm:py-4"
                   >
                     <div className="flex items-start gap-3 sm:gap-4">
                       <div className="w-[58px] shrink-0 pt-0.5 text-center sm:w-[72px]">
@@ -854,7 +858,7 @@ export function ReservationConsole() {
                   </article>
                 );
               }) : (
-                <div className="grid min-h-72 place-items-center px-6 text-center">
+                <div className="grid place-items-center px-6 py-10 text-center sm:py-16">
                   <div>
                     <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl border border-dashed border-white/15 text-slate-500">
                       <ListFilter className="h-5 w-5" />
@@ -873,22 +877,30 @@ export function ReservationConsole() {
 
       <nav
         aria-label={copy.eyebrow}
-        className="fixed inset-x-3 bottom-[calc(4.75rem+env(safe-area-inset-bottom))] z-30 grid grid-cols-5 rounded-2xl border border-white/10 bg-[#0b1018]/98 p-1.5 pb-[max(0.375rem,env(safe-area-inset-bottom))] shadow-[0_18px_50px_rgba(0,0,0,0.6)] backdrop-blur sm:hidden"
+        data-reservation-mobile-actions
+        className="fixed inset-x-3 bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-40 flex min-w-0 items-stretch gap-1.5 sm:hidden"
       >
-        <button type="button" onClick={() => { setFilter('all'); setMobileControls(null); }} aria-pressed={filter === 'all' && !mobileControls} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold text-slate-300 aria-pressed:bg-white/[0.08] aria-pressed:text-cyan-200">
-          <List className="h-4 w-4" /> {copy.toolbar.list}
+        <button
+          type="button"
+          onClick={() => {
+            const opening = mobileControls !== 'search';
+            setMobileControls(opening ? 'search' : null);
+            if (opening) window.setTimeout(() => searchRef.current?.focus(), 0);
+          }}
+          aria-label={copy.toolbar.search}
+          aria-pressed={mobileControls === 'search'}
+          className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200"
+        >
+          <Search className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => { setMobileControls('search'); window.setTimeout(() => searchRef.current?.focus(), 0); }} aria-pressed={mobileControls === 'search'} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold text-slate-300 aria-pressed:bg-white/[0.08] aria-pressed:text-cyan-200">
-          <Search className="h-4 w-4" /> {copy.toolbar.search}
+        <button type="button" onClick={() => setMobileControls((current) => current === 'filters' ? null : 'filters')} aria-label={copy.toolbar.filters} aria-pressed={mobileControls === 'filters'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
+          <SlidersHorizontal className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => setMobileControls((current) => current === 'filters' ? null : 'filters')} aria-pressed={mobileControls === 'filters'} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold text-slate-300 aria-pressed:bg-white/[0.08] aria-pressed:text-cyan-200">
-          <SlidersHorizontal className="h-4 w-4" /> {copy.toolbar.filters}
+        <button type="button" onClick={() => setMobileControls((current) => current === 'sort' ? null : 'sort')} aria-label={copy.toolbar.sort} aria-pressed={mobileControls === 'sort'} className="grid min-h-11 min-w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-[#101822] text-slate-300 shadow-lg aria-pressed:border-cyan-300/35 aria-pressed:text-cyan-200">
+          <ArrowDownUp className="h-4 w-4" />
         </button>
-        <button type="button" onClick={() => setMobileControls((current) => current === 'sort' ? null : 'sort')} aria-pressed={mobileControls === 'sort'} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl text-[10px] font-bold text-slate-300 aria-pressed:bg-white/[0.08] aria-pressed:text-cyan-200">
-          <ArrowDownUp className="h-4 w-4" /> {copy.toolbar.sort}
-        </button>
-        <button type="button" onClick={openComposer} className="flex min-h-12 flex-col items-center justify-center gap-1 rounded-xl bg-cyan-300 text-[10px] font-black text-slate-950">
-          <Plus className="h-4 w-4" /> {copy.toolbar.new}
+        <button type="button" onClick={openComposer} className="flex min-h-11 min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300 px-3 text-sm font-black text-slate-950 shadow-[0_10px_28px_rgba(34,211,238,0.22)]">
+          <Plus className="h-4 w-4 shrink-0" /> <span className="truncate">{copy.newBooking}</span>
         </button>
       </nav>
 

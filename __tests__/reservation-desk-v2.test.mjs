@@ -120,14 +120,44 @@ test('date picker stages selection and exposes venue-local Today, Cancel, and Ap
   assert.match(inputsSource, /rtl:rotate-180/);
 });
 
-test('mobile toolbar is safe-area aware, labelled, and does not replace global navigation', () => {
-  for (const key of ['list', 'search', 'filters', 'sort', 'new']) {
-    assert.match(consoleSource, new RegExp(`copy\\.toolbar\\.${key}`));
+test('mobile action bar is compact, safe-area aware, and preserves the global navigation', () => {
+  for (const key of ['search', 'filters', 'sort']) {
+    assert.match(consoleSource, new RegExp(`aria-label=\\{copy\\.toolbar\\.${key}\\}`));
   }
-  assert.match(consoleSource, /bottom-\[calc\(4\.75rem\+env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(consoleSource, /pb-\[max\(0\.375rem,env\(safe-area-inset-bottom\)\)\]/);
-  assert.match(consoleSource, /sm:hidden/);
+  assert.match(consoleSource, /data-reservation-mobile-actions/);
+  assert.match(consoleSource, /bottom-\[calc\(4\.5rem\+env\(safe-area-inset-bottom\)\)\]/);
+  assert.match(consoleSource, /z-40 flex min-w-0 items-stretch gap-1\.5 sm:hidden/);
+  assert.match(consoleSource, /min-w-0 flex-1 items-center justify-center gap-2 rounded-xl bg-cyan-300/);
+  assert.doesNotMatch(consoleSource, /data-reservation-mobile-actions[\s\S]{0,240}grid-cols-5/);
   assert.doesNotMatch(consoleSource, /replaceState|router\.replace|global mobile navigation/i);
+});
+
+test('mobile desk has no fixed blank region and keeps content immediately after the summary', () => {
+  assert.match(consoleSource, /className="sm:min-h-\[600px\]"/);
+  assert.doesNotMatch(consoleSource, /className="min-h-\[600px\]"/);
+  assert.doesNotMatch(consoleSource, /min-h-72/);
+  assert.match(consoleSource, /data-reservation-list/);
+  assert.match(consoleSource, /px-6 py-10 text-center sm:py-16/);
+  assert.match(consoleSource, /overflow-x-clip/);
+});
+
+test('mobile controls expose one bounded panel at a time while desktop controls remain visible', () => {
+  assert.match(consoleSource, /mobileControls \? 'block' : 'hidden'/);
+  assert.match(consoleSource, /mobileControls === 'search' \? 'flex' : 'hidden'/);
+  assert.match(consoleSource, /mobileControls === 'sort' \? 'block' : 'hidden'/);
+  assert.match(consoleSource, /current === 'filters' \? null : 'filters'/);
+  assert.match(consoleSource, /current === 'sort' \? null : 'sort'/);
+  assert.match(consoleSource, /const opening = mobileControls !== 'search'/);
+  assert.match(consoleSource, /sm:block sm:px-6 sm:py-3/);
+  assert.match(consoleSource, /sm:rounded-\[28px\] sm:border/);
+});
+
+test('390px and 430px mobile contracts remain RTL-safe without horizontal overflow', () => {
+  assert.match(consoleSource, /min-w-0 max-w-full overflow-x-clip/);
+  assert.match(consoleSource, /fixed inset-x-3/);
+  assert.match(consoleSource, /min-w-11 shrink-0/);
+  assert.match(consoleSource, /rtl:rotate-180/);
+  assert.doesNotMatch(consoleSource, /\bw-\[(?:390|430)px\]|min-w-\[(?:390|430)px\]/);
 });
 
 test('detail, status history, cancellation confirmation, and rebook use existing paths', () => {
