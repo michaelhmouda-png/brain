@@ -24,8 +24,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: "cover",
   interactiveWidget: "resizes-content",
-  themeColor: "#f4f3ef",
-  colorScheme: "light",
+  themeColor: "#020617",
+  colorScheme: "dark",
 };
 
 export default async function RootLayout({
@@ -40,7 +40,7 @@ export default async function RootLayout({
       dir={language === "ar" ? "rtl" : "ltr"}
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full overflow-x-hidden bg-[#f4f3ef] text-slate-950">{children}</body>
+      <body className="min-h-full overflow-x-hidden bg-[var(--brain-canvas)] text-[var(--brain-ink)]">{children}</body>
     </html>
   );
 }

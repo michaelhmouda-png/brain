@@ -4,7 +4,7 @@ import test from 'node:test';
 
 const read = async (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('authenticated pages share one calm light workspace and design-token system', async () => {
+test('authenticated pages share one calm Brain workspace and design-token system', async () => {
   const [layout, globals, shell] = await Promise.all([
     read('app/dashboard/layout.tsx'),
     read('app/globals.css'),
