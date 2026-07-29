@@ -6,7 +6,6 @@ import {
   ChevronRight,
   Minus,
   Plus,
-  X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { venueDate } from '@/lib/reservations/time';
@@ -66,12 +65,15 @@ export function ReservationDatePicker({
     weekdays: readonly string[];
     today: string;
     clear: string;
+    cancel?: string;
+    apply?: string;
     close: string;
   };
 }) {
   const today = venueDate(timezone);
   const [open, setOpen] = useState(false);
   const [month, setMonth] = useState(() => dateFromIso(value || today));
+  const [pendingValue, setPendingValue] = useState(value || today);
   const touchStart = useRef<number | null>(null);
   const days = useMemo(() => daysForMonth(month), [month]);
 
@@ -89,6 +91,7 @@ export function ReservationDatePicker({
   };
   const openPicker = () => {
     setMonth(dateFromIso(value || today));
+    setPendingValue(value || today);
     setOpen(true);
   };
 
@@ -100,7 +103,7 @@ export function ReservationDatePicker({
         className={`flex min-h-12 w-full items-center gap-3 rounded-xl border px-3.5 transition focus:outline-none ${
           tone === 'light'
             ? 'border-slate-300 bg-white text-start text-slate-950 hover:border-slate-400 focus:border-cyan-500 focus:ring-2 focus:ring-cyan-500/20'
-            : 'border-white/10 bg-white/[0.055] text-left hover:border-white/20 focus:border-cyan-400/60'
+            : 'border-white/10 bg-white/[0.055] text-start hover:border-white/20 focus:border-cyan-400/60'
         }`}
         aria-label={label}
       >
@@ -148,14 +151,14 @@ export function ReservationDatePicker({
             <div className="mt-1 grid grid-cols-7 gap-1">
               {days.map((day) => {
                 const dayValue = isoDate(day);
-                const selected = dayValue === value;
+                const selected = dayValue === pendingValue;
                 const isToday = dayValue === today;
                 const muted = day.getMonth() !== month.getMonth();
                 return (
                   <button
                     type="button"
                     key={dayValue}
-                    onClick={() => { onChange(dayValue); setOpen(false); }}
+                    onClick={() => setPendingValue(dayValue)}
                     aria-pressed={selected}
                     className={`relative grid min-h-11 place-items-center rounded-xl text-sm font-bold transition ${
                       selected
@@ -175,18 +178,31 @@ export function ReservationDatePicker({
             <div className="mt-4 flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => { onChange(today); setOpen(false); }}
-                className={`min-h-11 flex-1 rounded-xl px-4 text-sm font-black ${tone === 'light' ? 'bg-slate-950 text-white' : 'bg-white text-slate-950'}`}
+                onClick={() => {
+                  setPendingValue(today);
+                  setMonth(dateFromIso(today));
+                }}
+                className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10 text-slate-300'}`}
               >
                 {copy?.today ?? 'Today'}
               </button>
               {allowClear ? (
-                <button type="button" onClick={() => { onChange(''); setOpen(false); }} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10 text-slate-300'}`}>
+                <button type="button" onClick={() => setPendingValue('')} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10 text-slate-300'}`}>
                   {copy?.clear ?? 'Clear'}
                 </button>
               ) : null}
-              <button type="button" onClick={() => setOpen(false)} className={`grid min-h-11 min-w-11 place-items-center rounded-xl border ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10'}`} aria-label={copy?.close ?? 'Close date picker'}>
-                <X className="h-4 w-4" />
+              <button type="button" onClick={() => setOpen(false)} className={`min-h-11 rounded-xl border px-4 text-sm font-semibold ${tone === 'light' ? 'border-slate-300 text-slate-700' : 'border-white/10 text-slate-300'}`}>
+                {copy?.cancel ?? 'Cancel'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange(pendingValue);
+                  setOpen(false);
+                }}
+                className="min-h-11 flex-1 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950"
+              >
+                {copy?.apply ?? 'Apply'}
               </button>
             </div>
           </section>

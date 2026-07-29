@@ -201,18 +201,18 @@ test('reservation location loading uses one canonical active company-scoped quer
   }
 });
 
-test('Reservation OS V2 is a single-call operator console over the existing secured APIs', () => {
-  assert.match(reservationConsole, /Reservation desk/);
-  assert.match(reservationConsole, /Call mode/);
-  assert.match(reservationConsole, /Quick booking/);
-  assert.match(reservationConsole, /Returning guest/);
-  assert.match(reservationConsole, /Availability unknown/);
+test('Reservation Desk V2 remains an operator console over the existing secured APIs', () => {
+  assert.match(reservationConsole, /translations\.reservationDesk/);
+  assert.match(reservationConsole, /copy\.form\.mode/);
+  assert.match(reservationConsole, /copy\.form\.title/);
+  assert.match(reservationConsole, /copy\.form\.returningGuest/);
+  assert.match(reservationConsole, /copy\.form\.availabilityUnknown/);
   assert.match(reservationConsole, /submittingRef\.current/);
-  assert.match(reservationConsole, /Enter to save/);
+  assert.match(reservationConsole, /copy\.form\.submitHint/);
   assert.match(reservationConsole, /fetch\(`\/api\/reservations\?\$\{params\}`/);
   assert.match(reservationConsole, /fetch\('\/api\/reservations', \{\s*method: 'POST'/);
   assert.match(reservationConsole, /fetch\(`\/api\/reservations\/\$\{row\.id\}\/status`, \{\s*method: 'PATCH'/);
-  assert.match(reservationConsole, /fetch\(`\/api\/reservations\/history\?\$\{params\}`/);
+  assert.match(reservationConsole, /fetch\(`\/api\/reservations\/\$\{row\.id\}`/);
   assert.doesNotMatch(reservationConsole, /\/api\/(?:cameras|ai)|snapshot|nvr|openai/i);
 });
 
@@ -317,11 +317,11 @@ test('reservation editor is an in-place sheet with discard and duplicate-submit 
   }
   assert.match(reservationEditor, /sm:justify-end/);
   assert.match(reservationEditor, /rounded-t-\[28px\]/);
-  assert.match(reservationEditor, /Discard your unsaved reservation changes/);
+  assert.match(reservationEditor, /detailCopy\.discard/);
   assert.match(reservationEditor, /beforeunload/);
   assert.match(reservationEditor, /submittingRef\.current/);
   assert.match(reservationEditor, /method: 'PATCH'/);
-  assert.match(reservationConsole, /setEditingRow\(row\)/);
+  assert.match(reservationConsole, /openDetails\(row\)/);
 });
 
 test('reservation update contract is atomic, tenant-safe, and service-role-only', () => {
