@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'crypto';
 import type { BrainRequestContext } from './kernel/request-context';
 import { ActorContextError } from './kernel/errors.ts';
+import { parseRecurringTaskRule } from '../recurring-tasks/contracts.ts';
 
 export const PROPOSAL_SCHEMA_VERSION = 1;
 export const PROPOSAL_TTL_MS = 10 * 60 * 1000;
 
 export const PROPOSAL_ACTIONS = [
-  'create_employee', 'create_task', 'create_task_batch', 'record_inventory_movement',
+  'create_employee', 'create_task', 'create_task_batch', 'create_recurring_task_rule', 'change_recurring_task_rule', 'record_inventory_movement',
   'create_shift', 'update_shift', 'delete_shift',
   'create_maintenance_ticket', 'update_maintenance_ticket',
   'delete_maintenance_ticket', 'complete_maintenance_ticket',
@@ -143,10 +144,24 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
     });
     return { action: a, payload: { timezone: i.timezone.trim(), tasks } };
   }
+  if (a === 'create_recurring_task_rule') {
+    return { action: a, payload: parseRecurringTaskRule(i) as unknown as Record<string, unknown> };
+  }
+  if (a === 'change_recurring_task_rule') {
+    const operation = enumValue(i, 'operation', ['version','pause','resume','end'], true)!;
+    const ruleId = uuidValue(i, 'ruleId', true)!;
+    const expectedVersion = number(i, 'expectedVersion', true)!;
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+    const rule = operation === 'version'
+      ? parseRecurringTaskRule(i.rule)
+      : null;
+    if (operation !== 'version' && i.rule !== null && i.rule !== undefined) throw new Error('INVALID_PROPOSAL_ARGUMENTS');
+    return { action: a, payload: { operation, ruleId, expectedVersion, rule } };
+  }
   const p: Record<string, unknown> = {};
   const textKeys: Record<ProposalAction, string[]> = {
     create_employee: ['full_name','job_title','email','phone','notes','hire_date'],
-    create_task: ['title','description','assigned_employee_name','urgency','due_date','due_time','due_local','due_at','timezone'], create_task_batch: [],
+    create_task: ['title','description','assigned_employee_name','urgency','due_date','due_time','due_local','due_at','timezone'], create_task_batch: [], create_recurring_task_rule: [], change_recurring_task_rule: [],
     record_inventory_movement: ['reason'], create_shift: ['notes'], update_shift: ['notes','shift_date'], delete_shift: [],
     create_maintenance_ticket: ['title','description','due_date'], update_maintenance_ticket: ['title','description','due_date'],
     delete_maintenance_ticket: [], complete_maintenance_ticket: ['completion_notes'],
@@ -157,7 +172,7 @@ export function canonicalizeProposalArguments(action: string, raw: unknown): { a
   for (const key of textKeys[a]) add(p, key, string(i, key, requiredText.has(`${a}:${key}`)));
 
   const uuidKeys: Record<ProposalAction, string[]> = {
-    create_employee:['department_id','location_id'], create_task:['assigned_employee_id'], create_task_batch: [], record_inventory_movement:['inventory_item_id'],
+    create_employee:['department_id','location_id'], create_task:['assigned_employee_id'], create_task_batch: [], create_recurring_task_rule: [], change_recurring_task_rule: [], record_inventory_movement:['inventory_item_id'],
     create_shift:['employee_id','department_id'], update_shift:['shift_id','employee_id'], delete_shift:['shift_id'],
     create_maintenance_ticket:['location_id','assigned_to_id'], update_maintenance_ticket:['ticket_id','assigned_to_id'],
     delete_maintenance_ticket:['ticket_id'], complete_maintenance_ticket:['ticket_id'],
@@ -262,7 +277,7 @@ export async function createProposal(store: ProposalStore, input: { context: Bra
     id, actorId: identity.actorId, profileId: identity.profileId, tenantId: identity.tenantId,
     canonicalAction: action, canonicalPayload: payload, payloadHash, schemaVersion: PROPOSAL_SCHEMA_VERSION,
     risk: action.startsWith('delete_') || action === 'record_inventory_movement' ? 'high' : 'medium',
-    requiredRole: action === 'create_employee' || action === 'create_task_batch' ? 'manager_or_above' : null,
+    requiredRole: action === 'create_employee' || action === 'create_task_batch' || action.includes('recurring_task_rule') ? 'manager_or_above' : null,
     preview: input.preview, status: 'pending', correlationId: input.context.actor.correlationId,
     idempotencyKey: `${id}:${payloadHash}`, createdAt: now.toISOString(), expiresAt: new Date(now.getTime()+PROPOSAL_TTL_MS).toISOString(),
     executedAt: null, safeResult: null,

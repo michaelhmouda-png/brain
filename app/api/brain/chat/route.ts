@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import OpenAI from 'openai';
-import { createSupabaseServerAuth } from '@/lib/supabaseServer';
+import { createSupabaseServer, createSupabaseServerAuth } from '@/lib/supabaseServer';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { mapPriorityToDatabase, displayPriority } from '@/lib/brain/priorityMapper';
 import {
@@ -108,6 +108,7 @@ import {
   isEmployeeProfileComplete,
   loadActiveEmployeeProfileSnapshot,
 } from '@/lib/employee-profile-completeness';
+import { changeRecurringRule, createRecurringRule, listRecurringOutcomes, listRecurringRules, previewRecurringRule } from '@/lib/recurring-tasks/service.server';
 
 // ─── Idempotency set ────────────────────────────────────────────────────────
 // Stores pending_action_ids that have already been executed successfully.
@@ -874,6 +875,78 @@ const ALL_TOOLS = [
         },
       },
       required: ['tasks'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'create_recurring_task_rule',
+    description: 'Propose a deterministic recurring, shift-aware task routine. Management only. Always requires confirmation.',
+    parameters: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        name: { type: 'string', maxLength: 160 },
+        description: { type: ['string', 'null'], maxLength: 1000 },
+        locationId: { type: ['string', 'null'] },
+        timezone: { type: 'string' },
+        recurrence: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            kind: { type: 'string', enum: ['daily','selected_weekdays','except_weekdays','weekly'] },
+            weekdays: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 6 }, maxItems: 7 },
+          }, required: ['kind','weekdays'],
+        },
+        timeAnchor: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            kind: { type: 'string', enum: ['fixed_time','location_opening','location_closing'] },
+            localTime: { type: ['string','null'] },
+            offsetMinutes: { type: 'integer', minimum: -720, maximum: 720 },
+          }, required: ['kind','localTime','offsetMinutes'],
+        },
+        startDate: { type: 'string' }, endDate: { type: ['string','null'] },
+        taskTemplate: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            title: { type: 'string', maxLength: 200 }, description: { type: ['string','null'], maxLength: 2000 },
+            priority: { type: 'string', enum: ['low','medium','high','critical'] },
+            evidenceRequired: { type: 'boolean' },
+            countRequirement: { type: ['object','null'] },
+          }, required: ['title','description','priority','evidenceRequired','countRequirement'],
+        },
+        workforce: {
+          type: 'object', additionalProperties: false,
+          properties: {
+            departmentId: { type: ['string','null'] }, employeeRole: { type: ['string','null'] },
+            shiftOverlapRequired: { type: 'boolean', enum: [true] },
+            specificEmployeeId: { type: ['string','null'] },
+          }, required: ['departmentId','employeeRole','shiftOverlapRequired','specificEmployeeId'],
+        },
+        assignmentMode: { type: 'string', enum: ['every_matching_employee_on_shift','one_matching_employee_on_shift','specific_employee_if_on_shift'] },
+        reminderOffsetsMinutes: { type: 'array', items: { type: 'integer', minimum: 0, maximum: 1440 }, maxItems: 8 },
+      },
+      required: ['name','description','locationId','timezone','recurrence','timeAnchor','startDate','endDate','taskTemplate','workforce','assignmentMode','reminderOffsetsMinutes'],
+    },
+  },
+  {
+    type: 'function' as const,
+    name: 'list_recurring_task_rules',
+    description: 'List recurring routines and recent generation outcomes in the authenticated management company.',
+    parameters: { type: 'object', additionalProperties: false, properties: {}, required: [] },
+  },
+  {
+    type: 'function' as const,
+    name: 'change_recurring_task_rule',
+    description: 'Propose pausing, resuming, ending, or versioning a recurring routine. Always requires confirmation.',
+    parameters: {
+      type: 'object', additionalProperties: false,
+      properties: {
+        operation: { type: 'string', enum: ['version','pause','resume','end'] },
+        ruleId: { type: 'string' },
+        expectedVersion: { type: 'integer', minimum: 1 },
+        rule: { type: ['object','null'] },
+      },
+      required: ['operation','ruleId','expectedVersion','rule'],
     },
   },
   {
@@ -4861,6 +4934,8 @@ function authorizedEmployeeTaskRecords(
 function safeExecutionMessage(action: ProposalAction): string {
   const labels: Partial<Record<ProposalAction, string>> = {
     create_employee: 'Employee created successfully.', create_task: 'Task created successfully.', create_task_batch: 'Task batch created successfully.',
+    create_recurring_task_rule: 'Recurring routine created successfully.',
+    change_recurring_task_rule: 'Recurring routine updated successfully.',
     record_inventory_movement: 'Inventory movement recorded successfully.', create_shift: 'Shift created successfully.',
     update_shift: 'Shift updated successfully.', delete_shift: 'Shift deleted successfully.',
     create_maintenance_ticket: 'Maintenance ticket created successfully.', update_maintenance_ticket: 'Maintenance ticket updated successfully.',
@@ -4990,6 +5065,17 @@ export async function POST(request: NextRequest) {
           executeCreateTaskBatch,
           legacyExecutors: {
             create_employee: payload => executionHandlers.createEmployee(payload as unknown as CreateEmployeeInput),
+            create_recurring_task_rule: payload => createRecurringRule(createSupabaseServer(), actorContext, payload),
+            change_recurring_task_rule: payload => changeRecurringRule(
+              createSupabaseServer(),
+              actorContext,
+              String(payload.ruleId),
+              {
+                action: payload.operation as 'version'|'pause'|'resume'|'end',
+                expectedVersion: Number(payload.expectedVersion),
+                rule: payload.rule,
+              },
+            ),
             record_inventory_movement: payload => executionHandlers.recordInventoryMovement(payload as unknown as RecordInventoryMovementInput),
             create_shift: payload => executionHandlers.createShift(payload as unknown as CreateShiftInput),
             update_shift: payload => executionHandlers.updateShift(payload as unknown as UpdateShiftInput),
@@ -5935,6 +6021,47 @@ and confirmed=false to generate a new preview. Never execute the old version.`;
             case 'create_task_batch':
               toolResult = await prepareCreateTaskBatch(supabase, requestContext, toolInput);
               break;
+            case 'create_recurring_task_rule': {
+              const occurrences = await previewRecurringRule(createSupabaseServer(), actorContext, toolInput);
+              const input = toolInput as Record<string, unknown>;
+              toolResult = {
+                preview: true,
+                action: 'Create recurring routine',
+                message: 'Please confirm this recurring routine. Confirmed values will be stored and executed deterministically.',
+                canonicalArguments: toolInput,
+                fields: [
+                  { label: 'Name', value: String(input.name ?? '') },
+                  { label: 'Recurrence', value: JSON.stringify(input.recurrence ?? {}) },
+                  { label: 'Assignment', value: String(input.assignmentMode ?? '') },
+                  { label: 'Timezone', value: String(input.timezone ?? '') },
+                  { label: 'Next occurrences', value: JSON.stringify(occurrences) },
+                ],
+              };
+              break;
+            }
+            case 'list_recurring_task_rules': {
+              const [rules, outcomes] = await Promise.all([
+                listRecurringRules(supabase, actorContext),
+                listRecurringOutcomes(supabase, actorContext),
+              ]);
+              toolResult = { rules, outcomes };
+              break;
+            }
+            case 'change_recurring_task_rule': {
+              const input = toolInput as Record<string, unknown>;
+              toolResult = {
+                preview: true,
+                action: `${String(input.operation ?? 'change')} recurring routine`,
+                message: 'Please confirm this recurring routine change. It affects future occurrences only.',
+                canonicalArguments: toolInput,
+                fields: [
+                  { label: 'Operation', value: String(input.operation ?? '') },
+                  { label: 'Rule', value: String(input.ruleId ?? '') },
+                  { label: 'Expected version', value: String(input.expectedVersion ?? '') },
+                ],
+              };
+              break;
+            }
             case 'get_tasks':
               toolResult = await handlers.getTasks(toolInput as unknown as GetTasksInput);
               break;

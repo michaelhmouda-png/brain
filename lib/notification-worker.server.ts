@@ -1,6 +1,7 @@
 import webPush from 'web-push';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { enqueueLegacyTaskLocalizationBatch, processOneTaskLocalization } from '@/lib/task-localization.server';
+import { processRecurringTaskWork } from '@/lib/recurring-tasks/service.server';
 
 type Claim = { job_id: string; lease_token: string; endpoint: string; p256dh: string; auth_key: string; notification_id: string; title: string; summary: string; route: string };
 
@@ -46,16 +47,35 @@ async function processLocalizationAfterNotifications(supabase: ReturnType<typeof
   }
 }
 
+async function processRecurringAfterNotifications(supabase: ReturnType<typeof createSupabaseServer>) {
+  try {
+    await processRecurringTaskWork(supabase);
+  } catch (error) {
+    console.warn('[Notification Worker] recurring task work unavailable', {
+      stage: 'recurring_tasks.materialize',
+      errorName: error instanceof Error ? error.name : 'UnknownError',
+    });
+  }
+}
+
 export async function processNotificationWork() {
   const supabase = createSupabaseServer();
   await supabase.rpc('generate_task_reminder_obligations');
   const { data: outbox } = await supabase.rpc('claim_notification_outbox', { p_lease_seconds: 120 });
   const obligation = first(outbox);
   if (obligation && typeof obligation.outbox_id === 'string' && typeof obligation.lease_token === 'string') {
-    const { data: inventoryData, error: inventoryError } = await supabase.rpc('materialize_inventory_low_stock_outbox', {
+    const { data: recurringData, error: recurringError } = await supabase.rpc('materialize_recurring_task_outbox', {
       p_outbox_id: obligation.outbox_id,
       p_lease_token: obligation.lease_token,
     });
+    const recurringResult = first(recurringData);
+    const recurringHandled = recurringResult?.handled === true;
+    const { data: inventoryData, error: inventoryError } = recurringError || recurringHandled
+      ? { data: null, error: null }
+      : await supabase.rpc('materialize_inventory_low_stock_outbox', {
+        p_outbox_id: obligation.outbox_id,
+        p_lease_token: obligation.lease_token,
+      });
     const inventoryResult = first(inventoryData);
     const inventoryHandled = inventoryResult?.handled === true;
     const { error: standardError } = inventoryError || inventoryHandled
@@ -64,7 +84,7 @@ export async function processNotificationWork() {
         p_outbox_id: obligation.outbox_id,
         p_lease_token: obligation.lease_token,
       });
-    const error = inventoryError ?? standardError;
+    const error = recurringError ?? inventoryError ?? standardError;
     if (error) await supabase.rpc('fail_notification_outbox', {
       p_outbox_id: obligation.outbox_id,
       p_lease_token: obligation.lease_token,
@@ -76,6 +96,7 @@ export async function processNotificationWork() {
   const job = claim(data);
   if (!job) {
     await processLocalizationAfterNotifications(supabase);
+    await processRecurringAfterNotifications(supabase);
     return obligation ? 'materialized' : 'idle';
   }
 
@@ -110,5 +131,6 @@ export async function processNotificationWork() {
   }
 
   await processLocalizationAfterNotifications(supabase);
+  await processRecurringAfterNotifications(supabase);
   return result;
 }

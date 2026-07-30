@@ -88,6 +88,8 @@ export function createApprovedActionRegistry(
         case 'create_task_batch':
           if (!dependencies.executeCreateTaskBatch) throw new ApprovedActionRegistryError('APPROVED_ACTION_EXECUTION_FAILED');
           return safeResult(await dependencies.executeCreateTaskBatch(input));
+        case 'create_recurring_task_rule': return executeLegacy(input.action, input.payload);
+        case 'change_recurring_task_rule': return executeLegacy(input.action, input.payload);
         case 'create_employee': return executeLegacy(input.action, input.payload);
         case 'record_inventory_movement': return executeLegacy(input.action, input.payload);
         case 'create_shift': return executeLegacy(input.action, input.payload);
