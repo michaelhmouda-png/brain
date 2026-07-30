@@ -24,7 +24,9 @@ export const inventoryMessages = {
     confirmOperation: 'Confirm stock operation', confirmTransfer: 'Confirm transfer', confirmCount: 'Create count session',
     errors: {
       INVENTORY_INPUT_INVALID: 'Check the inventory details and try again.',
+      INVENTORY_QUANTITY_REQUIRED: 'Enter a quantity.',
       INVENTORY_QUANTITY_INVALID: 'Enter a valid non-negative quantity with up to 6 decimal places.',
+      INVENTORY_QUANTITY_POSITIVE_REQUIRED: 'Enter a quantity greater than zero.',
       INVENTORY_UNIT_INVALID: 'Choose a supported stock unit.',
       INVENTORY_FORBIDDEN: 'You are not authorized for this inventory action.',
       INVENTORY_ITEM_DUPLICATE: 'An item with the same name, SKU, or barcode already exists.',
@@ -70,7 +72,9 @@ export const inventoryMessages = {
     confirmOperation: 'تأكيد حركة المخزون', confirmTransfer: 'تأكيد النقل', confirmCount: 'إنشاء جلسة الجرد',
     errors: {
       INVENTORY_INPUT_INVALID: 'راجع تفاصيل المخزون وحاول مجدداً.',
+      INVENTORY_QUANTITY_REQUIRED: 'أدخل الكمية.',
       INVENTORY_QUANTITY_INVALID: 'أدخل كمية صحيحة غير سالبة وبحد أقصى 6 منازل عشرية.',
+      INVENTORY_QUANTITY_POSITIVE_REQUIRED: 'أدخل كمية أكبر من صفر.',
       INVENTORY_UNIT_INVALID: 'اختر وحدة مخزون معتمدة.',
       INVENTORY_FORBIDDEN: 'ليس لديك صلاحية لتنفيذ هذا الإجراء.',
       INVENTORY_ITEM_DUPLICATE: 'يوجد صنف بالاسم أو الرمز أو الباركود نفسه.',

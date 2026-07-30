@@ -1,12 +1,19 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
+import { useCallback, useEffect, useId, useMemo, useState, type FormEvent, type InputHTMLAttributes, type ReactNode } from 'react';
 import {
   AlertTriangle, ArrowLeftRight, Boxes, ClipboardCheck, LoaderCircle,
   PackagePlus, Plus, Search, SlidersHorizontal, Trash2, X,
 } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
-import { INVENTORY_UNITS, type InventoryStockRow, type InventoryUnit } from '@/lib/inventory/contracts';
+import {
+  INVENTORY_UNITS,
+  INVENTORY_QUANTITY_RULES,
+  validateInventoryQuantityInput,
+  type InventoryQuantityValidationCode,
+  type InventoryStockRow,
+  type InventoryUnit,
+} from '@/lib/inventory/contracts';
 import { inventoryMessages } from '@/lib/inventory/i18n';
 
 type Location = { id: string; name: string; timezone: string };
@@ -52,6 +59,8 @@ const localizedError = (code: string | null, language: 'en'|'ar') => {
   const errors = inventoryMessages[language].errors as Record<string, string>;
   return code && errors[code] || errors.INVENTORY_UNAVAILABLE;
 };
+const localizedQuantityError = (code: InventoryQuantityValidationCode, language: 'en'|'ar') =>
+  (inventoryMessages[language].errors as Record<InventoryQuantityValidationCode, string>)[code];
 
 async function safeFetch<T>(input: RequestInfo, init?: RequestInit): Promise<T> {
   const response = await fetch(input, { cache: 'no-store', credentials: 'same-origin', ...init });
@@ -243,9 +252,18 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
   const t = inventoryMessages[language];
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [quantityErrors, setQuantityErrors] = useState<Record<string, InventoryQuantityValidationCode>>({});
   const [detail, setDetail] = useState<ItemDetail|null>(null);
   const [threshold, setThreshold] = useState(sheet.kind === 'detail' ? sheet.row.effective_threshold ?? '' : '');
   const activeAreas = payload?.storageAreas.filter((area) => area.status === 'active') ?? [];
+  const clearQuantityError = (field: string) => {
+    setQuantityErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
   useEffect(() => {
     if (sheet.kind !== 'detail') return;
     const controller = new AbortController();
@@ -257,14 +275,29 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
     return () => controller.abort();
   }, [language, sheet]);
   const submit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault(); setBusy(true); setError('');
+    event.preventDefault();
+    setError('');
     const form = new FormData(event.currentTarget);
+    const nextQuantityErrors: Record<string, InventoryQuantityValidationCode> = {};
+    const canonicalQuantities: Record<string, string | null> = {};
+    const validateQuantity = (name: string, options: { required: boolean; positive?: boolean }) => {
+      const result = validateInventoryQuantityInput(form.get(name), options);
+      if (result.ok) canonicalQuantities[name] = result.value;
+      else nextQuantityErrors[name] = result.code;
+    };
+    if (sheet.kind === 'item') validateQuantity('threshold', INVENTORY_QUANTITY_RULES.itemThreshold);
+    if (sheet.kind === 'movement') validateQuantity('quantity', INVENTORY_QUANTITY_RULES.movementQuantity);
+    if (sheet.kind === 'transfer') validateQuantity('quantity', INVENTORY_QUANTITY_RULES.transferQuantity);
+    setQuantityErrors(nextQuantityErrors);
+    if (Object.keys(nextQuantityErrors).length > 0) return;
+
+    setBusy(true);
     try {
       if (sheet.kind === 'item') {
         await safeFetch('/api/inventory', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({
           name: form.get('name'), description: form.get('description'), category: form.get('category'),
           canonicalUnit: form.get('unit'), sku: form.get('sku'), barcode: form.get('barcode'),
-          defaultLowStockThreshold: form.get('threshold'),
+          defaultLowStockThreshold: canonicalQuantities.threshold,
         }) });
       } else if (sheet.kind === 'area') {
         await safeFetch('/api/inventory/storage-areas', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({
@@ -274,13 +307,13 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
         await safeFetch('/api/inventory/operations', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({
           operation: 'movement', idempotencyKey: crypto.randomUUID(), locationId: sheet.row.location_id,
           storageAreaId: sheet.row.storage_area_id, inventoryItemId: sheet.row.item_id, type: sheet.type,
-          quantity: form.get('quantity'), reason: form.get('reason'),
+          quantity: canonicalQuantities.quantity, reason: form.get('reason'),
         }) });
       } else if (sheet.kind === 'transfer') {
         await safeFetch('/api/inventory/operations', { method: 'POST', headers: jsonHeaders, body: JSON.stringify({
           operation: 'transfer', idempotencyKey: crypto.randomUUID(), locationId: sheet.row.location_id,
           sourceStorageAreaId: sheet.row.storage_area_id, destinationStorageAreaId: form.get('destination'),
-          inventoryItemId: sheet.row.item_id, quantity: form.get('quantity'), reason: form.get('reason'),
+          inventoryItemId: sheet.row.item_id, quantity: canonicalQuantities.quantity, reason: form.get('reason'),
         }) });
       } else if (sheet.kind === 'count') {
         const areaId = String(form.get('storageAreaId'));
@@ -325,12 +358,18 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
   };
   const saveThreshold = async () => {
     if (sheet.kind !== 'detail') return;
+    const validation = validateInventoryQuantityInput(threshold, INVENTORY_QUANTITY_RULES.lowStockThreshold);
+    if (!validation.ok) {
+      setQuantityErrors({ detailThreshold: validation.code });
+      return;
+    }
+    setQuantityErrors({});
     setBusy(true); setError('');
     try {
       await safeFetch('/api/inventory/thresholds', {
         method: 'PUT', headers: jsonHeaders, body: JSON.stringify({
           locationId: sheet.row.location_id, storageAreaId: sheet.row.storage_area_id,
-          inventoryItemId: sheet.row.item_id, threshold,
+          inventoryItemId: sheet.row.item_id, threshold: validation.value,
         }),
       });
       await completed();
@@ -380,7 +419,17 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
               <p className="mt-2 text-sm text-slate-400">{detail ? `${detail.countHistory.length}` : '—'}</p>
             </section>
             <div className="mt-5 flex items-end gap-2">
-              <Input label={t.threshold} value={threshold} onChange={(event) => setThreshold(event.target.value)} inputMode="decimal" dir="ltr" pattern="(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?" />
+              <DecimalInput
+                label={t.threshold}
+                value={threshold}
+                {...INVENTORY_QUANTITY_RULES.lowStockThreshold}
+                language={language}
+                errorCode={quantityErrors.detailThreshold}
+                onChange={(event) => {
+                  setThreshold(event.target.value);
+                  clearQuantityError('detailThreshold');
+                }}
+              />
               <button type="button" disabled={busy || !threshold} onClick={() => void saveThreshold()} className="mb-0 min-h-12 shrink-0 rounded-xl bg-cyan-300 px-4 text-sm font-black text-slate-950 disabled:opacity-50">{t.save}</button>
             </div>
             {error && <p role="alert" className="mt-4 rounded-xl bg-rose-500/10 p-3 text-sm text-rose-300">{error}</p>}
@@ -396,7 +445,14 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
                 <label className="block text-sm text-slate-300">{t.unit}<select name="unit" required className="mt-1 h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-3">{INVENTORY_UNITS.map((unit) => <option key={unit} value={unit}>{t.units[unit]}</option>)}</select></label>
                 <Input name="sku" label={t.sku} maxLength={80} dir="ltr" />
                 <Input name="barcode" label={t.barcode} maxLength={128} dir="ltr" />
-                <Input name="threshold" label={t.threshold} inputMode="decimal" pattern="(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?" dir="ltr" />
+                <DecimalInput
+                  name="threshold"
+                  label={t.threshold}
+                  language={language}
+                  {...INVENTORY_QUANTITY_RULES.itemThreshold}
+                  errorCode={quantityErrors.threshold}
+                  onChange={() => clearQuantityError('threshold')}
+                />
                 <Input name="description" label={t.descriptionLabel} maxLength={2000} />
               </>}
               {sheet.kind === 'area' && <>
@@ -408,7 +464,16 @@ function InventorySheet({ sheet, payload, language, close, completed }: { sheet:
               {(sheet.kind === 'movement' || sheet.kind === 'transfer') && <>
                 <p className="rounded-xl bg-white/[.04] p-3 text-sm">{sheet.row.item_name} · {sheet.row.storage_area_name}<br /><span className="text-slate-400">{t.quantity}: </span><Quantity value={sheet.row.quantity} unit={sheet.row.canonical_unit} language={language} /></p>
                 {sheet.kind === 'transfer' && <label className="block text-sm text-slate-300">{t.storage}<select name="destination" required className="mt-1 h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-3"><option value="">{t.allStorage}</option>{activeAreas.filter((area) => area.location_id === sheet.row.location_id && area.id !== sheet.row.storage_area_id).map((area) => <option key={area.id} value={area.id}>{area.name}</option>)}</select></label>}
-                <Input name="quantity" label={`${t.quantity} (${t.units[sheet.row.canonical_unit]})`} required inputMode="decimal" pattern="(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?" dir="ltr" />
+                <DecimalInput
+                  name="quantity"
+                  label={`${t.quantity} (${t.units[sheet.row.canonical_unit]})`}
+                  {...(sheet.kind === 'movement'
+                    ? INVENTORY_QUANTITY_RULES.movementQuantity
+                    : INVENTORY_QUANTITY_RULES.transferQuantity)}
+                  language={language}
+                  errorCode={quantityErrors.quantity}
+                  onChange={() => clearQuantityError('quantity')}
+                />
                 <Input name="reason" label={t.note} maxLength={1000} />
                 <p className="text-xs text-slate-500">{t.decimalHint}</p>
               </>}
@@ -433,6 +498,73 @@ function Input(props: InputHTMLAttributes<HTMLInputElement> & { label: string })
   return <label className="block text-sm text-slate-300">{label}<input {...input} className="mt-1 h-12 w-full rounded-xl border border-white/10 bg-slate-900 px-3 text-white outline-none focus:border-cyan-400" /></label>;
 }
 
+type DecimalInputProps = Omit<
+  InputHTMLAttributes<HTMLInputElement>,
+  'type'|'pattern'|'inputMode'|'min'|'max'|'step'|'required'
+> & {
+  label: string;
+  language: 'en'|'ar';
+  required?: boolean;
+  positive?: boolean;
+  errorCode?: InventoryQuantityValidationCode;
+};
+
+function DecimalInput({
+  label,
+  language,
+  required = false,
+  positive = false,
+  errorCode,
+  id,
+  onBlur,
+  onChange,
+  ...input
+}: DecimalInputProps) {
+  const generatedId = useId();
+  const inputId = id ?? `inventory-decimal-${generatedId.replace(/:/g, '')}`;
+  const errorId = `${inputId}-error`;
+  const [localError, setLocalError] = useState<InventoryQuantityValidationCode | undefined>();
+  const displayedError = errorCode ?? localError;
+  const validate = (value: string) => {
+    const result = validateInventoryQuantityInput(value, { required, positive });
+    setLocalError(result.ok ? undefined : result.code);
+  };
+
+  return (
+    <label className="block min-w-0 text-sm text-slate-300" htmlFor={inputId}>
+      {label}
+      <input
+        {...input}
+        id={inputId}
+        type="text"
+        inputMode="decimal"
+        dir="ltr"
+        autoComplete="off"
+        spellCheck={false}
+        aria-required={required || undefined}
+        aria-invalid={displayedError ? true : undefined}
+        aria-describedby={displayedError ? errorId : undefined}
+        onBlur={(event) => {
+          validate(event.currentTarget.value);
+          onBlur?.(event);
+        }}
+        onChange={(event) => {
+          if (localError) validate(event.currentTarget.value);
+          onChange?.(event);
+        }}
+        className={`mt-1 h-12 w-full rounded-xl border bg-slate-900 px-3 text-white outline-none ${
+          displayedError ? 'border-rose-400 focus:border-rose-300' : 'border-white/10 focus:border-cyan-400'
+        }`}
+      />
+      {displayedError && (
+        <span id={errorId} role="alert" className="mt-1 block text-xs text-rose-300">
+          {localizedQuantityError(displayedError, language)}
+        </span>
+      )}
+    </label>
+  );
+}
+
 function EmployeeCounts({ counts, loading, error, reload, language }: { counts: CountSession[]; loading: boolean; error: string|null; reload: () => Promise<void>; language: 'en'|'ar' }) {
   const t = inventoryMessages[language];
   return <main className="space-y-4 pb-[max(6rem,env(safe-area-inset-bottom))] text-white" data-testid="assigned-inventory-counts">
@@ -440,7 +572,7 @@ function EmployeeCounts({ counts, loading, error, reload, language }: { counts: 
     {loading && <State icon={LoaderCircle} text={t.loading} spin />}
     {error && <State icon={AlertTriangle} text={t.unavailable} action={t.retry} onAction={() => void reload()} />}
     {!loading && !error && counts.length === 0 && <State icon={ClipboardCheck} text={t.noCounts} />}
-    {counts.map((session) => <CountCard key={session.id} session={session} t={t} reload={reload} />)}
+    {counts.map((session) => <CountCard key={session.id} session={session} t={t} reload={reload} language={language} />)}
   </main>;
 }
 function ManagementCounts({ counts, reload, language }: { counts: CountSession[]; reload: () => Promise<void>; language: 'en'|'ar' }) {
@@ -466,26 +598,164 @@ function ManagementCounts({ counts, reload, language }: { counts: CountSession[]
     </div>
   </section>;
 }
-function CountCard({ session, t, reload }: { session: CountSession; t: (typeof inventoryMessages)[keyof typeof inventoryMessages]; reload: () => Promise<void> }) {
-  const [values, setValues] = useState<Record<string, { counted: string; damaged: string; note: string }>>(() => Object.fromEntries(session.inventory_count_lines.map((line) => [line.id, { counted: line.counted_quantity ?? '', damaged: line.damaged_quantity ?? '', note: line.note ?? '' }])));
+function CountCard({
+  session,
+  t,
+  reload,
+  language,
+}: {
+  session: CountSession;
+  t: (typeof inventoryMessages)[keyof typeof inventoryMessages];
+  reload: () => Promise<void>;
+  language: 'en'|'ar';
+}) {
+  const [values, setValues] = useState<Record<string, { counted: string; damaged: string; note: string }>>(
+    () => Object.fromEntries(session.inventory_count_lines.map((line) => [
+      line.id,
+      {
+        counted: line.counted_quantity ?? '',
+        damaged: line.damaged_quantity ?? '',
+        note: line.note ?? '',
+      },
+    ])),
+  );
+  const [quantityErrors, setQuantityErrors] = useState<Record<string, InventoryQuantityValidationCode>>({});
   const [busy, setBusy] = useState(false);
+  const clearQuantityError = (field: string) => {
+    setQuantityErrors((current) => {
+      if (!current[field]) return current;
+      const next = { ...current };
+      delete next[field];
+      return next;
+    });
+  };
   const act = async (action: 'start'|'save'|'submit') => {
+    let lines: Array<{ lineId: string; countedQuantity: string; damagedQuantity: string|null; note: string|null }> = [];
+    if (action !== 'start') {
+      const nextErrors: Record<string, InventoryQuantityValidationCode> = {};
+      lines = session.inventory_count_lines.map((line) => {
+        const counted = validateInventoryQuantityInput(
+          values[line.id]?.counted ?? '',
+          INVENTORY_QUANTITY_RULES.countQuantity,
+        );
+        const damaged = validateInventoryQuantityInput(
+          values[line.id]?.damaged ?? '',
+          INVENTORY_QUANTITY_RULES.damagedQuantity,
+        );
+        if (!counted.ok) nextErrors[`${line.id}:counted`] = counted.code;
+        if (!damaged.ok) nextErrors[`${line.id}:damaged`] = damaged.code;
+        return {
+          lineId: line.id,
+          countedQuantity: counted.ok ? counted.value ?? '' : '',
+          damagedQuantity: damaged.ok ? damaged.value : null,
+          note: values[line.id]?.note || null,
+        };
+      });
+      setQuantityErrors(nextErrors);
+      if (Object.keys(nextErrors).length > 0) return;
+    }
+
     setBusy(true);
-    const lines = session.inventory_count_lines.map((line) => ({ lineId: line.id, countedQuantity: values[line.id]?.counted, damagedQuantity: values[line.id]?.damaged || null, note: values[line.id]?.note || null }));
     try {
       if (action === 'submit') {
         await safeFetch(`/api/inventory/counts/${session.id}`, {
-          method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ action: 'save', lines }),
+          method: 'PATCH',
+          headers: jsonHeaders,
+          body: JSON.stringify({ action: 'save', lines }),
         });
       }
-      await safeFetch(`/api/inventory/counts/${session.id}`, { method: 'PATCH', headers: jsonHeaders, body: JSON.stringify({ action, ...(action === 'save' ? { lines } : {}) }) });
+      await safeFetch(`/api/inventory/counts/${session.id}`, {
+        method: 'PATCH',
+        headers: jsonHeaders,
+        body: JSON.stringify({ action, ...(action === 'save' ? { lines } : {}) }),
+      });
       await reload();
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   };
-  return <article className="rounded-3xl border border-white/10 bg-slate-950/70 p-4">
-    <div className="flex justify-between"><h2 className="font-black">{t.startCount}</h2><span className="rounded-full bg-cyan-400/10 px-2 py-1 text-xs text-cyan-300">{t[session.status as keyof typeof t] as string ?? session.status}</span></div>
-    {session.status === 'draft' ? <button disabled={busy} onClick={() => void act('start')} className="mt-4 min-h-12 w-full rounded-xl bg-cyan-300 font-black text-slate-950">{t.startCount}</button> : session.status === 'counting' ?
-      <><div className="mt-4 space-y-3">{session.inventory_count_lines.map((line) => <div key={line.id} className="rounded-2xl bg-white/[.04] p-3"><p className="font-bold">{line.inventory_items?.name ?? line.inventory_item_id}</p><p className="text-xs text-slate-400">{line.canonical_unit_snapshot}</p><div className="mt-3 grid grid-cols-2 gap-2"><Input label={t.counted} value={values[line.id]?.counted} inputMode="decimal" dir="ltr" onChange={(event) => setValues((current) => ({ ...current, [line.id]: { ...current[line.id], counted: event.target.value } }))} /><Input label={t.damaged} value={values[line.id]?.damaged} inputMode="decimal" dir="ltr" onChange={(event) => setValues((current) => ({ ...current, [line.id]: { ...current[line.id], damaged: event.target.value } }))} /></div><Input label={t.note} value={values[line.id]?.note} onChange={(event) => setValues((current) => ({ ...current, [line.id]: { ...current[line.id], note: event.target.value } }))} /></div>)}</div><div className="sticky bottom-0 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-slate-950 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]"><button disabled={busy} onClick={() => void act('save')} className="min-h-12 rounded-xl bg-white/10 font-bold">{t.saveDraft}</button><button disabled={busy} onClick={() => void act('submit')} className="min-h-12 rounded-xl bg-cyan-300 font-black text-slate-950">{t.submitCount}</button></div></>
-      : <div className="mt-4 space-y-2">{session.inventory_count_lines.map((line) => <div key={line.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[.04] p-3"><span className="min-w-0 truncate text-sm">{line.inventory_items?.name ?? line.inventory_item_id}</span><span className="shrink-0 tabular-nums" dir="ltr">{line.counted_quantity ?? '—'} {line.canonical_unit_snapshot}</span></div>)}</div>}
-  </article>;
+
+  return (
+    <article className="rounded-3xl border border-white/10 bg-slate-950/70 p-4">
+      <div className="flex justify-between">
+        <h2 className="font-black">{t.startCount}</h2>
+        <span className="rounded-full bg-cyan-400/10 px-2 py-1 text-xs text-cyan-300">
+          {t[session.status as keyof typeof t] as string ?? session.status}
+        </span>
+      </div>
+      {session.status === 'draft' ? (
+        <button disabled={busy} onClick={() => void act('start')} className="mt-4 min-h-12 w-full rounded-xl bg-cyan-300 font-black text-slate-950">
+          {t.startCount}
+        </button>
+      ) : session.status === 'counting' ? (
+        <>
+          <div className="mt-4 space-y-3">
+            {session.inventory_count_lines.map((line) => (
+              <div key={line.id} className="rounded-2xl bg-white/[.04] p-3">
+                <p className="font-bold">{line.inventory_items?.name ?? line.inventory_item_id}</p>
+                <p className="text-xs text-slate-400">{line.canonical_unit_snapshot}</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <DecimalInput
+                    label={t.counted}
+                    language={language}
+                    {...INVENTORY_QUANTITY_RULES.countQuantity}
+                    value={values[line.id]?.counted}
+                    errorCode={quantityErrors[`${line.id}:counted`]}
+                    onChange={(event) => {
+                      clearQuantityError(`${line.id}:counted`);
+                      setValues((current) => ({
+                        ...current,
+                        [line.id]: { ...current[line.id], counted: event.target.value },
+                      }));
+                    }}
+                  />
+                  <DecimalInput
+                    label={t.damaged}
+                    language={language}
+                    {...INVENTORY_QUANTITY_RULES.damagedQuantity}
+                    value={values[line.id]?.damaged}
+                    errorCode={quantityErrors[`${line.id}:damaged`]}
+                    onChange={(event) => {
+                      clearQuantityError(`${line.id}:damaged`);
+                      setValues((current) => ({
+                        ...current,
+                        [line.id]: { ...current[line.id], damaged: event.target.value },
+                      }));
+                    }}
+                  />
+                </div>
+                <Input
+                  label={t.note}
+                  value={values[line.id]?.note}
+                  onChange={(event) => setValues((current) => ({
+                    ...current,
+                    [line.id]: { ...current[line.id], note: event.target.value },
+                  }))}
+                />
+              </div>
+            ))}
+          </div>
+          <div className="sticky bottom-0 mt-4 grid grid-cols-2 gap-2 border-t border-white/10 bg-slate-950 py-3 pb-[max(.75rem,env(safe-area-inset-bottom))]">
+            <button disabled={busy} onClick={() => void act('save')} className="min-h-12 rounded-xl bg-white/10 font-bold">
+              {t.saveDraft}
+            </button>
+            <button disabled={busy} onClick={() => void act('submit')} className="min-h-12 rounded-xl bg-cyan-300 font-black text-slate-950">
+              {t.submitCount}
+            </button>
+          </div>
+        </>
+      ) : (
+        <div className="mt-4 space-y-2">
+          {session.inventory_count_lines.map((line) => (
+            <div key={line.id} className="flex items-center justify-between gap-3 rounded-xl bg-white/[.04] p-3">
+              <span className="min-w-0 truncate text-sm">{line.inventory_items?.name ?? line.inventory_item_id}</span>
+              <span className="shrink-0 tabular-nums" dir="ltr">
+                {line.counted_quantity ?? '—'} {line.canonical_unit_snapshot}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </article>
+  );
 }

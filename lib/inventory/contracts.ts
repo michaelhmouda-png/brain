@@ -40,6 +40,54 @@ export function parseInventoryQuantity(value: unknown, options: { positive?: boo
   return canonical;
 }
 
+export type InventoryQuantityValidationCode =
+  | 'INVENTORY_QUANTITY_REQUIRED'
+  | 'INVENTORY_QUANTITY_INVALID'
+  | 'INVENTORY_QUANTITY_POSITIVE_REQUIRED';
+
+export type InventoryQuantityValidation =
+  | { ok: true; value: string | null }
+  | { ok: false; code: InventoryQuantityValidationCode };
+
+export const INVENTORY_QUANTITY_RULES = {
+  itemThreshold: { required: false, positive: false },
+  movementQuantity: { required: true, positive: true },
+  transferQuantity: { required: true, positive: true },
+  lowStockThreshold: { required: true, positive: false },
+  countQuantity: { required: true, positive: false },
+  damagedQuantity: { required: false, positive: false },
+} as const;
+
+/**
+ * Cross-browser form validation for every Inventory decimal input.
+ *
+ * Inputs intentionally remain text fields with inputMode="decimal". Native
+ * number/pattern validation differs across browsers and locales, while this
+ * helper reuses the same canonical parser that protects server submission.
+ */
+export function validateInventoryQuantityInput(
+  value: unknown,
+  options: { required: boolean; positive?: boolean },
+): InventoryQuantityValidation {
+  if (value === null || value === undefined || typeof value === 'string' && value.trim() === '') {
+    return options.required
+      ? { ok: false, code: 'INVENTORY_QUANTITY_REQUIRED' }
+      : { ok: true, value: null };
+  }
+
+  let canonical: string;
+  try {
+    canonical = parseInventoryQuantity(value);
+  } catch {
+    return { ok: false, code: 'INVENTORY_QUANTITY_INVALID' };
+  }
+
+  if (options.positive && canonical === '0') {
+    return { ok: false, code: 'INVENTORY_QUANTITY_POSITIVE_REQUIRED' };
+  }
+  return { ok: true, value: canonical };
+}
+
 export function boundedText(value: unknown, maximum: number, required = false) {
   if (value === undefined || value === null || value === '') {
     if (required) throw new Error('INVENTORY_INPUT_INVALID');

@@ -4,8 +4,10 @@ import test from 'node:test';
 import {
   INVENTORY_COUNT_STATUSES,
   INVENTORY_MOVEMENT_TYPES,
+  INVENTORY_QUANTITY_RULES,
   INVENTORY_UNITS,
   parseInventoryQuantity,
+  validateInventoryQuantityInput,
 } from '../lib/inventory/contracts.ts';
 import { inventoryMessages } from '../lib/inventory/i18n.ts';
 
@@ -52,6 +54,132 @@ test('quantity parsing rejects floats, exponent notation, negatives, excessive p
   }
   assert.throws(() => parseInventoryQuantity('0', { positive: true }), /INVENTORY_QUANTITY_INVALID/);
   assert.doesNotMatch(service, /parseFloat|Number\(input\.quantity\)|Math\.(?:abs|round).*quantity/);
+});
+
+test('shared browser quantity validation accepts canonical decimals and rejects unsafe forms', () => {
+  const valid = new Map([
+    ['0', '0'],
+    ['1', '1'],
+    ['10', '10'],
+    ['10.0', '10'],
+    ['0.5', '0.5'],
+    ['12.345678', '12.345678'],
+  ]);
+  for (const [input, expected] of valid) {
+    assert.deepEqual(
+      validateInventoryQuantityInput(input, { required: true }),
+      { ok: true, value: expected },
+    );
+  }
+
+  for (const invalid of [
+    '-1',
+    '1e3',
+    '1E3',
+    '1,000',
+    '10 kg',
+    '12.3456789',
+    'NaN',
+    'Infinity',
+    Number.NaN,
+    Number.POSITIVE_INFINITY,
+  ]) {
+    assert.deepEqual(
+      validateInventoryQuantityInput(invalid, { required: true }),
+      { ok: false, code: 'INVENTORY_QUANTITY_INVALID' },
+    );
+  }
+
+  assert.deepEqual(
+    validateInventoryQuantityInput('', { required: true }),
+    { ok: false, code: 'INVENTORY_QUANTITY_REQUIRED' },
+  );
+  assert.deepEqual(validateInventoryQuantityInput('', { required: false }), { ok: true, value: null });
+  assert.deepEqual(validateInventoryQuantityInput(null, { required: false }), { ok: true, value: null });
+  assert.deepEqual(
+    validateInventoryQuantityInput('0', { required: true, positive: true }),
+    { ok: false, code: 'INVENTORY_QUANTITY_POSITIVE_REQUIRED' },
+  );
+  assert.deepEqual(
+    validateInventoryQuantityInput('0.5', { required: true, positive: true }),
+    { ok: true, value: '0.5' },
+  );
+});
+
+test('every Inventory decimal field uses the cross-browser parser and localized inline errors', () => {
+  assert.match(ui, /function DecimalInput\(/);
+  assert.match(ui, /type="text"[\s\S]+inputMode="decimal"/);
+  assert.match(ui, /validateInventoryQuantityInput\(value, \{ required, positive \}\)/);
+  assert.match(ui, /localizedQuantityError\(displayedError, language\)/);
+  assert.match(ui, /aria-invalid=\{displayedError \? true : undefined\}/);
+  assert.match(ui, /role="alert"/);
+  assert.doesNotMatch(ui, /\bpattern=|\btype="number"|\bstep=|\bmin=/);
+
+  assert.match(ui, /name="threshold"[\s\S]{0,180}errorCode=\{quantityErrors\.threshold\}/);
+  assert.match(ui, /errorCode=\{quantityErrors\.detailThreshold\}/);
+  assert.match(ui, /name="quantity"[\s\S]{0,260}INVENTORY_QUANTITY_RULES\.(?:movementQuantity|transferQuantity)/);
+  assert.match(ui, /validateQuantity\('threshold', INVENTORY_QUANTITY_RULES\.itemThreshold\)/);
+  assert.match(ui, /validateQuantity\('quantity', INVENTORY_QUANTITY_RULES\.movementQuantity\)/);
+  assert.match(ui, /validateQuantity\('quantity', INVENTORY_QUANTITY_RULES\.transferQuantity\)/);
+  assert.match(ui, /threshold: validation\.value/);
+  assert.match(ui, /validateInventoryQuantityInput\(threshold, INVENTORY_QUANTITY_RULES\.lowStockThreshold\)/);
+  assert.match(ui, /counted = validateInventoryQuantityInput[\s\S]+INVENTORY_QUANTITY_RULES\.countQuantity/);
+  assert.match(ui, /damaged = validateInventoryQuantityInput[\s\S]+INVENTORY_QUANTITY_RULES\.damagedQuantity/);
+  assert.ok(ui.includes('errorCode={quantityErrors[`${line.id}:counted`]}'));
+  assert.ok(ui.includes('errorCode={quantityErrors[`${line.id}:damaged`]}'));
+
+  for (const language of ['en', 'ar']) {
+    for (const code of [
+      'INVENTORY_QUANTITY_REQUIRED',
+      'INVENTORY_QUANTITY_INVALID',
+      'INVENTORY_QUANTITY_POSITIVE_REQUIRED',
+    ]) {
+      assert.ok(inventoryMessages[language].errors[code]);
+    }
+  }
+});
+
+test('field-specific Inventory decimal rules cover thresholds, operations, transfers, counts and damage', () => {
+  const zeroAllowed = [
+    'itemThreshold',
+    'lowStockThreshold',
+    'countQuantity',
+    'damagedQuantity',
+  ];
+  for (const field of zeroAllowed) {
+    assert.deepEqual(
+      validateInventoryQuantityInput('0', INVENTORY_QUANTITY_RULES[field]),
+      { ok: true, value: '0' },
+    );
+  }
+
+  for (const field of ['movementQuantity', 'transferQuantity']) {
+    assert.deepEqual(
+      validateInventoryQuantityInput('0', INVENTORY_QUANTITY_RULES[field]),
+      { ok: false, code: 'INVENTORY_QUANTITY_POSITIVE_REQUIRED' },
+    );
+    assert.deepEqual(
+      validateInventoryQuantityInput('10.0', INVENTORY_QUANTITY_RULES[field]),
+      { ok: true, value: '10' },
+    );
+  }
+
+  assert.deepEqual(
+    validateInventoryQuantityInput('', INVENTORY_QUANTITY_RULES.itemThreshold),
+    { ok: true, value: null },
+  );
+  assert.deepEqual(
+    validateInventoryQuantityInput('', INVENTORY_QUANTITY_RULES.damagedQuantity),
+    { ok: true, value: null },
+  );
+  assert.deepEqual(
+    validateInventoryQuantityInput('', INVENTORY_QUANTITY_RULES.lowStockThreshold),
+    { ok: false, code: 'INVENTORY_QUANTITY_REQUIRED' },
+  );
+  assert.deepEqual(
+    validateInventoryQuantityInput('', INVENTORY_QUANTITY_RULES.countQuantity),
+    { ok: false, code: 'INVENTORY_QUANTITY_REQUIRED' },
+  );
 });
 
 test('storage areas are normalized, active-location validated, tenant safe, and historical', () => {
