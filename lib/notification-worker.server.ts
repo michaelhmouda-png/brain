@@ -52,10 +52,19 @@ export async function processNotificationWork() {
   const { data: outbox } = await supabase.rpc('claim_notification_outbox', { p_lease_seconds: 120 });
   const obligation = first(outbox);
   if (obligation && typeof obligation.outbox_id === 'string' && typeof obligation.lease_token === 'string') {
-    const { error } = await supabase.rpc('materialize_notification_outbox', {
+    const { data: inventoryData, error: inventoryError } = await supabase.rpc('materialize_inventory_low_stock_outbox', {
       p_outbox_id: obligation.outbox_id,
       p_lease_token: obligation.lease_token,
     });
+    const inventoryResult = first(inventoryData);
+    const inventoryHandled = inventoryResult?.handled === true;
+    const { error: standardError } = inventoryError || inventoryHandled
+      ? { error: null }
+      : await supabase.rpc('materialize_notification_outbox', {
+        p_outbox_id: obligation.outbox_id,
+        p_lease_token: obligation.lease_token,
+      });
+    const error = inventoryError ?? standardError;
     if (error) await supabase.rpc('fail_notification_outbox', {
       p_outbox_id: obligation.outbox_id,
       p_lease_token: obligation.lease_token,

@@ -553,7 +553,7 @@ interface GetActivityInput {
 }
 
 // Tool definitions for OpenAI Responses API (flat format — no nested `function` wrapper)
-const TOOLS = [
+const ALL_TOOLS = [
   {
     type: 'function' as const,
     name: 'get_current_user_profile',
@@ -1302,9 +1302,8 @@ const TOOLS = [
     type: 'function' as const,
     name: 'find_inventory_item',
     description:
-      'Search for an inventory item by name within your company. Use this BEFORE record_inventory_movement ' +
-      'when the user gives an item name instead of an ID. ' +
-      'Examples: "Add 24 bottles of Grey Goose" → first find_inventory_item("Grey Goose"), then record movement.',
+      'Read-only search for canonical inventory quantities by item name within the authenticated company. ' +
+      'Returns database-owned quantities by location and storage area. Never use it to mutate stock.',
     parameters: {
       type: 'object',
       properties: {
@@ -1571,6 +1570,15 @@ const TOOLS = [
     },
   },
 ];
+
+const disabledInventoryMutationTools = new Set([
+  'create_inventory_item',
+  'record_inventory_movement',
+  'update_inventory_item',
+]);
+const TOOLS = ALL_TOOLS.filter(
+  (tool) => !disabledInventoryMutationTools.has(tool.name),
+);
 
 // Tool handler implementations
 class ToolHandlers {
@@ -3348,6 +3356,12 @@ Status: ${previewStatus}`,
   // ─── INVENTORY MANAGEMENT METHODS ──────────────────────────────────────
 
   async createInventoryItem(params: CreateInventoryItemInput): Promise<any> {
+    void params;
+    return {
+      error: 'Inventory catalog changes are not available through Brain in Inventory Stock V1. Use the authorized Inventory workspace.',
+      code: 'INVENTORY_BRAIN_MUTATION_DISABLED',
+    };
+    /*
     if (!params.name || typeof params.name !== 'string' || !params.name.trim()) {
       return { error: 'Item name is required.' };
     }
@@ -3401,9 +3415,54 @@ Status: ${previewStatus}`,
       minimum_quantity: created.minimum_quantity,
       status: created.status,
     };
+    */
   }
 
   async getInventory(params: GetInventoryInput): Promise<any> {
+    {
+      if (this.userRole === 'employee') {
+        const assigned = await this.supabase
+          .from('inventory_count_sessions')
+          .select('id,status,location_id,storage_area_id,inventory_count_lines(id,inventory_item_id,canonical_unit_snapshot,counted_quantity,damaged_quantity,inventory_items(name))')
+          .eq('company_id', this.userCompanyId)
+          .in('status', ['draft', 'counting', 'submitted'])
+          .order('created_at', { ascending: false })
+          .limit(Math.min(params.limit || 20, 100));
+        return assigned.error
+          ? { error: 'Assigned stock counts are unavailable.', code: 'INVENTORY_UNAVAILABLE' }
+          : { assigned_counts: assigned.data ?? [], evaluated_at: new Date().toISOString(), scope: 'assigned_counts_only' };
+      }
+      if (!['manager', 'owner', 'super_admin'].includes(this.userRole)) {
+        return { error: 'Inventory access denied.', code: 'INVENTORY_FORBIDDEN' };
+      }
+      let trustedLocationId: string | null = null;
+      if (params.location_id) {
+        try { trustedLocationId = nullableUuid(params.location_id); } catch {
+          return { error: 'Invalid location ID format.', code: 'INVENTORY_INPUT_INVALID' };
+        }
+      }
+      const canonical = await this.supabase.rpc('list_inventory_stock', {
+        p_location_id: trustedLocationId, p_storage_area_id: null, p_search: null,
+        p_category: typeof params.category === 'string' ? params.category.slice(0, 80) : null,
+        p_low_stock_only: params.low_stock_only ?? false, p_limit: Math.min(params.limit || 20, 100),
+      });
+      if (canonical.error) return { error: 'Failed to retrieve inventory.', code: 'INVENTORY_UNAVAILABLE' };
+      const canonicalRows = ((Array.isArray(canonical.data) ? canonical.data : []) as Array<Record<string, unknown>>).filter((row) =>
+        !params.status || row.item_status === params.status);
+      return {
+        items: canonicalRows.map((row) => ({
+          id: row.item_id, name: row.item_name, category: row.category, sku: row.sku,
+          unit: row.canonical_unit, quantity: String(row.quantity),
+          threshold: row.effective_threshold === null ? null : String(row.effective_threshold),
+          low_stock: row.is_low_stock, location: row.location_name,
+          storage_area: row.storage_area_name, last_movement_at: row.last_movement_at,
+        })),
+        count: canonicalRows.length,
+        evaluated_at: new Date().toISOString(),
+        source: 'inventory_stock_v1',
+      };
+    }
+    /*
     const limit = Math.min(params.limit || 20, 100);
 
     let query = this.supabase
@@ -3461,9 +3520,33 @@ Status: ${previewStatus}`,
     }));
 
     return { items, count: items.length };
+    */
   }
 
   async getLowStock(params: GetLowStockInput): Promise<any> {
+    {
+      if (!['manager', 'owner', 'super_admin'].includes(this.userRole)) {
+        return { error: 'Inventory access denied.', code: 'INVENTORY_FORBIDDEN' };
+      }
+      const canonical = await this.supabase.rpc('list_inventory_stock', {
+        p_location_id: null, p_storage_area_id: null, p_search: null, p_category: null,
+        p_low_stock_only: true, p_limit: Math.min(params.limit || 20, 100),
+      });
+      if (canonical.error) return { error: 'Failed to retrieve low stock items.', code: 'INVENTORY_UNAVAILABLE' };
+      const canonicalRows = (Array.isArray(canonical.data) ? canonical.data : []) as Array<Record<string, unknown>>;
+      return {
+        items: canonicalRows.map((row) => ({
+          id: row.item_id, name: row.item_name, category: row.category,
+          unit: row.canonical_unit, quantity: String(row.quantity),
+          threshold: String(row.effective_threshold), location: row.location_name,
+          storage_area: row.storage_area_name, low_stock: true,
+        })),
+        count: canonicalRows.length,
+        evaluated_at: new Date().toISOString(),
+        source: 'inventory_stock_v1',
+      };
+    }
+    /*
     const limit = Math.min(params.limit || 20, 100);
 
     const { data, error } = await this.supabase
@@ -3495,9 +3578,16 @@ Status: ${previewStatus}`,
     }));
 
     return { items, count: items.length };
+    */
   }
 
   async recordInventoryMovement(params: RecordInventoryMovementInput): Promise<any> {
+    void params;
+    return {
+      error: 'Stock mutations are not authorized through Brain in Inventory Stock V1. Use the confirmed Inventory workspace.',
+      code: 'INVENTORY_BRAIN_MUTATION_DISABLED',
+    };
+    /*
     if (!params.inventory_item_id || typeof params.inventory_item_id !== 'string') {
       return { error: 'Inventory item ID is required.' };
     }
@@ -3606,9 +3696,16 @@ Status: ${previewStatus}`,
       message: `Recorded: ${Math.abs(params.quantity)} ${item.unit} ${params.movement_type} for ${item.name}. New stock: ${refreshed?.current_quantity ?? newQuantity} ${item.unit}.`,
     };
     return success;
+    */
   }
 
   async updateInventoryItem(params: UpdateInventoryItemInput): Promise<any> {
+    void params;
+    return {
+      error: 'Inventory catalog changes are not available through Brain in Inventory Stock V1. Use the authorized Inventory workspace.',
+      code: 'INVENTORY_BRAIN_MUTATION_DISABLED',
+    };
+    /*
     if (!params.item_id || typeof params.item_id !== 'string') {
       return { error: 'Inventory item ID is required.' };
     }
@@ -3665,6 +3762,7 @@ Status: ${previewStatus}`,
       minimum_quantity: updated.minimum_quantity,
       status: updated.status,
     };
+    */
   }
 
   async createCustomer(params: CreateCustomerInput): Promise<any> {
@@ -3867,6 +3965,26 @@ Status: ${previewStatus}`,
     if (!params.name || typeof params.name !== 'string' || !params.name.trim()) {
       return { error: 'Item name is required.' };
     }
+    if (!['manager', 'owner', 'super_admin'].includes(this.userRole)) {
+      return { error: 'Inventory access denied.', code: 'INVENTORY_FORBIDDEN' };
+    }
+    const canonical = await this.supabase.rpc('list_inventory_stock', {
+      p_location_id: null, p_storage_area_id: null, p_search: params.name.trim().slice(0, 160),
+      p_category: null, p_low_stock_only: false, p_limit: 20,
+    });
+    if (canonical.error) return { error: 'Inventory search is unavailable.', code: 'INVENTORY_UNAVAILABLE' };
+    const canonicalRows = (Array.isArray(canonical.data) ? canonical.data : []) as Array<Record<string, unknown>>;
+    return {
+      found: canonicalRows.length === 1,
+      ambiguous: canonicalRows.length > 1,
+      items: canonicalRows.map((row) => ({
+        id: row.item_id, name: row.item_name, unit: row.canonical_unit,
+        quantity: String(row.quantity), location: row.location_name, storage_area: row.storage_area_name,
+      })),
+      evaluated_at: new Date().toISOString(),
+      source: 'inventory_stock_v1',
+    };
+    /*
     const { resolveInventoryItem } = await import('@/lib/brain/entityResolver');
     const result = await resolveInventoryItem(this.supabase, this.userCompanyId, params.name.trim());
 
@@ -3890,6 +4008,7 @@ Status: ${previewStatus}`,
       notFound: true,
       message: `"${params.name}" is not in inventory. Would you like to create it as a new inventory item?`,
     };
+    */
   }
 
   // ─── COMMAND ENGINE: Prepare for Event ────────────────────────────────────────
@@ -5512,39 +5631,20 @@ When a user asks to remove a task:
 CONVERSATION CONTEXT FOR TASKS:
 Remember tasks mentioned in the conversation. When the user refers to "the task", "it", or "that task", resolve to the most recently mentioned task.
 
-INVENTORY MANAGEMENT OPERATIONS:
-Inventory tracks items (products, ingredients, supplies) with quantities, costs, and reorder points. All movements (purchases, usage, waste) are recorded for audit trail and contribute to Brain Score.
-
-INVENTORY OPERATIONS:
+INVENTORY STOCK V1:
+Inventory quantities are authoritative decimal values from the append-only stock ledger. Inventory does not change Brain Score in V1.
 
 VIEW INVENTORY:
 When user asks about stock/inventory (e.g., "Show inventory", "What supplies are low?", "How much vodka do we have?"):
 - Use get_inventory with filters (category, status, location)
-- Or use get_low_stock to see items below minimum quantity
+- Or use get_low_stock to see items below their effective threshold
 - Format response naturally:
-  * "You have 45 bottles of vodka (minimum: 20)."
-  * "3 items are low on stock: [list with shortages]"
-  * "All spirits are stocked above minimum."
+- State the location and storage area returned by the tool.
+- Preserve the canonical unit and decimal quantity exactly.
+- Never estimate, combine, convert, or invent quantities.
 - Always highlight items below reorder point
-
-CREATE INVENTORY ITEMS:
-When user asks to add inventory (e.g., "Add vodka inventory", "Track lemons, minimum 10 kg"):
-- Use create_inventory_item with name (required), category, unit, minimum_quantity, unit_cost
-- Return: "Added '[item_name]' to inventory. Current: 0 [unit], minimum: [amount]."
-
-RECORD STOCK MOVEMENTS:
-When user logs inventory changes (e.g., "Received 10 bottles of vodka", "Used 2 kg of lemons", "3 bottles damaged"):
-- Use record_inventory_movement with:
-  * movement_type: purchase (incoming), usage (used in service), waste (damaged/spoiled), adjustment (manual correction), transfer (moved between locations)
-  * quantity: positive for purchase/adjustment, positive for others (system interprets by type)
-  * reason: e.g., "Monthly delivery", "Daily service usage", "Damaged in drop"
-- If new quantity falls below minimum, warn: "Warning: now 8 bottles (below minimum 10)"
-- Return: "Recorded movement: 10 bottles purchased. New stock: 45."
-
-UPDATE INVENTORY:
-When user changes item details (e.g., "Change vodka minimum to 25", "Update lemon cost to $2 per kg"):
-- Use update_inventory_item to modify name, category, unit, minimum_quantity, unit_cost, status
-- Return: "Updated '[item_name]': [changed fields]."
+- Brain inventory mutations are disabled in V1. Direct the user to the authenticated Inventory workspace for catalog changes, receipts, usage, waste, transfers, adjustments, thresholds, and count approval.
+- Never claim an inventory mutation was proposed or completed.
 
 CUSTOMER MANAGEMENT OPERATIONS:
 READ OPERATIONS — Natural language examples:

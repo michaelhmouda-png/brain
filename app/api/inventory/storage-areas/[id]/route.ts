@@ -1,0 +1,28 @@
+import { NextResponse } from 'next/server';
+import { ActorContextError } from '@/lib/brain/kernel/errors';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { normalizeInventoryError, setStorageAreaStatus } from '@/lib/inventory/service.server';
+import { createSupabaseServer, createSupabaseServerAuth } from '@/lib/supabaseServer';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+const HEADERS = { 'Cache-Control': 'private, no-store, max-age=0', Vary: 'Cookie, Authorization' };
+const fail = (error: string, status: number) => NextResponse.json({ error }, { status, headers: HEADERS });
+
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  try {
+    const authenticated = await createSupabaseServerAuth();
+    const actor = await resolveActorContext(authenticated);
+    const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+    if (!body || Object.keys(body).some((key) => key !== 'status')
+        || body.status !== 'active' && body.status !== 'inactive') return fail('INVENTORY_INPUT_INVALID', 400);
+    const { id } = await context.params;
+    const result = await setStorageAreaStatus(createSupabaseServer(), actor, id, body.status);
+    return NextResponse.json({ data: result }, { headers: HEADERS });
+  } catch (error) {
+    if (error instanceof ActorContextError) return fail(error.code, error.code === 'UNAUTHENTICATED' ? 401 : 403);
+    const code = normalizeInventoryError(error);
+    return fail(code, code.includes('FORBIDDEN') ? 403 : 400);
+  }
+}
+
