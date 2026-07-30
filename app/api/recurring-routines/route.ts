@@ -10,6 +10,7 @@ import {
   previewRecurringRule,
 } from '@/lib/recurring-tasks/service.server';
 import { canManageRecurringTasks } from '@/lib/recurring-tasks/contracts';
+import { operatingHoursFromDatabaseRows } from '@/lib/recurring-tasks/operating-hours';
 import { createSupabaseServer, createSupabaseServerAuth } from '@/lib/supabaseServer';
 
 export const dynamic = 'force-dynamic';
@@ -40,7 +41,8 @@ export async function GET(request: Request) {
     if (locations.error || departments.error || employees.error || operatingHours.error) throw new Error('RECURRING_UNAVAILABLE');
     return NextResponse.json({ data: {
       rules, outcomes, locations: locations.data ?? [], departments: departments.data ?? [], employees: employees.data ?? [],
-      operatingHours: operatingHours.data ?? [], evaluatedAt: new Date().toISOString(),
+      operatingHours: operatingHoursFromDatabaseRows(operatingHours.data ?? []),
+      evaluatedAt: new Date().toISOString(),
     } }, { headers: HEADERS });
   } catch (error) { return responseError(error); }
 }

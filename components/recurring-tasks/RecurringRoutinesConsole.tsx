@@ -4,6 +4,14 @@ import { CircleAlert, Pause, Play, Plus, Square } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from 'react';
 import { useLocale } from '@/components/LocaleProvider';
 import { recurringMessages } from '@/lib/recurring-tasks/i18n';
+import {
+  createOperatingHoursDraft,
+  operatingHoursStateLabel,
+  serializeOperatingHoursDraft,
+  updateOperatingHoursDraftDay,
+  type LocationOperatingHours,
+  type OperatingHoursDraftDay,
+} from '@/lib/recurring-tasks/operating-hours';
 
 type Location = { id: string; name: string; timezone: string };
 type Department = { id: string; name: string; location_id: string|null };
@@ -21,8 +29,7 @@ type Rule = {
   }>;
 };
 type Outcome = { id: string; rule_id: string; local_occurrence_at: string; outcome: string; created_task_count: number; safe_failure_code: string|null };
-type OperatingHour = { location_id: string; weekday: number; is_closed: boolean; opens_at: string|null; closes_at: string|null };
-type Payload = { rules: Rule[]; outcomes: Outcome[]; locations: Location[]; departments: Department[]; employees: Employee[]; operatingHours: OperatingHour[] };
+type Payload = { rules: Rule[]; outcomes: Outcome[]; locations: Location[]; departments: Department[]; employees: Employee[]; operatingHours: LocationOperatingHours[] };
 
 const weekdays = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const jsonHeaders = { 'Content-Type': 'application/json' };
@@ -246,32 +253,70 @@ function HoursDialog({ payload, t, pending, onClose, onSave }: {
   payload: Payload; t: typeof recurringMessages.en | typeof recurringMessages.ar; pending: boolean;
   onClose(): void; onSave(value: unknown): Promise<void>;
 }) {
-  const [locationId, setLocationId] = useState(payload.locations[0]?.id ?? '');
+  const initialLocationId = payload.locations[0]?.id ?? '';
+  const [locationId, setLocationId] = useState(initialLocationId);
+  const [days, setDays] = useState<OperatingHoursDraftDay[]>(() =>
+    createOperatingHoursDraft(payload.operatingHours, initialLocationId));
   const [error, setError] = useState<string|null>(null);
-  const existing = (weekday: number) => payload.operatingHours.find((row) =>
-    row.location_id === locationId && row.weekday === weekday);
+
+  function updateDay(
+    weekday: number,
+    change: Partial<Pick<OperatingHoursDraftDay, 'isOpen'|'opensAt'|'closesAt'>>,
+  ) {
+    setDays((current) => updateOperatingHoursDraftDay(current, weekday, change));
+  }
+
   return <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/75 sm:items-center sm:p-5" role="dialog" aria-modal="true">
     <form onSubmit={(event) => {
       event.preventDefault(); setError(null);
-      const data = new FormData(event.currentTarget);
-      const days = weekdays.map((_, weekday) => ({
-        weekday, isClosed: data.get(`closed-${weekday}`) === 'on',
-        opensAt: data.get(`open-${weekday}`), closesAt: data.get(`close-${weekday}`),
-      }));
-      void onSave({ locationId, days }).catch((reason) =>
+      void onSave(serializeOperatingHoursDraft(locationId, days)).catch((reason) =>
         setError(reason instanceof Error ? reason.message : 'RECURRING_UNAVAILABLE'));
     }} className="max-h-[100dvh] w-full overflow-y-auto bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:max-w-xl sm:rounded-3xl sm:border sm:border-white/10">
       <div className="flex items-center justify-between"><div><h2 className="text-xl font-black">{t.operatingHours}</h2><p className="text-sm text-slate-400">{t.configureHours}</p></div>
         <button type="button" onClick={onClose} className="min-h-11 px-3">{t.cancel}</button></div>
-      <select value={locationId} onChange={(event) => setLocationId(event.target.value)} required className="input mt-5">
+      <select value={locationId} onChange={(event) => {
+        const nextLocationId = event.target.value;
+        setLocationId(nextLocationId);
+        setDays(createOperatingHoursDraft(payload.operatingHours, nextLocationId));
+      }} required className="input mt-5">
         {payload.locations.map((location) => <option key={location.id} value={location.id}>{location.name}</option>)}
       </select>
       <div className="mt-4 space-y-2">{weekdays.map((day, weekday) => {
-        const row = existing(weekday);
-        return <fieldset key={`${locationId}-${day}`} className="grid grid-cols-[1fr_6rem_6rem] items-center gap-2 rounded-xl border border-white/10 p-3">
-          <legend className="sr-only">{day}</legend><label className="font-bold"><input type="checkbox" name={`closed-${weekday}`} defaultChecked={row?.is_closed} className="me-2" />{day} · {t.closed}</label>
-          <input aria-label={`${day} opening`} type="time" name={`open-${weekday}`} defaultValue={row?.opens_at?.slice(0,5) ?? '09:00'} className="input" />
-          <input aria-label={`${day} closing`} type="time" name={`close-${weekday}`} defaultValue={row?.closes_at?.slice(0,5) ?? '23:00'} className="input" />
+        const row = days[weekday];
+        const localizedDay = t.weekdays[weekday];
+        const stateLabel = operatingHoursStateLabel(localizedDay, row?.isOpen ?? false, t);
+        return <fieldset key={`${locationId}-${day}`} className="grid grid-cols-1 items-center gap-2 rounded-xl border border-white/10 p-3 sm:grid-cols-[minmax(0,1fr)_6rem_6rem]">
+          <legend className="sr-only">{localizedDay}</legend>
+          <label className="flex min-h-11 items-center font-bold">
+            <input
+              type="checkbox"
+              role="switch"
+              checked={row?.isOpen ?? false}
+              aria-checked={row?.isOpen ?? false}
+              aria-label={stateLabel}
+              onChange={(event) => updateDay(weekday, { isOpen: event.target.checked })}
+              className="me-2 h-5 w-5 accent-cyan-300"
+            />
+            <span>{stateLabel}</span>
+          </label>
+          <input
+            aria-label={`${localizedDay} ${t.opening}`}
+            type="time"
+            value={row?.opensAt ?? ''}
+            onChange={(event) => updateDay(weekday, { opensAt: event.target.value })}
+            disabled={!row?.isOpen}
+            required={row?.isOpen}
+            className="input disabled:cursor-not-allowed disabled:opacity-40"
+          />
+          <input
+            aria-label={`${localizedDay} ${t.closing}`}
+            type="time"
+            value={row?.closesAt ?? ''}
+            onChange={(event) => updateDay(weekday, { closesAt: event.target.value })}
+            disabled={!row?.isOpen}
+            required={row?.isOpen}
+            className="input disabled:cursor-not-allowed disabled:opacity-40"
+          />
         </fieldset>;
       })}</div>
       {error ? <p role="alert" className="mt-3 text-red-300">{error}</p> : null}

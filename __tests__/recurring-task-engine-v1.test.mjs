@@ -4,9 +4,19 @@ import test from 'node:test';
 
 import {
   deterministicRotationIndex,
+  parseOperatingHoursConfiguration,
   parseRecurringTaskRule,
   recurrenceMatchesDay,
 } from '../lib/recurring-tasks/contracts.ts';
+import { recurringMessages } from '../lib/recurring-tasks/i18n.ts';
+import {
+  createOperatingHoursDraft,
+  operatingHoursFromDatabaseRows,
+  operatingHoursStateLabel,
+  operatingHoursToRpcDays,
+  serializeOperatingHoursDraft,
+  updateOperatingHoursDraftDay,
+} from '../lib/recurring-tasks/operating-hours.ts';
 
 const migration = readFileSync(
   new URL('../supabase/migrations/202607300001_recurring_task_engine_v1.sql', import.meta.url),
@@ -15,7 +25,9 @@ const migration = readFileSync(
 const worker = readFileSync(new URL('../lib/notification-worker.server.ts', import.meta.url), 'utf8');
 const brain = readFileSync(new URL('../app/api/brain/chat/route.ts', import.meta.url), 'utf8');
 const api = readFileSync(new URL('../app/api/recurring-routines/route.ts', import.meta.url), 'utf8');
+const service = readFileSync(new URL('../lib/recurring-tasks/service.server.ts', import.meta.url), 'utf8');
 const ui = readFileSync(new URL('../components/recurring-tasks/RecurringRoutinesConsole.tsx', import.meta.url), 'utf8');
+const locationId = '11111111-1111-4111-8111-111111111111';
 
 const base = {
   name: 'Kitchen closing',
@@ -150,4 +162,99 @@ test('management UI is mobile-safe, bilingual, and exposes status/outcome contro
   assert.match(ui, /safe-area-inset-bottom/);
   assert.match(ui, /direction|useLocale|language/);
   for (const token of ['pause', 'resume', 'end', 'no_eligible_employee', 'preview']) assert.ok(ui.includes(token));
+});
+
+test('operating-hours drafts start closed and checked can never render Closed', () => {
+  const initial = createOperatingHoursDraft([], locationId);
+  assert.equal(initial.length, 7);
+  assert.equal(initial[0].isOpen, false);
+  assert.equal(operatingHoursStateLabel('Sun', initial[0].isOpen, recurringMessages.en), 'Sun · Closed');
+
+  const opened = updateOperatingHoursDraftDay(initial, 0, { isOpen: true });
+  assert.equal(opened[0].isOpen, true);
+  assert.equal(operatingHoursStateLabel('Sun', opened[0].isOpen, recurringMessages.en), 'Sun · Open');
+  assert.notEqual(operatingHoursStateLabel('Sun', opened[0].isOpen, recurringMessages.en), 'Sun · Closed');
+  assert.equal(operatingHoursStateLabel('الأحد', opened[0].isOpen, recurringMessages.ar), 'الأحد · مفتوح');
+});
+
+test('closing disables the active interval and reopening restores editable hours', () => {
+  const loaded = createOperatingHoursDraft([{
+    locationId, weekday: 0, isOpen: true, opensAt: '18:30', closesAt: '02:15',
+  }], locationId);
+  const closed = updateOperatingHoursDraftDay(loaded, 0, { isOpen: false });
+  assert.equal(closed[0].opensAt, '18:30');
+  assert.equal(closed[0].closesAt, '02:15');
+  assert.deepEqual(serializeOperatingHoursDraft(locationId, closed).days[0], {
+    weekday: 0, isOpen: false, opensAt: null, closesAt: null,
+  });
+
+  const reopened = updateOperatingHoursDraftDay(closed, 0, { isOpen: true });
+  assert.deepEqual(serializeOperatingHoursDraft(locationId, reopened).days[0], {
+    weekday: 0, isOpen: true, opensAt: '18:30', closesAt: '02:15',
+  });
+  assert.match(ui, /disabled=\{!row\?\.isOpen\}/);
+  assert.match(ui, /required=\{row\?\.isOpen\}/);
+});
+
+test('canonical isOpen round-trips through the one database/RPC boundary without inversion leaks', () => {
+  const canonical = parseOperatingHoursConfiguration({
+    locationId,
+    days: [0, 1, 2, 3, 4, 5, 6].map((weekday) => weekday === 0
+      ? { weekday, isOpen: true, opensAt: '23:00', closesAt: '03:00' }
+      : { weekday, isOpen: false, opensAt: null, closesAt: null }),
+  });
+  const rpcDays = operatingHoursToRpcDays(canonical.days);
+  assert.equal(rpcDays[0].isClosed, false);
+  assert.equal(rpcDays[1].isClosed, true);
+  assert.equal(rpcDays[1].opensAt, null);
+
+  const reloaded = operatingHoursFromDatabaseRows(rpcDays.map((day) => ({
+    location_id: locationId,
+    weekday: day.weekday,
+    is_closed: day.isClosed,
+    opens_at: day.opensAt,
+    closes_at: day.closesAt,
+  })));
+  assert.equal(reloaded[0].isOpen, true);
+  assert.equal(reloaded[0].opensAt, '23:00');
+  assert.equal(reloaded[1].isOpen, false);
+  assert.equal(reloaded[1].opensAt, null);
+  assert.match(api, /operatingHoursFromDatabaseRows\(operatingHours\.data \?\? \[\]\)/);
+  assert.match(service, /operatingHoursToRpcDays\(input\.days\)/);
+  assert.doesNotMatch(ui, /is_closed|isClosed|closed-\$\{/);
+});
+
+test('operating-hours validation requires open intervals, rejects closed intervals, and preserves overnight hours', () => {
+  const days = [0, 1, 2, 3, 4, 5, 6].map((weekday) => ({
+    weekday, isOpen: false, opensAt: null, closesAt: null,
+  }));
+  assert.doesNotThrow(() => parseOperatingHoursConfiguration({
+    locationId,
+    days: days.map((day) => day.weekday === 0
+      ? { ...day, isOpen: true, opensAt: '22:00', closesAt: '04:00' }
+      : day),
+  }));
+  assert.throws(() => parseOperatingHoursConfiguration({
+    locationId,
+    days: days.map((day) => day.weekday === 0 ? { ...day, opensAt: '09:00' } : day),
+  }), /RECURRING_RULE_INVALID/);
+  assert.throws(() => parseOperatingHoursConfiguration({
+    locationId,
+    days: days.map((day) => day.weekday === 0
+      ? { ...day, isOpen: true, opensAt: null, closesAt: null }
+      : day),
+  }), /RECURRING_RULE_INVALID/);
+  assert.throws(() => operatingHoursFromDatabaseRows([{
+    location_id: locationId, weekday: 0, is_closed: false, opens_at: null, closes_at: '23:00',
+  }]), /RECURRING_UNAVAILABLE/);
+});
+
+test('operating-hours control is an accessible controlled switch with immediate localized wording', () => {
+  assert.match(ui, /type="checkbox"\s+role="switch"\s+checked=\{row\?\.isOpen \?\? false\}/);
+  assert.match(ui, /aria-checked=\{row\?\.isOpen \?\? false\}/);
+  assert.match(ui, /onChange=\{\(event\) => updateDay\(weekday, \{ isOpen: event\.target\.checked \}\)\}/);
+  assert.match(ui, /aria-label=\{stateLabel\}/);
+  assert.match(ui, /<span>\{stateLabel\}<\/span>/);
+  assert.ok(recurringMessages.en.open && recurringMessages.en.closed);
+  assert.ok(recurringMessages.ar.open && recurringMessages.ar.closed);
 });

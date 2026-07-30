@@ -2,7 +2,13 @@ import 'server-only';
 
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { ActorContext } from '@/lib/brain/kernel/actor-context';
-import { canManageRecurringTasks, parseRecurringTaskRule, type RecurringTaskRuleInput } from './contracts';
+import {
+  canManageRecurringTasks,
+  parseOperatingHoursConfiguration,
+  parseRecurringTaskRule,
+  type RecurringTaskRuleInput,
+} from './contracts';
+import { operatingHoursToRpcDays } from './operating-hours';
 
 export function normalizeRecurringTaskError(error: unknown) {
   const message = error instanceof Error ? error.message : '';
@@ -114,33 +120,12 @@ export async function configureLocationOperatingHours(
   value: unknown,
 ) {
   assertManager(actor);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('RECURRING_RULE_INVALID');
-  const row = value as Record<string, unknown>;
-  if (Object.keys(row).some((key) => !['locationId','days'].includes(key))
-      || typeof row.locationId !== 'string' || !Array.isArray(row.days) || row.days.length !== 7) {
-    throw new Error('RECURRING_RULE_INVALID');
-  }
-  const seen = new Set<number>();
-  const days = row.days.map((entry) => {
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('RECURRING_RULE_INVALID');
-    const day = entry as Record<string, unknown>;
-    if (Object.keys(day).some((key) => !['weekday','isClosed','opensAt','closesAt'].includes(key))
-        || !Number.isInteger(day.weekday) || Number(day.weekday) < 0 || Number(day.weekday) > 6
-        || seen.has(Number(day.weekday)) || typeof day.isClosed !== 'boolean') throw new Error('RECURRING_RULE_INVALID');
-    seen.add(Number(day.weekday));
-    const time = (field: 'opensAt'|'closesAt') => {
-      const candidate = day[field];
-      if (day.isClosed) return null;
-      if (typeof candidate !== 'string' || !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(candidate)) {
-        throw new Error('RECURRING_RULE_INVALID');
-      }
-      return candidate;
-    };
-    return { weekday: Number(day.weekday), isClosed: day.isClosed, opensAt: time('opensAt'), closesAt: time('closesAt') };
-  });
+  const input = parseOperatingHoursConfiguration(value);
   const { data, error } = await service.rpc('configure_location_operating_hours', {
     p_actor_profile_id: actor.profileId, p_company_id: actor.companyId,
-    p_location_id: row.locationId, p_days: days, p_correlation_id: actor.correlationId,
+    p_location_id: input.locationId,
+    p_days: operatingHoursToRpcDays(input.days),
+    p_correlation_id: actor.correlationId,
   });
   if (error) throw new Error(normalizeRecurringTaskError(new Error(error.message)));
   return data;

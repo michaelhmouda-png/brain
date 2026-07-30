@@ -47,6 +47,18 @@ export interface RecurringTaskRuleInput {
   reminderOffsetsMinutes: number[];
 }
 
+export interface OperatingHoursDayInput {
+  weekday: number;
+  isOpen: boolean;
+  opensAt: string | null;
+  closesAt: string | null;
+}
+
+export interface OperatingHoursConfigurationInput {
+  locationId: string;
+  days: OperatingHoursDayInput[];
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const TIME = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
@@ -183,6 +195,40 @@ export function parseRecurringTaskRule(value: unknown): RecurringTaskRuleInput {
   };
 }
 
+export function parseOperatingHoursConfiguration(value: unknown): OperatingHoursConfigurationInput {
+  const row = exact(value, ['locationId', 'days']);
+  const locationId = uuid(row.locationId, true)!;
+  if (!Array.isArray(row.days) || row.days.length !== WEEKDAYS.length) {
+    throw new Error('RECURRING_RULE_INVALID');
+  }
+
+  const seen = new Set<number>();
+  const days = row.days.map((entry): OperatingHoursDayInput => {
+    const day = exact(entry, ['weekday', 'isOpen', 'opensAt', 'closesAt']);
+    const weekday = Number(day.weekday);
+    if (!Number.isInteger(day.weekday) || !WEEKDAYS.includes(weekday as never)
+        || seen.has(weekday) || typeof day.isOpen !== 'boolean') {
+      throw new Error('RECURRING_RULE_INVALID');
+    }
+    seen.add(weekday);
+
+    if (!day.isOpen) {
+      if (day.opensAt !== null || day.closesAt !== null) {
+        throw new Error('RECURRING_RULE_INVALID');
+      }
+      return { weekday, isOpen: false, opensAt: null, closesAt: null };
+    }
+
+    if (typeof day.opensAt !== 'string' || !TIME.test(day.opensAt)
+        || typeof day.closesAt !== 'string' || !TIME.test(day.closesAt)) {
+      throw new Error('RECURRING_RULE_INVALID');
+    }
+    return { weekday, isOpen: true, opensAt: day.opensAt, closesAt: day.closesAt };
+  });
+
+  return { locationId, days: days.sort((left, right) => left.weekday - right.weekday) };
+}
+
 export function recurrenceMatchesDay(kind: RecurrenceKind, weekdays: readonly number[], weekday: number) {
   if (!WEEKDAYS.includes(weekday as never)) return false;
   if (kind === 'daily') return true;
@@ -195,4 +241,3 @@ export function deterministicRotationIndex(previousMaterializedOccurrences: numb
       || !Number.isInteger(eligibleCount) || eligibleCount < 1) throw new Error('RECURRING_ROTATION_INVALID');
   return previousMaterializedOccurrences % eligibleCount;
 }
-
