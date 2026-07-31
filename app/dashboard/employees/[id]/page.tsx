@@ -1,87 +1,54 @@
-import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
-import type { Employee, EmployeeCompany, EmployeeLocation } from "../../../../lib/employee";
-import type { Department } from "../../../../lib/department";
-import EmployeeForm from "../../../../components/EmployeeForm";
-import EmployeeDeleteButton from "../../../../components/EmployeeDeleteButton";
+import { redirect } from 'next/navigation';
+import EmployeeDeleteButton from '@/components/EmployeeDeleteButton';
+import EmployeeForm from '@/components/EmployeeForm';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { canManageEmployees } from '@/lib/employees/contracts';
+import type { Department } from '@/lib/department';
+import type { Employee, EmployeeCompany, EmployeeLocation } from '@/lib/employee';
+import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 
-export const dynamic = "force-dynamic";
-
-async function getEmployee(id: string) {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("employees")
-    .select(`id, company_id, location_id, department_id, first_name, last_name, role, phone, email, employment_type, salary, hire_date, status, notes, created_at, updated_at`)
-    .eq("id", id)
-    .single();
-
-  if (error || !data) {
-    throw new Error(error?.message ?? "Employee not found.");
-  }
-
-  return data as Employee;
-}
-
-async function getCompanies() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("companies")
-    .select("id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as EmployeeCompany[];
-}
-
-async function getLocations() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("locations")
-    .select("id, company_id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as EmployeeLocation[];
-}
-
-async function getDepartments() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("departments")
-    .select("id, company_id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as Department[];
-}
+export const dynamic = 'force-dynamic';
 
 export default async function EditEmployeePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const [employee, companies, locations, departments] = await Promise.all([getEmployee(id), getCompanies(), getLocations(), getDepartments()]);
+  const supabase = await createSupabaseServerAuth();
+  const actor = await resolveActorContext(supabase);
+  if (!canManageEmployees(actor.role)) redirect('/dashboard');
 
+  const [employeeResult, companyResult, locationResult, departmentResult] = await Promise.all([
+    supabase.from('employees')
+      .select('id,company_id,location_id,department_id,first_name,last_name,role,phone,email,employment_type,salary,hire_date,status,notes,created_at,updated_at')
+      .eq('id', id).eq('company_id', actor.companyId).maybeSingle(),
+    supabase.from('companies').select('id,name').eq('id', actor.companyId).maybeSingle(),
+    supabase.from('locations').select('id,company_id,name')
+      .eq('company_id', actor.companyId).eq('status', 'active').order('name'),
+    supabase.from('departments').select('id,company_id,name')
+      .eq('company_id', actor.companyId).eq('status', 'active').order('name'),
+  ]);
+  if (employeeResult.error || !employeeResult.data || companyResult.error || !companyResult.data
+    || locationResult.error || departmentResult.error) {
+    throw new Error('EMPLOYEE_FORM_UNAVAILABLE');
+  }
+
+  const employee = employeeResult.data as Employee;
+  const companies = [companyResult.data] as EmployeeCompany[];
+  const locations = (locationResult.data ?? []) as EmployeeLocation[];
+  const departments = (departmentResult.data ?? []) as Department[];
   const initialValues = {
     id: employee.id,
-    company_id: employee.company_id,
-    location_id: employee.location_id ?? "",
-    department_id: employee.department_id ?? "",
+    company_id: actor.companyId,
+    location_id: employee.location_id ?? '',
+    department_id: employee.department_id ?? '',
     first_name: employee.first_name,
     last_name: employee.last_name,
     role: employee.role,
-    phone: employee.phone ?? "",
-    email: employee.email ?? "",
+    phone: employee.phone ?? '',
+    email: employee.email ?? '',
     employment_type: employee.employment_type,
     salary: employee.salary,
-    hire_date: employee.hire_date ?? "",
+    hire_date: employee.hire_date ?? '',
     status: employee.status,
-    notes: employee.notes ?? "",
+    notes: employee.notes ?? '',
   };
 
   return (
@@ -94,7 +61,6 @@ export default async function EditEmployeePage({ params }: { params: Promise<{ i
         </div>
         <EmployeeDeleteButton employeeId={employee.id} />
       </div>
-
       <EmployeeForm mode="edit" initialData={initialValues} companies={companies} locations={locations} departments={departments} />
     </div>
   );

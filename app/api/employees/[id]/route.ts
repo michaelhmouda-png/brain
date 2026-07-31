@@ -1,80 +1,65 @@
-import { NextResponse } from "next/server";
-import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
+import { NextResponse } from 'next/server';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { ActorContextError } from '@/lib/brain/kernel/errors';
+import { canManageEmployees, normalizeEmployeeMutationError } from '@/lib/employees/contracts';
+import { updateEmployee } from '@/lib/employees/service.server';
+import { createSupabaseServerAuth } from '@/lib/supabaseServer';
+
+function statusFor(code: string) {
+  if (code === 'UNAUTHENTICATED') return 401;
+  if (code === 'EMPLOYEE_FORBIDDEN' || code === 'ACCOUNT_NOT_PROVISIONED' || code === 'ACCOUNT_INACTIVE') return 403;
+  if (code === 'EMPLOYEE_NOT_FOUND') return 404;
+  if (code === 'EMPLOYEE_SAVE_UNAVAILABLE' || code === 'ACTOR_CONTEXT_UNAVAILABLE') return 503;
+  return 400;
+}
+
+function failure(operation: 'update' | 'delete', requestId: string | null, error: unknown) {
+  const code = error instanceof ActorContextError
+    ? error.code
+    : normalizeEmployeeMutationError(error);
+  console.warn('[Employee mutation] rejected', { operation, requestId, code });
+  return NextResponse.json({ error: code }, { status: statusFor(code) });
+}
 
 export async function PATCH(
   request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const body = await request.json();
-  const { id } = await params;
-
-  // Use authenticated client (respects RLS)
-  const supabaseAuth = await createSupabaseServerAuth();
-  
-  // Verify user is authenticated
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseAuth.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  const authenticated = await createSupabaseServerAuth();
+  let requestId: string | null = null;
+  try {
+    const actor = await resolveActorContext(authenticated);
+    requestId = actor.correlationId;
+    const { id } = await params;
+    const body = await request.json().catch(() => null);
+    const employee = await updateEmployee(authenticated, actor, id, body);
+    return NextResponse.json(employee, { status: 200 });
+  } catch (error) {
+    return failure('update', requestId, error);
   }
-
-  const updates = {
-    company_id: body.company_id,
-    location_id: body.location_id ?? null,
-    department_id: body.department_id ?? null,
-    first_name: body.first_name,
-    last_name: body.last_name,
-    role: body.role,
-    phone: body.phone ?? null,
-    email: body.email ?? null,
-    employment_type: body.employment_type ?? "full-time",
-    salary: Number(body.salary ?? 0),
-    hire_date: body.hire_date ?? null,
-    status: body.status ?? "active",
-    notes: body.notes ?? null,
-  };
-
-  const { data, error } = await supabaseAuth
-    .from("employees")
-    .update(updates)
-    .eq("id", id)
-    .select()
-    .single();
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data, { status: 200 });
 }
 
 export async function DELETE(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  
-  // Use authenticated client (respects RLS)
-  const supabaseAuth = await createSupabaseServerAuth();
-  
-  // Verify user is authenticated
-  const {
-    data: { user },
-    error: authError,
-  } = await supabaseAuth.auth.getUser();
-
-  if (authError || !user) {
-    return NextResponse.json({ message: "Unauthorized" }, { status: 401 });
+  const authenticated = await createSupabaseServerAuth();
+  let requestId: string | null = null;
+  try {
+    const actor = await resolveActorContext(authenticated);
+    requestId = actor.correlationId;
+    if (!canManageEmployees(actor.role)) throw new Error('EMPLOYEE_FORBIDDEN');
+    const { id } = await params;
+    const { data, error } = await authenticated.from('employees')
+      .delete()
+      .eq('id', id)
+      .eq('company_id', actor.companyId)
+      .select('id')
+      .maybeSingle();
+    if (error) throw new Error('EMPLOYEE_SAVE_UNAVAILABLE');
+    if (!data) throw new Error('EMPLOYEE_NOT_FOUND');
+    return NextResponse.json({ message: 'Employee deleted.' }, { status: 200 });
+  } catch (error) {
+    return failure('delete', requestId, error);
   }
-
-  const { error } = await supabaseAuth.from("employees").delete().eq("id", id);
-
-  if (error) {
-    return NextResponse.json({ message: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ message: "Employee deleted." }, { status: 200 });
 }

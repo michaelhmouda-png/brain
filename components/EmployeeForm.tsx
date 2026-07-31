@@ -1,7 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useLocale } from "@/components/LocaleProvider";
+import { employeeSaveMessages } from "@/lib/employees/contracts";
 import type { EmployeeCompany, EmployeeLocation } from "../lib/employee";
 import type { Department } from "../lib/department";
 
@@ -37,6 +39,8 @@ const statusOptions = ["active", "inactive", "terminated"];
 
 export default function EmployeeForm({ initialData, mode, companies, locations, departments }: EmployeeFormProps) {
   const router = useRouter();
+  const { language } = useLocale();
+  const messages = employeeSaveMessages[language];
   const [values, setValues] = useState<EmployeeFormValues>(initialData);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -51,24 +55,6 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
     [departments, values.company_id]
   );
 
-  useEffect(() => {
-    if (values.location_id && !availableLocations.some((location) => location.id === values.location_id)) {
-      setValues((current) => ({
-        ...current,
-        location_id: availableLocations[0]?.id ?? "",
-      }));
-    }
-  }, [availableLocations, values.location_id]);
-
-  useEffect(() => {
-    if (values.department_id && !availableDepartments.some((department) => department.id === values.department_id)) {
-      setValues((current) => ({
-        ...current,
-        department_id: availableDepartments[0]?.id ?? "",
-      }));
-    }
-  }, [availableDepartments, values.department_id]);
-
   const handleChange = (field: keyof EmployeeFormValues, value: string | number) => {
     setValues((current) => ({
       ...current,
@@ -82,7 +68,6 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
     setBusy(true);
 
     const payload = {
-      company_id: values.company_id,
       location_id: values.location_id || null,
       department_id: values.department_id || null,
       first_name: values.first_name.trim(),
@@ -100,21 +85,24 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
     const endpoint = mode === "create" ? "/api/employees" : `/api/employees/${values.id}`;
     const method = mode === "create" ? "POST" : "PATCH";
 
-    const response = await fetch(endpoint, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    setBusy(false);
-
-    if (!response.ok) {
-      const body = await response.json().catch(() => null);
-      setError(body?.message || "Unable to save employee.");
-      return;
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        const code = typeof body?.error === "string" ? body.error : "EMPLOYEE_SAVE_UNAVAILABLE";
+        setError((messages as Record<string, string>)[code] ?? messages.EMPLOYEE_SAVE_UNAVAILABLE);
+        return;
+      }
+      router.push("/dashboard/employees");
+    } catch {
+      setError(messages.EMPLOYEE_SAVE_UNAVAILABLE);
+    } finally {
+      setBusy(false);
     }
-
-    router.push("/dashboard/employees");
   };
 
   return (
@@ -123,10 +111,10 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
         <label className="space-y-3 text-sm text-slate-300">
           <span className="font-semibold text-white">Company</span>
           <select
-            required
+            disabled
+            aria-readonly="true"
             value={values.company_id}
-            onChange={(event) => handleChange("company_id", event.target.value)}
-            className="w-full rounded-3xl border border-white/10 bg-slate-950/90 px-4 py-3 text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
+            className="w-full rounded-3xl border border-white/10 bg-slate-950/90 px-4 py-3 text-slate-300 outline-none disabled:cursor-not-allowed disabled:opacity-80"
           >
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
@@ -188,11 +176,12 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
         <label className="space-y-3 text-sm text-slate-300">
           <span className="font-semibold text-white">Department</span>
           <select
+            required
             value={values.department_id}
             onChange={(event) => handleChange("department_id", event.target.value)}
             className="w-full rounded-3xl border border-white/10 bg-slate-950/90 px-4 py-3 text-white outline-none transition focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20"
           >
-            <option value="">No department</option>
+            <option value="">{language === "ar" ? "اختر القسم" : "Choose department"}</option>
             {availableDepartments.map((department) => (
               <option key={department.id} value={department.id}>
                 {department.name}
@@ -286,7 +275,7 @@ export default function EmployeeForm({ initialData, mode, companies, locations, 
         </label>
       </div>
 
-      {error ? <p className="rounded-3xl bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="rounded-3xl bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</p> : null}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div className="space-y-2">

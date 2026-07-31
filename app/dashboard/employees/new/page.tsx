@@ -1,69 +1,46 @@
-import { createSupabaseServerAuth } from "../../../../lib/supabaseServer";
-import type { EmployeeCompany, EmployeeLocation } from "../../../../lib/employee";
-import type { Department } from "../../../../lib/department";
-import EmployeeForm from "../../../../components/EmployeeForm";
+import { redirect } from 'next/navigation';
+import EmployeeForm from '@/components/EmployeeForm';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { canManageEmployees } from '@/lib/employees/contracts';
+import type { Department } from '@/lib/department';
+import type { EmployeeCompany, EmployeeLocation } from '@/lib/employee';
+import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 
-export const dynamic = "force-dynamic";
-
-async function getCompanies() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("companies")
-    .select("id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as EmployeeCompany[];
-}
-
-async function getLocations() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("locations")
-    .select("id, company_id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as EmployeeLocation[];
-}
-
-async function getDepartments() {
-  const supabase = await createSupabaseServerAuth();
-  const { data, error } = await supabase
-    .from("departments")
-    .select("id, company_id, name")
-    .order("name", { ascending: true });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as Department[];
-}
+export const dynamic = 'force-dynamic';
 
 export default async function NewEmployeePage() {
-  const [companies, locations, departments] = await Promise.all([getCompanies(), getLocations(), getDepartments()]);
+  const supabase = await createSupabaseServerAuth();
+  const actor = await resolveActorContext(supabase);
+  if (!canManageEmployees(actor.role)) redirect('/dashboard');
 
+  const [companyResult, locationResult, departmentResult] = await Promise.all([
+    supabase.from('companies').select('id,name').eq('id', actor.companyId).maybeSingle(),
+    supabase.from('locations').select('id,company_id,name')
+      .eq('company_id', actor.companyId).eq('status', 'active').order('name'),
+    supabase.from('departments').select('id,company_id,name')
+      .eq('company_id', actor.companyId).eq('status', 'active').order('name'),
+  ]);
+  if (companyResult.error || !companyResult.data || locationResult.error || departmentResult.error) {
+    throw new Error('EMPLOYEE_FORM_UNAVAILABLE');
+  }
+
+  const companies = [companyResult.data] as EmployeeCompany[];
+  const locations = (locationResult.data ?? []) as EmployeeLocation[];
+  const departments = (departmentResult.data ?? []) as Department[];
   const defaultValues = {
-    company_id: companies[0]?.id ?? "",
-    location_id: "",
-    department_id: "",
-    first_name: "",
-    last_name: "",
-    role: "",
-    phone: "",
-    email: "",
-    employment_type: "full-time",
+    company_id: actor.companyId,
+    location_id: '',
+    department_id: '',
+    first_name: '',
+    last_name: '',
+    role: '',
+    phone: '',
+    email: '',
+    employment_type: 'full-time',
     salary: 0,
-    hire_date: "",
-    status: "active",
-    notes: "",
+    hire_date: '',
+    status: 'active',
+    notes: '',
   };
 
   return (
