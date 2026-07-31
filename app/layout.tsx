@@ -17,6 +17,15 @@ export const metadata: Metadata = {
   title: "Brain — AI operating system for hospitality",
   description:
     "Brain is the AI operating system for restaurants, bars, clubs, and hotels.",
+  icons: {
+    apple: [
+      {
+        url: "/icons/apple-touch-icon.png",
+        sizes: "180x180",
+        type: "image/png",
+      },
+    ],
+  },
 };
 
 export const viewport: Viewport = {
