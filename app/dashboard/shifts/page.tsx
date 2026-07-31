@@ -1,7 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { ChevronLeft, ChevronRight, Plus, X } from 'lucide-react';
 import { useLocale } from '@/components/LocaleProvider';
 import { interpolateMessage } from '@/lib/i18n';
 import { isRecord, logRouteDiagnostic, stringField } from '@/lib/client-api';
@@ -9,6 +9,17 @@ import { isRecord, logRouteDiagnostic, stringField } from '@/lib/client-api';
 const days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
 type Day = (typeof days)[number];
 type ShiftTemplate = { name: string; startTime: string; endTime: string };
+type ConcreteShift = {
+  id: string;
+  employeeId: string;
+  locationId: string | null;
+  date: string;
+  startTime: string;
+  endTime: string;
+  status: 'scheduled';
+};
+type EmployeeOption = { id: string; firstName: string; lastName: string; locationId: string | null };
+type LocationOption = { id: string; name: string; timezone: string };
 type Schedule = {
   id: string;
   employeeId: string;
@@ -20,6 +31,9 @@ type SchedulePayload = {
   scope: 'personal' | 'management';
   timezone: string;
   schedules: Schedule[];
+  concreteShifts: ConcreteShift[];
+  employees: EmployeeOption[];
+  locations: LocationOption[];
   stats: { employeesScheduled: number; swapsPending: number; timeOffRequests: number } | null;
 };
 
@@ -76,8 +90,52 @@ function scheduleFrom(value: unknown): Schedule {
   };
 }
 
+function concreteShiftFrom(value: unknown): ConcreteShift {
+  if (!isRecord(value)) throw new Error('INVALID_SCHEDULE_RESPONSE');
+  const status = stringField(value, 'status');
+  const date = stringField(value, 'date');
+  const startTime = stringField(value, 'startTime');
+  const endTime = stringField(value, 'endTime');
+  const locationId = value.locationId === null ? null : stringField(value, 'locationId');
+  if (status !== 'scheduled' || !/^\d{4}-\d{2}-\d{2}$/.test(date)
+      || !/^\d{2}:\d{2}$/.test(startTime) || !/^\d{2}:\d{2}$/.test(endTime)) {
+    throw new Error('INVALID_SCHEDULE_RESPONSE');
+  }
+  return {
+    id: stringField(value, 'id'),
+    employeeId: stringField(value, 'employeeId'),
+    locationId,
+    date,
+    startTime,
+    endTime,
+    status,
+  };
+}
+
+function employeeFrom(value: unknown): EmployeeOption {
+  if (!isRecord(value)) throw new Error('INVALID_SCHEDULE_RESPONSE');
+  return {
+    id: stringField(value, 'id'),
+    firstName: stringField(value, 'firstName'),
+    lastName: stringField(value, 'lastName'),
+    locationId: value.locationId === null ? null : stringField(value, 'locationId'),
+  };
+}
+
+function locationFrom(value: unknown): LocationOption {
+  if (!isRecord(value)) throw new Error('INVALID_SCHEDULE_RESPONSE');
+  const timezone = stringField(value, 'timezone');
+  try {
+    new Intl.DateTimeFormat('en', { timeZone: timezone }).format();
+  } catch {
+    throw new Error('INVALID_SCHEDULE_RESPONSE');
+  }
+  return { id: stringField(value, 'id'), name: stringField(value, 'name'), timezone };
+}
+
 function payloadFrom(value: unknown): SchedulePayload {
-  if (!isRecord(value) || (value.scope !== 'personal' && value.scope !== 'management') || !Array.isArray(value.schedules)) {
+  if (!isRecord(value) || (value.scope !== 'personal' && value.scope !== 'management')
+      || !Array.isArray(value.schedules) || !Array.isArray(value.concreteShifts)) {
     throw new Error('INVALID_SCHEDULE_RESPONSE');
   }
   const timezone = stringField(value, 'timezone');
@@ -96,6 +154,9 @@ function payloadFrom(value: unknown): SchedulePayload {
     scope: value.scope,
     timezone,
     schedules: value.schedules.map(scheduleFrom),
+    concreteShifts: value.concreteShifts.map(concreteShiftFrom),
+    employees: value.scope === 'management' && Array.isArray(value.employees) ? value.employees.map(employeeFrom) : [],
+    locations: value.scope === 'management' && Array.isArray(value.locations) ? value.locations.map(locationFrom) : [],
     stats,
   };
 }
@@ -105,6 +166,8 @@ export default function ShiftsPage() {
   const [payload, setPayload] = useState<SchedulePayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const [createdMessage, setCreatedMessage] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayFor(dateAtTimezone(new Date(), companyTimezone)));
 
   const load = useCallback(async (signal?: AbortSignal) => {
@@ -146,10 +209,25 @@ export default function ShiftsPage() {
 
   return (
     <section className="space-y-6 rounded-[28px] border border-white/10 bg-white/5 p-4 sm:p-6">
-      <header>
-        <h1 className="text-3xl font-bold text-slate-950">{personal ? t.schedule.personalTitle : t.schedule.managementTitle}</h1>
-        <p className="mt-2 text-slate-600">{personal ? t.schedule.personalDescription : t.schedule.managementDescription}</p>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold text-slate-950">{personal ? t.schedule.personalTitle : t.schedule.managementTitle}</h1>
+          <p className="mt-2 text-slate-600">{personal ? t.schedule.personalDescription : t.schedule.managementDescription}</p>
+        </div>
+        {!personal ? (
+          <button
+            type="button"
+            onClick={() => { setCreatedMessage(null); setCreating(true); }}
+            disabled={!payload?.employees.length || !payload.locations.length}
+            className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-cyan-300 px-4 font-black text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <Plus className="h-4 w-4" aria-hidden="true" />
+            {t.schedule.createShift}
+          </button>
+        ) : null}
       </header>
+
+      {createdMessage ? <p role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-950/50 p-3 text-emerald-100">{createdMessage}</p> : null}
 
       <div className="grid grid-cols-2 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[auto_1fr_auto]">
         <button type="button" onClick={() => setWeekStart((current) => shiftDate(current, -7))} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 font-medium">
@@ -171,7 +249,7 @@ export default function ShiftsPage() {
         </div>
       ) : null}
 
-      {!loading && !error && payload?.schedules.length === 0 ? (
+      {!loading && !error && payload?.schedules.length === 0 && payload.concreteShifts.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-8 text-center text-slate-600">
           {personal ? t.schedule.noSchedules : t.schedule.noManagementSchedules}
         </div>
@@ -180,8 +258,11 @@ export default function ShiftsPage() {
       {!loading && !error && personal && payload ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {days.map((day, index) => {
-            const shift = payload.schedules[0]?.days[day] ?? null;
             const date = shiftDate(weekStart, index);
+            const concrete = payload.concreteShifts.find((shift) => shift.date === date) ?? null;
+            const shift = concrete
+              ? { name: t.schedule.scheduled, startTime: concrete.startTime, endTime: concrete.endTime }
+              : payload.schedules[0]?.days[day] ?? null;
             return (
               <article key={day} className="rounded-2xl border border-slate-200 bg-white p-4">
                 <p className="font-semibold text-slate-950">{t.schedule.days[day]}</p>
@@ -196,6 +277,25 @@ export default function ShiftsPage() {
             );
           })}
         </div>
+      ) : null}
+
+      {!loading && !error && !personal && payload?.concreteShifts.length ? (
+        <section aria-labelledby="concrete-shifts-title">
+          <h2 id="concrete-shifts-title" className="mb-3 text-lg font-bold text-slate-950">{t.schedule.concreteShifts}</h2>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {payload.concreteShifts.map((shift) => {
+              const employee = payload.employees.find((row) => row.id === shift.employeeId);
+              const location = payload.locations.find((row) => row.id === shift.locationId);
+              return (
+                <article key={shift.id} className="rounded-2xl border border-white/10 bg-slate-950/80 p-4 text-white">
+                  <p className="font-bold" dir="auto">{employee ? `${employee.firstName} ${employee.lastName}`.trim() : t.schedule.employee}</p>
+                  <p className="mt-1 text-sm text-slate-300">{shift.date} · <bdi dir="ltr">{shift.startTime}–{shift.endTime}</bdi></p>
+                  {location ? <p className="mt-1 text-xs text-slate-400" dir="auto">{location.name} · <bdi dir="ltr">{location.timezone}</bdi></p> : null}
+                </article>
+              );
+            })}
+          </div>
+        </section>
       ) : null}
 
       {!loading && !error && !personal && payload?.schedules.length ? (
@@ -231,6 +331,141 @@ export default function ShiftsPage() {
           ].map(([label, value]) => <article key={String(label)} className="rounded-2xl border border-slate-200 bg-white p-4"><p className="text-2xl font-bold">{new Intl.NumberFormat(locale).format(Number(value))}</p><p className="mt-1 text-sm text-slate-600">{label}</p></article>)}
         </div>
       ) : null}
+
+      {creating && payload ? (
+        <CreateShiftDialog
+          employees={payload.employees}
+          locations={payload.locations}
+          initialDate={weekStart}
+          t={t.schedule}
+          onClose={() => setCreating(false)}
+          onCreated={async () => {
+            await load();
+            setCreatedMessage(t.schedule.shiftCreated);
+            setCreating(false);
+          }}
+        />
+      ) : null}
     </section>
+  );
+}
+
+type ScheduleCopy = ReturnType<typeof useLocale>['messages']['schedule'];
+
+function creationErrorMessage(code: string, t: ScheduleCopy) {
+  if (code === 'SHIFT_INPUT_INVALID') return t.inputInvalid;
+  if (code === 'SHIFT_EMPLOYEE_INVALID') return t.employeeInvalid;
+  if (code === 'SHIFT_LOCATION_INVALID') return t.locationInvalid;
+  if (code === 'SHIFT_LOCAL_TIME_INVALID') return t.localTimeInvalid;
+  if (code === 'SHIFT_DUPLICATE') return t.duplicate;
+  if (code === 'SHIFT_CONFLICT') return t.conflict;
+  return t.unavailable;
+}
+
+function CreateShiftDialog({ employees, locations, initialDate, t, onClose, onCreated }: {
+  employees: EmployeeOption[];
+  locations: LocationOption[];
+  initialDate: string;
+  t: ScheduleCopy;
+  onClose(): void;
+  onCreated(): Promise<void>;
+}) {
+  const [employeeId, setEmployeeId] = useState(employees[0]?.id ?? '');
+  const [locationId, setLocationId] = useState(locations[0]?.id ?? '');
+  const [date, setDate] = useState(initialDate);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const location = locations.find((row) => row.id === locationId);
+  const overnight = Boolean(startTime && endTime && endTime <= startTime);
+
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (pending) return;
+    setPending(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/shifts', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({
+          action: 'create_shift',
+          data: { employeeId, locationId, date, startTime, endTime },
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        const code = isRecord(body) && typeof body.error === 'string' ? body.error : 'SHIFT_UNAVAILABLE';
+        throw new Error(code);
+      }
+      await onCreated();
+    } catch (reason) {
+      const code = reason instanceof Error ? reason.message : 'SHIFT_UNAVAILABLE';
+      setError(creationErrorMessage(code, t));
+    } finally {
+      setPending(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/75 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="create-shift-title">
+      <form onSubmit={(event) => void submit(event)} className="max-h-[100dvh] w-full overflow-y-auto overscroll-contain bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-white sm:max-w-lg sm:rounded-3xl sm:border sm:border-white/10">
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <h2 id="create-shift-title" className="text-xl font-black">{t.createShiftTitle}</h2>
+            <p className="mt-1 text-sm text-slate-400">{t.createShiftDescription}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label={t.cancel} className="grid min-h-11 min-w-11 place-items-center rounded-xl border border-white/10">
+            <X className="h-5 w-5" aria-hidden="true" />
+          </button>
+        </header>
+
+        <div className="mt-5 grid gap-4">
+          <label className="text-sm text-slate-300">
+            <span className="mb-1 block">{t.employee}</span>
+            <select required value={employeeId} onChange={(event) => setEmployeeId(event.target.value)} className="input">
+              {employees.map((employee) => <option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-slate-300">
+            <span className="mb-1 block">{t.location}</span>
+            <select required value={locationId} onChange={(event) => setLocationId(event.target.value)} className="input">
+              {locations.map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-slate-300">
+            <span className="mb-1 block">{t.date}</span>
+            <input required type="date" value={date} onChange={(event) => setDate(event.target.value)} className="input" />
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm text-slate-300">
+              <span className="mb-1 block">{t.startTime}</span>
+              <input required type="time" value={startTime} onChange={(event) => setStartTime(event.target.value)} className="input" />
+            </label>
+            <label className="text-sm text-slate-300">
+              <span className="mb-1 block">{t.endTime}</span>
+              <input required type="time" value={endTime} onChange={(event) => setEndTime(event.target.value)} className="input" />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4 text-sm">
+          <p>{date} · <bdi dir="ltr">{startTime}–{endTime}</bdi></p>
+          <p className="mt-1 text-slate-300">{t.timezone}: <bdi dir="ltr">{location?.timezone ?? '—'}</bdi></p>
+          {overnight ? <p className="mt-1 text-amber-200">{t.overnight}</p> : null}
+        </div>
+
+        {error ? <p role="alert" className="mt-4 rounded-xl border border-red-400/30 bg-red-950/60 p-3 text-red-100">{error}</p> : null}
+
+        <footer className="sticky bottom-0 mt-5 flex gap-3 border-t border-white/10 bg-slate-950 pt-4 pb-[max(0rem,env(safe-area-inset-bottom))]">
+          <button type="button" onClick={onClose} disabled={pending} className="min-h-11 flex-1 rounded-xl border border-white/15 font-bold">{t.cancel}</button>
+          <button type="submit" disabled={pending || !employeeId || !locationId} className="min-h-11 flex-1 rounded-xl bg-cyan-300 font-black text-slate-950 disabled:opacity-50">
+            {pending ? t.creating : t.create}
+          </button>
+        </footer>
+      </form>
+    </div>
   );
 }

@@ -94,7 +94,8 @@ test('schedule API derives employee scope from ActorContext and never returns co
   const route = await read('app/api/shifts/route.ts');
   assert.match(route, /const employeeId = authorization\.role === 'employee' \? authorization\.employeeId!/);
   assert.match(route, /if \(employeeId\) scheduleQuery = scheduleQuery\.eq\('employee_id', employeeId\)/);
-  assert.match(route, /authorization\.role === 'employee'\s*\? \[\]\s*: \[\.\.\.new Set/);
+  assert.match(route, /authorization\.role === 'employee'\s*\? \{ data: \[\], error: null \}\s*: await supabase\.from\('employees'\)/);
+  assert.match(route, /if \(employeeId\) concreteQuery = concreteQuery\.eq\('employee_id', employeeId\)/);
   assert.match(route, /employee: authorization\.role === 'employee' \? undefined/);
   assert.match(route, /stats = authorization\.role === 'employee' \? null|if \(authorization\.role !== 'employee'\)/);
   assert.match(route, /\.eq\('company_id', authorization\.companyId\)/);
@@ -109,7 +110,9 @@ test('schedule write and item routes enforce employee denial and own-item reads 
     read('app/api/shifts/[id]/route.ts'),
     read('proxy.ts'),
   ]);
-  assert.equal((collection.match(/authorization\.role === 'employee'\) return NextResponse\.json\(\{ error: 'Forbidden' \}, \{ status: 403 \}\)/g) ?? []).length, 3);
+  assert.equal((collection.match(/authorization\.role === 'employee'\) return NextResponse\.json\(\{ error: 'Forbidden' \}, \{ status: 403 \}\)/g) ?? []).length, 2);
+  assert.match(collection, /resolveActorContext\(supabase\)/);
+  assert.match(collection, /if \(!canManageShifts\(actor\.role\)\)/);
   assert.match(item, /authorization\.role === 'employee' && shift\.employee_id !== authorization\.employeeId/);
   assert.equal((item.match(/authorization\.role === 'employee'\) return NextResponse\.json\(\{ error: 'Forbidden' \}, \{ status: 403 \}\)/g) ?? []).length, 2);
   assert.match(proxy, /pathname\.startsWith\('\/api\/shifts'\) && request\.method !== 'GET'/);

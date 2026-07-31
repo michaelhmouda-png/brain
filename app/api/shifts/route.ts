@@ -4,11 +4,25 @@
  * POST /api/shifts - Create shift
  */
 
-import { createSupabaseServerAuth } from '@/lib/supabaseServer';
+import { createSupabaseServer, createSupabaseServerAuth } from '@/lib/supabaseServer';
 import { ShiftManagementService } from '@/lib/shift-management';
 import { ActivityTimelineService } from '@/lib/activity-timeline';
 import { NextRequest, NextResponse } from 'next/server';
 import { authorizeCompanyApiRequestFromSupabase } from '@/lib/company-api-authorization.server';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { ActorContextError } from '@/lib/brain/kernel/errors';
+import { canManageShifts } from '@/lib/shifts/contracts';
+import { createConcreteShift, normalizeShiftCreationError } from '@/lib/shifts/service.server';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+const NO_STORE = { 'Cache-Control': 'private, no-store, max-age=0', Vary: 'Cookie, Authorization' };
+
+function addCalendarDays(date: string, days: number) {
+  const instant = new Date(`${date}T12:00:00.000Z`);
+  instant.setUTCDate(instant.getUTCDate() + days);
+  return instant.toISOString().slice(0, 10);
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -68,12 +82,13 @@ export async function GET(req: NextRequest) {
       if (templateError) throw new Error('SCHEDULE_TEMPLATE_QUERY_FAILED');
       const templateById = new Map((templates ?? []).map((template) => [template.id, template]));
 
-      const employeeIds = authorization.role === 'employee'
-        ? []
-        : [...new Set((scheduleRows ?? []).map((row) => row.employee_id))];
-      const { data: employees, error: employeeError } = employeeIds.length
-        ? await supabase.from('employees').select('id,first_name,last_name').eq('company_id', authorization.companyId).eq('status', 'active').in('id', employeeIds)
-        : { data: [], error: null };
+      const { data: employees, error: employeeError } = authorization.role === 'employee'
+        ? { data: [], error: null }
+        : await supabase.from('employees')
+          .select('id,first_name,last_name,location_id')
+          .eq('company_id', authorization.companyId)
+          .eq('status', 'active')
+          .order('first_name');
       if (employeeError) throw new Error('SCHEDULE_EMPLOYEE_QUERY_FAILED');
       const employeeById = new Map((employees ?? []).map((employee) => [employee.id, employee]));
       const dayNames = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'] as const;
@@ -87,6 +102,28 @@ export async function GET(req: NextRequest) {
           return [day, template ? { name: template.name, startTime: template.start_time, endTime: template.end_time } : null];
         })),
       }));
+      let concreteQuery = supabase
+        .from('shifts')
+        .select('id,employee_id,location_id,shift_date,start_time,end_time,status')
+        .eq('company_id', authorization.companyId)
+        .eq('status', 'scheduled')
+        .gte('shift_date', weekStart)
+        .lte('shift_date', addCalendarDays(weekStart, 6))
+        .order('shift_date')
+        .order('start_time');
+      if (employeeId) concreteQuery = concreteQuery.eq('employee_id', employeeId);
+      const { data: concreteRows, error: concreteError } = await concreteQuery;
+      if (concreteError) throw new Error('SCHEDULE_CONCRETE_QUERY_FAILED');
+
+      const { data: locations, error: locationError } = authorization.role === 'employee'
+        ? { data: [], error: null }
+        : await supabase.from('locations')
+          .select('id,name,timezone')
+          .eq('company_id', authorization.companyId)
+          .eq('status', 'active')
+          .order('name');
+      if (locationError) throw new Error('SCHEDULE_LOCATION_QUERY_FAILED');
+
       const { data: company, error: companyError } = await supabase
         .from('companies')
         .select('timezone')
@@ -108,7 +145,10 @@ export async function GET(req: NextRequest) {
         ]);
         if (swapsError || timeOffError) throw new Error('SCHEDULE_STATS_QUERY_FAILED');
         stats = {
-          employeesScheduled: schedules.length,
+          employeesScheduled: new Set([
+            ...schedules.map((schedule) => schedule.employee_id),
+            ...(concreteRows ?? []).map((shift) => shift.employee_id),
+          ]).size,
           swapsPending: swapsPending ?? 0,
           timeOffRequests: timeOffRequests ?? 0,
         };
@@ -117,8 +157,26 @@ export async function GET(req: NextRequest) {
         scope: authorization.role === 'employee' ? 'personal' : 'management',
         timezone: company.timezone,
         schedules,
+        concreteShifts: (concreteRows ?? []).map((shift) => ({
+          id: shift.id,
+          employeeId: shift.employee_id,
+          locationId: shift.location_id,
+          date: shift.shift_date,
+          startTime: String(shift.start_time).slice(0, 5),
+          endTime: String(shift.end_time).slice(0, 5),
+          status: shift.status,
+        })),
+        ...(authorization.role === 'employee' ? {} : {
+          employees: (employees ?? []).map((employee) => ({
+            id: employee.id,
+            firstName: employee.first_name,
+            lastName: employee.last_name,
+            locationId: employee.location_id,
+          })),
+          locations: locations ?? [],
+        }),
         stats,
-      });
+      }, { headers: NO_STORE });
     }
 
     if (type === 'recurring') {
@@ -166,26 +224,35 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const supabase = await createSupabaseServerAuth();
-    const authorization = await authorizeCompanyApiRequestFromSupabase(supabase);
-    if (!authorization.authorized) return NextResponse.json({ error: 'Unauthorized' }, { status: authorization.status });
-    if (authorization.role === 'employee') return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    const actor = await resolveActorContext(supabase);
+    if (!canManageShifts(actor.role)) {
+      return NextResponse.json({ error: 'SHIFT_FORBIDDEN' }, { status: 403, headers: NO_STORE });
+    }
 
-    const shiftService = new ShiftManagementService(supabase, authorization.companyId);
-    const timelineService = new ActivityTimelineService(supabase, authorization.companyId);
+    const shiftService = new ShiftManagementService(supabase, actor.companyId);
+    const timelineService = new ActivityTimelineService(supabase, actor.companyId);
 
-    const body = await req.json();
+    const body = await req.json().catch(() => null);
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return NextResponse.json({ error: 'SHIFT_INPUT_INVALID' }, { status: 400, headers: NO_STORE });
+    }
     const { action, data } = body;
+
+    if (action === 'create_shift') {
+      const shift = await createConcreteShift(supabase, createSupabaseServer(), actor, data);
+      return NextResponse.json({ data: shift }, { status: 201, headers: NO_STORE });
+    }
 
     if (action === 'create_schedule') {
       const schedule = await shiftService.upsertWeeklySchedule(
         data.employeeId,
         data.weekStartDate,
         data.schedule,
-        authorization.userId
+        actor.profileId
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'schedule_created',
         'schedule',
         schedule.id,
@@ -202,11 +269,11 @@ export async function POST(req: NextRequest) {
         data.dayOfWeek,
         data.startDate,
         data.endDate || null,
-        authorization.userId
+        actor.profileId
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'recurring_shift_created',
         'recurring_shift',
         shift.id,
@@ -224,7 +291,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'clock_in',
         'attendance',
         record.id,
@@ -243,7 +310,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'clock_out',
         'attendance',
         record.id,
@@ -263,7 +330,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'shift_swap_requested',
         'shift_swap',
         swap.id,
@@ -282,7 +349,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'time_off_requested',
         'time_off_request',
         request.id,
@@ -302,7 +369,7 @@ export async function POST(req: NextRequest) {
       );
 
       await timelineService.logActivity(
-        authorization.userId,
+        actor.profileId,
         'shift_template_created',
         'shift_template',
         template.id,
@@ -312,10 +379,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(template);
     }
 
-    return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    return NextResponse.json({ error: 'Invalid action' }, { status: 400, headers: NO_STORE });
   } catch (error) {
-    console.error('[Shifts API] POST error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    if (error instanceof ActorContextError) {
+      return NextResponse.json(
+        { error: error.code },
+        { status: error.code === 'UNAUTHENTICATED' ? 401 : 403, headers: NO_STORE },
+      );
+    }
+    const code = normalizeShiftCreationError(error);
+    if (code !== 'SHIFT_UNAVAILABLE') {
+      const status = code === 'SHIFT_FORBIDDEN' ? 403
+        : code === 'SHIFT_DUPLICATE' || code === 'SHIFT_CONFLICT' ? 409 : 400;
+      return NextResponse.json({ error: code }, { status, headers: NO_STORE });
+    }
+    console.error('[Shifts API] POST unavailable');
+    return NextResponse.json({ error: 'SHIFT_UNAVAILABLE' }, { status: 503, headers: NO_STORE });
   }
 }
 
