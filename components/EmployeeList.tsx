@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { Employee, EmployeeCompany, EmployeeLocation } from "../lib/employee";
+import { employeeRelationshipName } from "../lib/employees/list-projection";
 
 type EmployeeListProps = {
   employees: Employee[];
@@ -140,8 +141,8 @@ export default function EmployeeList({ employees, companies, locations }: Employ
                     <div className="text-xs text-slate-500">{employee.company?.name ?? "Unknown company"}</div>
                   </td>
                   <td className="px-6 py-5 align-middle text-sm text-slate-300">{employee.role}</td>
-                  <td className="px-6 py-5 align-middle text-sm text-slate-300">{employee.department?.name ?? "Unassigned"}</td>
-                  <td className="px-6 py-5 align-middle text-sm text-slate-300">{employee.location?.name ?? "Unassigned"}</td>
+                  <td className="px-6 py-5 align-middle text-sm text-slate-300">{employeeRelationshipName(employee.department, "Unassigned")}</td>
+                  <td className="px-6 py-5 align-middle text-sm text-slate-300">{employeeRelationshipName(employee.location, "Unassigned")}</td>
                   <td className="px-6 py-5 align-middle text-sm text-slate-300">{employee.phone ?? "—"}</td>
                   <td className="px-6 py-5 align-middle text-sm text-slate-300">{employee.status}</td>
                   <td className="px-6 py-5 align-middle text-sm">

@@ -28,5 +28,5 @@ export type Employee = {
   updated_at: string;
   company?: EmployeeCompany | null;
   location?: EmployeeLocation | null;
-  department?: { id: string; name: string } | null;
+  department?: { id: string; company_id: string; name: string } | null;
 };

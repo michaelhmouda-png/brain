@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseServerAuth } from "../../../lib/supabaseServer";
-import type { Employee, EmployeeCompany, EmployeeLocation } from "../../../lib/employee";
+import type { EmployeeCompany, EmployeeLocation } from "../../../lib/employee";
 import EmployeeList from "../../../components/EmployeeList";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { authorizeCompanyApiRequestFromSupabase } from "../../../lib/company-api-authorization.server";
@@ -8,27 +8,9 @@ import {
   ACTIVE_EMPLOYEE_STATUS,
   isEmployeeProfileComplete,
 } from "../../../lib/employee-profile-completeness";
+import { loadEmployeeList } from "../../../lib/employees/list-projection";
 
 export const dynamic = "force-dynamic";
-
-async function getEmployees(supabase: SupabaseClient, companyId: string) {
-  const { data, error } = await supabase
-    .from("employees")
-    .select(`id, company_id, location_id, department_id, first_name, last_name, role, phone, email, employment_type, salary, hire_date, status, notes, created_at, updated_at, company:companies(id, name), location:locations(id, company_id, name), departments!employees_department_id_fkey(id, name)`)
-    .eq("company_id", companyId)
-    .order("created_at", { ascending: false });
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return ((data ?? []) as any[]).map((item) => ({
-    ...item,
-    company: Array.isArray(item.company) ? item.company[0] ?? null : item.company ?? null,
-    location: Array.isArray(item.location) ? item.location[0] ?? null : item.location ?? null,
-    department: Array.isArray(item.department) ? item.department[0] ?? null : item.department ?? null,
-  })) as Employee[];
-}
 
 async function getCompanies(supabase: SupabaseClient, companyId: string) {
   const { data, error } = await supabase
@@ -64,7 +46,7 @@ export default async function EmployeesPage() {
   if (!authorization.authorized) throw new Error("User not authenticated");
 
   const [employees, companies, locations] = await Promise.all([
-    getEmployees(supabase, authorization.companyId),
+    loadEmployeeList(supabase, authorization.companyId),
     getCompanies(supabase, authorization.companyId),
     getLocations(supabase, authorization.companyId),
   ]);
