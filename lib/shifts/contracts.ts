@@ -10,6 +10,16 @@ export interface CreateConcreteShiftInput {
   endTime: string;
 }
 
+export type WeeklyShiftScheduleInput = {
+  employeeIds: string[];
+  locationId: string;
+  weekdays: number[];
+  startTime: string;
+  endTime: string;
+  startDate: string;
+  endDate: string | null;
+};
+
 function exactRecord(value: unknown, keys: readonly string[]) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('SHIFT_INPUT_INVALID');
   const record = value as Record<string, unknown>;
@@ -36,6 +46,31 @@ export function parseCreateConcreteShift(value: unknown): CreateConcreteShiftInp
     date: row.date,
     startTime: row.startTime,
     endTime: row.endTime,
+  };
+}
+
+export function parseWeeklyShiftSchedule(value: unknown): WeeklyShiftScheduleInput {
+  const row = exactRecord(value, ['employeeIds', 'locationId', 'weekdays', 'startTime', 'endTime', 'startDate', 'endDate']);
+  if (!Array.isArray(row.employeeIds) || row.employeeIds.length < 1 || row.employeeIds.length > 100
+      || row.employeeIds.some((id) => typeof id !== 'string' || !UUID.test(id))
+      || new Set(row.employeeIds).size !== row.employeeIds.length
+      || typeof row.locationId !== 'string' || !UUID.test(row.locationId)
+      || !Array.isArray(row.weekdays) || row.weekdays.length < 1 || row.weekdays.length > 7
+      || row.weekdays.some((day) => !Number.isInteger(day) || Number(day) < 0 || Number(day) > 6)
+      || new Set(row.weekdays).size !== row.weekdays.length
+      || typeof row.startTime !== 'string' || !TIME.test(row.startTime)
+      || typeof row.endTime !== 'string' || !TIME.test(row.endTime)
+      || typeof row.startDate !== 'string' || !DATE.test(row.startDate)
+      || row.endDate !== null && (typeof row.endDate !== 'string' || !DATE.test(row.endDate))
+      || typeof row.endDate === 'string' && row.endDate < row.startDate) throw new Error('WEEKLY_SHIFT_INPUT_INVALID');
+  return {
+    employeeIds: [...row.employeeIds] as string[],
+    locationId: row.locationId,
+    weekdays: [...row.weekdays].map(Number).sort((a, b) => a - b),
+    startTime: row.startTime,
+    endTime: row.endTime,
+    startDate: row.startDate,
+    endDate: row.endDate as string | null,
   };
 }
 

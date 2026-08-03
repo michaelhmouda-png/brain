@@ -222,6 +222,10 @@ const v3Messages = {
       localTimeInvalid: 'This local time is invalid or ambiguous in the selected timezone.',
       duplicate: 'This exact shift already exists.', conflict: 'This employee already has a conflicting shift.',
       unavailable: 'The shift could not be created. Try again.',
+      createWeekly: 'Create weekly schedule', weeklyTitle: 'Recurring weekly schedule', weeklyDescription: 'Preview an atomic schedule for one or more employees.',
+      workingDays: 'Working days', startDate: 'Start date', optionalEndDate: 'End date (optional)', preview: 'Preview shifts', generatedShifts: 'generated shifts', confirmAll: 'Confirm complete batch', weeklyCreated: 'Weekly schedules created.',
+      allEmployees: 'All employees', allLocations: 'All locations', department: 'Department', allDepartments: 'All departments', status: 'Status', cancelled: 'Cancelled', completed: 'Completed',
+      weeklySchedules: 'Recurring weekly schedules', manage: 'Manage', manageWeekly: 'Manage weekly schedule', action: 'Action', pause: 'Pause', resume: 'Resume', endSchedule: 'End on a future date', futureEdit: 'Future schedule change', exception: 'Date exception', dayOff: 'Day off', approvedLeave: 'Approved leave', override: 'Temporary override', save: 'Save',
       days: { monday: 'Monday', tuesday: 'Tuesday', wednesday: 'Wednesday', thursday: 'Thursday', friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday' },
     },
     notificationSettings: {
@@ -451,6 +455,10 @@ const v3Messages = {
       localTimeInvalid: 'هذا الوقت المحلي غير صالح أو ملتبس في المنطقة الزمنية المحددة.',
       duplicate: 'هذه الوردية موجودة بالفعل.', conflict: 'لدى هذا الموظف وردية متعارضة.',
       unavailable: 'تعذّر إنشاء الوردية. حاول مجددًا.',
+      createWeekly: 'إنشاء جدول أسبوعي', weeklyTitle: 'جدول ورديات أسبوعي متكرر', weeklyDescription: 'عاين جدولاً ذرياً لموظف واحد أو عدة موظفين.',
+      workingDays: 'أيام العمل', startDate: 'تاريخ البدء', optionalEndDate: 'تاريخ الانتهاء (اختياري)', preview: 'معاينة الورديات', generatedShifts: 'ورديات منشأة', confirmAll: 'تأكيد الدفعة كاملة', weeklyCreated: 'تم إنشاء الجداول الأسبوعية.',
+      allEmployees: 'كل الموظفين', allLocations: 'كل المواقع', department: 'القسم', allDepartments: 'كل الأقسام', status: 'الحالة', cancelled: 'ملغاة', completed: 'مكتملة',
+      weeklySchedules: 'جداول الورديات الأسبوعية', manage: 'إدارة', manageWeekly: 'إدارة الجدول الأسبوعي', action: 'الإجراء', pause: 'إيقاف مؤقت', resume: 'استئناف', endSchedule: 'إنهاء في تاريخ مستقبلي', futureEdit: 'تغيير مستقبلي للجدول', exception: 'استثناء تاريخ', dayOff: 'يوم عطلة', approvedLeave: 'إجازة معتمدة', override: 'تعديل مؤقت', save: 'حفظ',
       days: { monday: 'الاثنين', tuesday: 'الثلاثاء', wednesday: 'الأربعاء', thursday: 'الخميس', friday: 'الجمعة', saturday: 'السبت', sunday: 'الأحد' },
     },
     notificationSettings: {

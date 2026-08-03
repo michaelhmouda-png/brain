@@ -2,6 +2,7 @@ import webPush from 'web-push';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { enqueueLegacyTaskLocalizationBatch, processOneTaskLocalization } from '@/lib/task-localization.server';
 import { processRecurringTaskWork } from '@/lib/recurring-tasks/service.server';
+import { materializeWeeklyShiftSchedules } from '@/lib/shifts/weekly.server';
 
 type Claim = { job_id: string; lease_token: string; endpoint: string; p256dh: string; auth_key: string; notification_id: string; title: string; summary: string; route: string };
 
@@ -49,6 +50,7 @@ async function processLocalizationAfterNotifications(supabase: ReturnType<typeof
 
 async function processRecurringAfterNotifications(supabase: ReturnType<typeof createSupabaseServer>) {
   try {
+    await materializeWeeklyShiftSchedules(supabase);
     await processRecurringTaskWork(supabase);
   } catch (error) {
     console.warn('[Notification Worker] recurring task work unavailable', {

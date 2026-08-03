@@ -13,6 +13,7 @@ import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
 import { ActorContextError } from '@/lib/brain/kernel/errors';
 import { canManageShifts } from '@/lib/shifts/contracts';
 import { createConcreteShift, normalizeShiftCreationError } from '@/lib/shifts/service.server';
+import { confirmWeeklyShiftSchedule, manageWeeklyShiftSchedules, normalizeWeeklyShiftError, previewWeeklyShiftSchedule } from '@/lib/shifts/weekly.server';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -55,6 +56,8 @@ export async function GET(req: NextRequest) {
     const dateTo = url.searchParams.get('dateTo') || undefined;
 
     const weekStart = url.searchParams.get('weekStart');
+    const locationId = url.searchParams.get('locationId') || undefined;
+    const departmentId = url.searchParams.get('departmentId') || undefined;
 
     if (type === 'schedules' && weekStart) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(weekStart)) {
@@ -85,7 +88,7 @@ export async function GET(req: NextRequest) {
       const { data: employees, error: employeeError } = authorization.role === 'employee'
         ? { data: [], error: null }
         : await supabase.from('employees')
-          .select('id,first_name,last_name,location_id')
+          .select('id,first_name,last_name,location_id,department_id,department:departments!employees_department_id_fkey(id,name)')
           .eq('company_id', authorization.companyId)
           .eq('status', 'active')
           .order('first_name');
@@ -106,12 +109,17 @@ export async function GET(req: NextRequest) {
         .from('shifts')
         .select('id,employee_id,location_id,shift_date,start_time,end_time,status')
         .eq('company_id', authorization.companyId)
-        .eq('status', 'scheduled')
+        .eq('status', status || 'scheduled')
         .gte('shift_date', weekStart)
         .lte('shift_date', addCalendarDays(weekStart, 6))
         .order('shift_date')
         .order('start_time');
       if (employeeId) concreteQuery = concreteQuery.eq('employee_id', employeeId);
+      if (locationId) concreteQuery = concreteQuery.eq('location_id', locationId);
+      if (departmentId && authorization.role !== 'employee') {
+        const matchingEmployeeIds = (employees ?? []).filter((employee) => employee.department_id === departmentId).map((employee) => employee.id);
+        concreteQuery = matchingEmployeeIds.length ? concreteQuery.in('employee_id', matchingEmployeeIds) : concreteQuery.in('employee_id', ['00000000-0000-0000-0000-000000000000']);
+      }
       const { data: concreteRows, error: concreteError } = await concreteQuery;
       if (concreteError) throw new Error('SCHEDULE_CONCRETE_QUERY_FAILED');
 
@@ -138,7 +146,19 @@ export async function GET(req: NextRequest) {
         throw new Error('SCHEDULE_TIMEZONE_QUERY_FAILED');
       }
       let stats = null;
+      let weeklySeries: unknown[] = [];
       if (authorization.role !== 'employee') {
+        let seriesQuery = supabase.from('weekly_shift_schedule_series')
+          .select('id,employee_id,location_id,status,current_version,weekly_shift_schedule_versions(version,weekdays,start_time,end_time,effective_from,effective_until)')
+          .eq('company_id', authorization.companyId).order('created_at', { ascending: false });
+        if (employeeId) seriesQuery = seriesQuery.eq('employee_id', employeeId);
+        if (locationId) seriesQuery = seriesQuery.eq('location_id', locationId);
+        const { data: seriesRows, error: seriesError } = await seriesQuery;
+        if (seriesError) throw new Error('WEEKLY_SERIES_QUERY_FAILED');
+        weeklySeries = (seriesRows ?? []).filter((series) => {
+          const employee = (employees ?? []).find((row) => row.id === series.employee_id);
+          return !departmentId || employee?.department_id === departmentId;
+        });
         const [{ count: swapsPending, error: swapsError }, { count: timeOffRequests, error: timeOffError }] = await Promise.all([
           supabase.from('shift_swaps').select('id', { count: 'exact', head: true }).eq('company_id', authorization.companyId).eq('status', 'pending'),
           supabase.from('time_off_requests').select('id', { count: 'exact', head: true }).eq('company_id', authorization.companyId).eq('status', 'pending'),
@@ -172,10 +192,13 @@ export async function GET(req: NextRequest) {
             firstName: employee.first_name,
             lastName: employee.last_name,
             locationId: employee.location_id,
+            departmentId: employee.department_id,
+            departmentName: Array.isArray(employee.department) ? employee.department[0]?.name ?? null : null,
           })),
           locations: locations ?? [],
         }),
         stats,
+        ...(authorization.role === 'employee' ? {} : { weeklySeries }),
       }, { headers: NO_STORE });
     }
 
@@ -241,6 +264,21 @@ export async function POST(req: NextRequest) {
     if (action === 'create_shift') {
       const shift = await createConcreteShift(supabase, createSupabaseServer(), actor, data);
       return NextResponse.json({ data: shift }, { status: 201, headers: NO_STORE });
+    }
+
+    if (action === 'preview_weekly_schedule') {
+      const preview = await previewWeeklyShiftSchedule(createSupabaseServer(), actor, data);
+      return NextResponse.json({ data: preview }, { headers: NO_STORE });
+    }
+
+    if (action === 'confirm_weekly_schedule') {
+      const result = await confirmWeeklyShiftSchedule(createSupabaseServer(), actor, data, body.previewToken);
+      return NextResponse.json({ data: result }, { status: 201, headers: NO_STORE });
+    }
+
+    if (action === 'manage_weekly_schedule') {
+      const result = await manageWeeklyShiftSchedules(createSupabaseServer(), actor, data?.scheduleAction, data?.seriesIds, data?.input ?? {});
+      return NextResponse.json({ data: result }, { headers: NO_STORE });
     }
 
     if (action === 'create_schedule') {
@@ -386,6 +424,12 @@ export async function POST(req: NextRequest) {
         { error: error.code },
         { status: error.code === 'UNAUTHENTICATED' ? 401 : 403, headers: NO_STORE },
       );
+    }
+    const weeklyCode = normalizeWeeklyShiftError(error);
+    if (weeklyCode !== 'WEEKLY_SHIFT_UNAVAILABLE') {
+      const status = weeklyCode === 'WEEKLY_SHIFT_FORBIDDEN' ? 403
+        : weeklyCode === 'WEEKLY_SHIFT_CONFLICT' || weeklyCode === 'WEEKLY_SHIFT_DUPLICATE' || weeklyCode === 'WEEKLY_SHIFT_STALE_PREVIEW' ? 409 : 400;
+      return NextResponse.json({ error: weeklyCode }, { status, headers: NO_STORE });
     }
     const code = normalizeShiftCreationError(error);
     if (code !== 'SHIFT_UNAVAILABLE') {

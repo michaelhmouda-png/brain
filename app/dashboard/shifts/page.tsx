@@ -18,7 +18,7 @@ type ConcreteShift = {
   endTime: string;
   status: 'scheduled';
 };
-type EmployeeOption = { id: string; firstName: string; lastName: string; locationId: string | null };
+type EmployeeOption = { id: string; firstName: string; lastName: string; locationId: string | null; departmentId: string | null; departmentName: string | null };
 type LocationOption = { id: string; name: string; timezone: string };
 type Schedule = {
   id: string;
@@ -27,6 +27,7 @@ type Schedule = {
   employee: { firstName: string; lastName: string } | null;
   days: Record<Day, ShiftTemplate | null>;
 };
+type WeeklySeries={id:string;employeeId:string;locationId:string;status:'active'|'paused'|'ended';currentVersion:number;weekdays:number[];startTime:string;endTime:string;effectiveFrom:string;effectiveUntil:string|null};
 type SchedulePayload = {
   scope: 'personal' | 'management';
   timezone: string;
@@ -35,6 +36,7 @@ type SchedulePayload = {
   employees: EmployeeOption[];
   locations: LocationOption[];
   stats: { employeesScheduled: number; swapsPending: number; timeOffRequests: number } | null;
+  weeklySeries: WeeklySeries[];
 };
 
 function dateAtTimezone(instant: Date, timezone: string): string {
@@ -119,6 +121,8 @@ function employeeFrom(value: unknown): EmployeeOption {
     firstName: stringField(value, 'firstName'),
     lastName: stringField(value, 'lastName'),
     locationId: value.locationId === null ? null : stringField(value, 'locationId'),
+    departmentId: value.departmentId === null ? null : stringField(value, 'departmentId'),
+    departmentName: value.departmentName === null ? null : stringField(value, 'departmentName'),
   };
 }
 
@@ -158,6 +162,7 @@ function payloadFrom(value: unknown): SchedulePayload {
     employees: value.scope === 'management' && Array.isArray(value.employees) ? value.employees.map(employeeFrom) : [],
     locations: value.scope === 'management' && Array.isArray(value.locations) ? value.locations.map(locationFrom) : [],
     stats,
+    weeklySeries: value.scope==='management'&&Array.isArray(value.weeklySeries)?value.weeklySeries.map(item=>{if(!isRecord(item)||!Array.isArray(item.weekly_shift_schedule_versions))throw new Error('INVALID_SCHEDULE_RESPONSE');const versions=item.weekly_shift_schedule_versions.filter(isRecord);const current=versions.find(version=>Number(version.version)===Number(item.current_version));if(!current||!Array.isArray(current.weekdays))throw new Error('INVALID_SCHEDULE_RESPONSE');const status=stringField(item,'status');if(!['active','paused','ended'].includes(status))throw new Error('INVALID_SCHEDULE_RESPONSE');return{id:stringField(item,'id'),employeeId:stringField(item,'employee_id'),locationId:stringField(item,'location_id'),status:status as WeeklySeries['status'],currentVersion:Number(item.current_version),weekdays:current.weekdays.map(Number),startTime:stringField(current,'start_time').slice(0,5),endTime:stringField(current,'end_time').slice(0,5),effectiveFrom:stringField(current,'effective_from'),effectiveUntil:current.effective_until===null?null:stringField(current,'effective_until')};}):[],
   };
 }
 
@@ -167,14 +172,18 @@ export default function ShiftsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [creatingWeekly, setCreatingWeekly] = useState(false);
   const [createdMessage, setCreatedMessage] = useState<string | null>(null);
   const [weekStart, setWeekStart] = useState(() => mondayFor(dateAtTimezone(new Date(), companyTimezone)));
+  const [employeeFilter,setEmployeeFilter]=useState('');const [locationFilter,setLocationFilter]=useState('');const [departmentFilter,setDepartmentFilter]=useState('');const [statusFilter,setStatusFilter]=useState('scheduled');
+  const [managingSeries,setManagingSeries]=useState<WeeklySeries|null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/shifts?type=schedules&weekStart=${encodeURIComponent(weekStart)}`, {
+      const params=new URLSearchParams({type:'schedules',weekStart,status:statusFilter});if(employeeFilter)params.set('employeeId',employeeFilter);if(locationFilter)params.set('locationId',locationFilter);if(departmentFilter)params.set('departmentId',departmentFilter);
+      const response = await fetch(`/api/shifts?${params}`, {
         cache: 'no-store',
         credentials: 'same-origin',
         signal,
@@ -190,7 +199,7 @@ export default function ShiftsPage() {
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }, [t, weekStart]);
+  }, [departmentFilter, employeeFilter, locationFilter, statusFilter, t, weekStart]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -214,7 +223,7 @@ export default function ShiftsPage() {
           <h1 className="text-3xl font-bold text-slate-950">{personal ? t.schedule.personalTitle : t.schedule.managementTitle}</h1>
           <p className="mt-2 text-slate-600">{personal ? t.schedule.personalDescription : t.schedule.managementDescription}</p>
         </div>
-        {!personal ? (
+        {!personal ? (<div className="flex flex-wrap gap-2"><button type="button" onClick={() => setCreatingWeekly(true)} disabled={!payload?.employees.length || !payload.locations.length} className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-violet-300 px-4 font-black text-slate-950 disabled:opacity-50"><Plus className="h-4 w-4" aria-hidden="true" />{t.schedule.createWeekly}</button>
           <button
             type="button"
             onClick={() => { setCreatedMessage(null); setCreating(true); }}
@@ -224,10 +233,11 @@ export default function ShiftsPage() {
             <Plus className="h-4 w-4" aria-hidden="true" />
             {t.schedule.createShift}
           </button>
-        ) : null}
+        </div>) : null}
       </header>
 
       {createdMessage ? <p role="status" className="rounded-xl border border-emerald-400/30 bg-emerald-950/50 p-3 text-emerald-100">{createdMessage}</p> : null}
+      {!personal&&payload?<div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"><select aria-label={t.schedule.employee} className="input" value={employeeFilter} onChange={event=>setEmployeeFilter(event.target.value)}><option value="">{t.schedule.allEmployees}</option>{payload.employees.map(employee=><option key={employee.id} value={employee.id}>{employee.firstName} {employee.lastName}</option>)}</select><select aria-label={t.schedule.location} className="input" value={locationFilter} onChange={event=>setLocationFilter(event.target.value)}><option value="">{t.schedule.allLocations}</option>{payload.locations.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select><select aria-label={t.schedule.department} className="input" value={departmentFilter} onChange={event=>setDepartmentFilter(event.target.value)}><option value="">{t.schedule.allDepartments}</option>{Array.from(new Map(payload.employees.filter(employee=>employee.departmentId&&employee.departmentName).map(employee=>[employee.departmentId!,employee.departmentName!]))).map(([id,name])=><option key={id} value={id}>{name}</option>)}</select><select aria-label={t.schedule.status} className="input" value={statusFilter} onChange={event=>setStatusFilter(event.target.value)}><option value="scheduled">{t.schedule.scheduled}</option><option value="cancelled">{t.schedule.cancelled}</option><option value="completed">{t.schedule.completed}</option></select></div>:null}
 
       <div className="grid grid-cols-2 items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:grid-cols-[auto_1fr_auto]">
         <button type="button" onClick={() => setWeekStart((current) => shiftDate(current, -7))} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-slate-100 px-4 font-medium">
@@ -346,11 +356,25 @@ export default function ShiftsPage() {
           }}
         />
       ) : null}
+      {!loading&&!error&&!personal&&payload?.weeklySeries.length?<section><h2 className="mb-3 text-lg font-bold">{t.schedule.weeklySchedules}</h2><div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{payload.weeklySeries.map(series=>{const employee=payload.employees.find(row=>row.id===series.employeeId);return <article key={series.id} className="rounded-2xl border border-white/10 bg-slate-950 p-4 text-white"><p className="font-bold" dir="auto">{employee?`${employee.firstName} ${employee.lastName}`:t.schedule.employee}</p><p className="mt-1"><bdi dir="ltr">{series.startTime}–{series.endTime}</bdi> · {series.status}</p><p className="mt-1 text-sm text-slate-400">{series.weekdays.map(day=>day).join(', ')}</p><button type="button" onClick={()=>setManagingSeries(series)} className="mt-3 min-h-11 rounded-xl border border-white/15 px-4">{t.schedule.manage}</button></article>})}</div></section>:null}
+      {creatingWeekly && payload ? <WeeklyShiftDialog employees={payload.employees} locations={payload.locations} initialDate={weekStart} t={t.schedule} onClose={() => setCreatingWeekly(false)} onCreated={async () => { await load(); setCreatedMessage(t.schedule.weeklyCreated); setCreatingWeekly(false); }} /> : null}
+      {managingSeries?<ManageWeeklyDialog series={managingSeries} t={t.schedule} onClose={()=>setManagingSeries(null)} onSaved={async()=>{await load();setManagingSeries(null);}}/>:null}
     </section>
   );
 }
 
 type ScheduleCopy = ReturnType<typeof useLocale>['messages']['schedule'];
+
+function ManageWeeklyDialog({series,t,onClose,onSaved}:{series:WeeklySeries;t:ScheduleCopy;onClose():void;onSaved():Promise<void>}){const[action,setAction]=useState<'pause'|'resume'|'end'|'edit'|'exception'>(series.status==='paused'?'resume':'pause');const[date,setDate]=useState(series.effectiveFrom);const[kind,setKind]=useState<'day_off'|'approved_leave'|'override'>('day_off');const[startTime,setStartTime]=useState(series.startTime);const[endTime,setEndTime]=useState(series.endTime);const[pending,setPending]=useState(false);const[error,setError]=useState<string|null>(null);async function save(){setPending(true);setError(null);try{const input=action==='exception'?{date,kind,...(kind==='override'?{locationId:series.locationId,startTime,endTime}:{})}:action==='edit'?{effectiveFrom:date,startTime,endTime}:action==='end'?{effectiveFrom:date}:{};const response=await fetch('/api/shifts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'manage_weekly_schedule',data:{scheduleAction:action,seriesIds:[series.id],input}})});const body:unknown=await response.json();if(!response.ok)throw new Error(isRecord(body)&&typeof body.error==='string'?body.error:'WEEKLY_SHIFT_UNAVAILABLE');await onSaved();}catch(reason){setError(reason instanceof Error?reason.message:t.unavailable);}finally{setPending(false);}}return <div className="fixed inset-0 z-[96] flex items-end justify-center bg-black/75 sm:items-center sm:p-5" role="dialog" aria-modal="true"><div className="max-h-[100dvh] w-full overflow-y-auto bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-white sm:max-w-lg sm:rounded-3xl"><header className="flex justify-between"><h2 className="text-xl font-black">{t.manageWeekly}</h2><button type="button" onClick={onClose} className="min-h-11 min-w-11"><X/></button></header><label className="mt-4 block">{t.action}<select className="input" value={action} onChange={event=>setAction(event.target.value as typeof action)}><option value="pause">{t.pause}</option><option value="resume">{t.resume}</option><option value="end">{t.endSchedule}</option><option value="edit">{t.futureEdit}</option><option value="exception">{t.exception}</option></select></label>{['end','edit','exception'].includes(action)?<label className="mt-4 block">{t.date}<input type="date" className="input" value={date} onChange={event=>setDate(event.target.value)}/></label>:null}{action==='exception'?<label className="mt-4 block">{t.exception}<select className="input" value={kind} onChange={event=>setKind(event.target.value as typeof kind)}><option value="day_off">{t.dayOff}</option><option value="approved_leave">{t.approvedLeave}</option><option value="override">{t.override}</option></select></label>:null}{action==='edit'||kind==='override'?<div className="mt-4 grid grid-cols-2 gap-3"><input aria-label={t.startTime} type="time" className="input" value={startTime} onChange={event=>setStartTime(event.target.value)}/><input aria-label={t.endTime} type="time" className="input" value={endTime} onChange={event=>setEndTime(event.target.value)}/></div>:null}{error?<p role="alert" className="mt-4 text-red-200">{error}</p>:null}<footer className="sticky bottom-0 mt-5 flex gap-3 border-t border-white/10 bg-slate-950 pt-4"><button type="button" onClick={onClose} className="min-h-11 flex-1">{t.cancel}</button><button type="button" disabled={pending} onClick={()=>void save()} className="min-h-11 flex-1 rounded-xl bg-cyan-300 font-bold text-slate-950">{t.save}</button></footer></div></div>}
+
+function WeeklyShiftDialog({ employees, locations, initialDate, t, onClose, onCreated }: { employees: EmployeeOption[]; locations: LocationOption[]; initialDate: string; t: ScheduleCopy; onClose(): void; onCreated(): Promise<void> }) {
+  const [employeeIds,setEmployeeIds]=useState<string[]>([]);const [locationId,setLocationId]=useState(locations[0]?.id??'');const [weekdays,setWeekdays]=useState<number[]>([0,1,2,4,5,6]);
+  const [startTime,setStartTime]=useState('09:00');const [endTime,setEndTime]=useState('17:00');const [startDate,setStartDate]=useState(initialDate);const [endDate,setEndDate]=useState('');
+  const [preview,setPreview]=useState<{rows:Record<string,unknown>[];errors:Record<string,unknown>[];valid:boolean;previewToken:string}|null>(null);const [pending,setPending]=useState(false);const [error,setError]=useState<string|null>(null);
+  const input={employeeIds,locationId,weekdays,startTime,endTime,startDate,endDate:endDate||null};
+  async function request(action:'preview_weekly_schedule'|'confirm_weekly_schedule'){setPending(true);setError(null);try{const response=await fetch('/api/shifts',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({action,data:input,...(action==='confirm_weekly_schedule'?{previewToken:preview?.previewToken}:{})})});const body:unknown=await response.json();if(!response.ok||!isRecord(body)||!isRecord(body.data))throw new Error(isRecord(body)&&typeof body.error==='string'?body.error:'WEEKLY_SHIFT_UNAVAILABLE');if(action==='preview_weekly_schedule'){const data=body.data;if(!Array.isArray(data.rows)||!Array.isArray(data.errors)||typeof data.valid!=='boolean'||typeof data.previewToken!=='string')throw new Error('WEEKLY_SHIFT_UNAVAILABLE');setPreview(data as typeof preview);}else await onCreated();}catch(reason){setError(reason instanceof Error?reason.message:t.unavailable);}finally{setPending(false);}}
+  return <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/75 sm:items-center sm:p-5" role="dialog" aria-modal="true" aria-labelledby="weekly-shift-title"><div className="max-h-[100dvh] w-full overflow-y-auto bg-slate-950 p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] text-white sm:max-w-3xl sm:rounded-3xl" dir="inherit"><header className="flex justify-between"><div><h2 id="weekly-shift-title" className="text-xl font-black">{t.weeklyTitle}</h2><p className="text-sm text-slate-400">{t.weeklyDescription}</p></div><button type="button" onClick={onClose} aria-label={t.cancel} className="min-h-11 min-w-11"><X /></button></header><div className="mt-5 grid gap-4 sm:grid-cols-2"><fieldset className="sm:col-span-2"><legend>{t.employee}</legend><div className="mt-2 grid max-h-40 gap-2 overflow-y-auto sm:grid-cols-2">{employees.map(employee=><label key={employee.id} className="flex min-h-11 items-center gap-2 rounded-xl border border-white/10 p-2"><input type="checkbox" checked={employeeIds.includes(employee.id)} onChange={()=>setEmployeeIds(current=>current.includes(employee.id)?current.filter(id=>id!==employee.id):[...current,employee.id])}/><span dir="auto">{employee.firstName} {employee.lastName}</span></label>)}</div></fieldset><label>{t.location}<select className="input" value={locationId} onChange={event=>setLocationId(event.target.value)}>{locations.map(location=><option key={location.id} value={location.id}>{location.name}</option>)}</select></label><fieldset><legend>{t.workingDays}</legend><div className="flex flex-wrap gap-2">{days.map((day,index)=>{const dow=(index+1)%7;return <label key={day} className="rounded-lg border border-white/10 p-2"><input type="checkbox" checked={weekdays.includes(dow)} onChange={()=>setWeekdays(current=>current.includes(dow)?current.filter(value=>value!==dow):[...current,dow])}/> {t.days[day]}</label>})}</div></fieldset><label>{t.startTime}<input className="input" type="time" value={startTime} onChange={event=>setStartTime(event.target.value)}/></label><label>{t.endTime}<input className="input" type="time" value={endTime} onChange={event=>setEndTime(event.target.value)}/></label><label>{t.startDate}<input className="input" type="date" value={startDate} onChange={event=>setStartDate(event.target.value)}/></label><label>{t.optionalEndDate}<input className="input" type="date" value={endDate} onChange={event=>setEndDate(event.target.value)}/></label></div>{endTime<=startTime?<p className="mt-3 text-amber-200">{t.overnight}</p>:null}{preview?<section className="mt-4 rounded-2xl border border-white/10 p-4"><h3 className="font-bold">{t.preview}</h3><p>{preview.rows.length} {t.generatedShifts}</p>{preview.errors.length?<pre className="mt-2 whitespace-pre-wrap text-sm text-red-200">{JSON.stringify(preview.errors,null,2)}</pre>:null}</section>:null}{error?<p role="alert" className="mt-4 text-red-200">{error}</p>:null}<footer className="sticky bottom-0 mt-5 flex flex-wrap gap-3 border-t border-white/10 bg-slate-950 pt-4 pb-[max(0rem,env(safe-area-inset-bottom))]"><button type="button" onClick={onClose} className="min-h-11 flex-1">{t.cancel}</button><button type="button" disabled={pending||!employeeIds.length||!weekdays.length} onClick={()=>void request('preview_weekly_schedule')} className="min-h-11 flex-1 rounded-xl border border-violet-300">{t.preview}</button><button type="button" disabled={pending||!preview?.valid} onClick={()=>void request('confirm_weekly_schedule')} className="min-h-11 flex-1 rounded-xl bg-violet-300 font-black text-slate-950">{t.confirmAll}</button></footer></div></div>;
+}
 
 function creationErrorMessage(code: string, t: ScheduleCopy) {
   if (code === 'SHIFT_INPUT_INVALID') return t.inputInvalid;
