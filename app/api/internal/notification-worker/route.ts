@@ -1,4 +1,12 @@
-import { timingSafeEqual } from 'node:crypto';import { NextResponse } from 'next/server';import { processNotificationWork } from '@/lib/notification-worker.server';
+import { createSupabaseServer } from '@/lib/supabaseServer';
+import { createWorkerHandlers } from '@/lib/internal-worker-response.server';
+import { processNotificationWork } from '@/lib/notification-worker.server';
+import { runInstrumented } from '@/lib/worker-telemetry.server';
 export const runtime='nodejs';export const dynamic='force-dynamic';export const maxDuration=60;
-function authorized(request:Request){const secret=process.env.NOTIFICATION_WORKER_SECRET;const supplied=request.headers.get('authorization')?.replace(/^Bearer\s+/i,'')??'';return Boolean(secret&&secret.length===supplied.length&&timingSafeEqual(Buffer.from(secret),Buffer.from(supplied)));}
-export async function POST(request:Request){if(!authorized(request))return NextResponse.json({error:'Unauthorized'},{status:401});try{return NextResponse.json({result:await processNotificationWork()},{headers:{'Cache-Control':'private, no-store'}});}catch(error){console.error('[Notification Worker] failed',{stage:'notification.worker',errorName:error instanceof Error?error.name:'UnknownError',errorMessage:error instanceof Error?error.message:'unknown_error'});return NextResponse.json({error:'Notification delivery temporarily unavailable'},{status:503});}}
+const handlers=createWorkerHandlers(
+  ()=>process.env.NOTIFICATION_WORKER_SECRET,
+  ()=>{const service=createSupabaseServer();return runInstrumented(service,'notifications',()=>processNotificationWork(service));},
+  'Notification delivery temporarily unavailable',
+);
+export const GET=handlers.GET;
+export const POST=handlers.POST;

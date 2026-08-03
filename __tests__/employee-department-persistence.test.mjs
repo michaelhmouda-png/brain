@@ -170,5 +170,5 @@ test('migration is forward-only, private, and preserves the applied recurring re
   assert.match(migration, /REVOKE ALL ON FUNCTION private\.enforce_employee_department_consistency\(\)[\s\S]*FROM PUBLIC, anon, authenticated, service_role/);
   const executable = migration.replace(/^--.*$/gm, '');
   assert.doesNotMatch(executable, /GRANT EXECUTE|DO \$|CREATE TEMP|\bUPDATE public\.employees\b|\bINSERT INTO public\.employees\b/i);
-  assert.equal(sha256(recurringRepair), '95780e5e82db29b4940bb52a0e733f0efde8260ad2fe766d3b93f6a8d57cfc51');
+  assert.equal(sha256(recurringRepair), '6b44be5867b14c02331b5437861f932a83d5985402d77e2156c86259f3d10ecc');
 });

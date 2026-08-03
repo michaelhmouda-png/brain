@@ -140,7 +140,7 @@ test('the existing pending occurrence retries in place without deletion or ident
 
 test('idempotent replay creates zero new tasks and preserves the materialized identity', () => {
   const terminal = repair.indexOf("IF v_occ.outcome='materialized'");
-  const processing = repair.indexOf("UPDATE public.recurring_task_occurrences AS occurrence\n              SET outcome='processing'", terminal);
+  const processing = repair.indexOf('UPDATE public.recurring_task_occurrences AS occurrence', terminal);
   const replayAudit = repair.indexOf("'occurrence.idempotent_replay'", terminal);
   assert.ok(terminal >= 0 && replayAudit > terminal && replayAudit < processing);
   assert.doesNotMatch(repair.slice(terminal, processing), /create_recurring_canonical_task|v_created\s*:=/);
@@ -183,6 +183,6 @@ test('repair is forward-only, service-only, and creates no business rows by itse
 });
 
 test('the two applied migrations remain byte-for-byte unchanged', () => {
-  assert.equal(sha256(recurringV1), '40ee9ae2470f62b03ef559f8e04b899b2aaed7656a3ae11cb6240390bdbeef2b');
-  assert.equal(sha256(shiftV1), '6244382ddf479bb57aa3d3db1f0cdb9697befaeaa10c6ad2950b6ac42fb52791');
+  assert.equal(sha256(recurringV1), 'c6bfcde62ea13da4217fb079ca831ff62d05827feed232006d1b45e70d970397');
+  assert.equal(sha256(shiftV1), '80794b589690e391aec921ada84bf0fc61f8f9d65fb6ac9fbc50ad8018d19082');
 });

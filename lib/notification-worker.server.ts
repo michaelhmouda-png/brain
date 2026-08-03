@@ -60,8 +60,7 @@ async function processRecurringAfterNotifications(supabase: ReturnType<typeof cr
   }
 }
 
-export async function processNotificationWork() {
-  const supabase = createSupabaseServer();
+export async function processNotificationWork(supabase = createSupabaseServer()) {
   await supabase.rpc('generate_task_reminder_obligations');
   const { data: outbox } = await supabase.rpc('claim_notification_outbox', { p_lease_seconds: 120 });
   const obligation = first(outbox);

@@ -1,0 +1,50 @@
+name: Release gate
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NODE_ENV: production
+      BRAIN_DEPLOYMENT_ENV: preview
+      VERCEL_ENV: preview
+      NEXT_PUBLIC_APP_URL: https://preview.example.com
+      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ci-publishable-placeholder-00000000
+      SUPABASE_SERVICE_ROLE_KEY: ci-service-role-placeholder-000000000
+      CRON_SECRET: ci-cron-placeholder-000000000000000
+      NOTIFICATION_WORKER_SECRET: ci-notification-placeholder-000000000
+      TASK_EVIDENCE_WORKER_SECRET: ci-evidence-placeholder-0000000000000
+      OPENAI_API_KEY: ci-openai-placeholder
+      OPENAI_VISION_MODEL: ci-vision-model
+      NEXT_PUBLIC_VAPID_PUBLIC_KEY: ci-vapid-public-placeholder
+      VAPID_PRIVATE_KEY: ci-vapid-private-placeholder
+      VAPID_SUBJECT: mailto:ci@example.com
+      BRAIN_AGENT_TOKEN_PEPPER: ci-agent-token-placeholder-000000000
+      BRAIN_AGENT_RATE_LIMIT_PEPPER: ci-agent-rate-placeholder-0000000000
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run check:secrets
+      - run: npm run check:migrations
+      - run: npm run test:release
+      - run: npm run test:all
+      - run: npm run typecheck
+      - run: npm run lint:changed
+      - run: npm run build
+      - run: git diff --check
+      - run: git status --porcelain
