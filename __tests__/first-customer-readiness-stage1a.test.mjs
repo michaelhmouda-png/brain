@@ -18,6 +18,7 @@ import {
   normalizeWorkerHealthPayload,
   rpcFailureDiagnostic,
 } from '../lib/worker-health-diagnostics.ts';
+import { migrationSha256, normalizeMigrationContent } from '../scripts/migration-hash.mjs';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -302,6 +303,16 @@ test('CI has no deployment step or production secret dependency', async () => {
   const workflow = await read('.github/workflows/release-gate.yml');
   for (const command of ['npm ci','check:secrets','check:migrations','test:release','test:all','typecheck','lint:changed','npm run build','git diff --check']) assert.match(workflow, new RegExp(command.replaceAll(' ', '\\s+')));
   assert.doesNotMatch(workflow, /vercel deploy|supabase db push|environment:\s*production|secrets\./i);
+});
+
+test('migration integrity hashes equivalent LF and CRLF SQL identically', () => {
+  const lf = 'BEGIN;\nSELECT 1;\nCOMMIT;\n';
+  const crlf = lf.replaceAll('\n', '\r\n');
+  const legacyCr = lf.replaceAll('\n', '\r');
+  assert.equal(normalizeMigrationContent(crlf), lf);
+  assert.equal(normalizeMigrationContent(legacyCr), lf);
+  assert.equal(migrationSha256(crlf), migrationSha256(lf));
+  assert.equal(migrationSha256(legacyCr), migrationSha256(lf));
 });
 
 test('build uses system font variables and requires no network font fetch', async () => {

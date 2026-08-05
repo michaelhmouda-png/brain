@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
 import { readFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
+import { migrationSha256 } from './migration-hash.mjs';
 
 const root = process.cwd();
 const dir = path.join(root, 'supabase', 'migrations');
@@ -15,7 +15,7 @@ for (const file of files) {
 }
 for (const [file, expected] of Object.entries(manifest)) {
   if (!files.includes(file)) throw new Error(`Applied migration missing: ${file}`);
-  const actual = createHash('sha256').update(await readFile(path.join(dir, file))).digest('hex');
+  const actual = migrationSha256(await readFile(path.join(dir, file)));
   if (actual !== expected) throw new Error(`Applied migration changed: ${file}`);
 }
 console.log(`Migration contract valid: ${files.length} ordered, ${Object.keys(manifest).length} immutable.`);
