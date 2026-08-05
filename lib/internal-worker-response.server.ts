@@ -1,15 +1,22 @@
 import 'server-only';
 
 import { NextResponse } from 'next/server';
-import { authorizeCronRequest, authorizeManualWorkerRequest } from './internal-worker-auth.server';
+import {
+  authorizeCronRequest,
+  authorizeNamedManualWorkerRequest,
+  isWorkerAuthenticationConfigured,
+  type ManualWorkerSecretName,
+} from './internal-worker-auth.server';
+import { hasEnvironmentIssues } from './environment.server';
 import { safeWorkerFailureCode } from './worker-telemetry.server';
 
 const NO_STORE = { 'Cache-Control': 'private, no-store, max-age=0' };
 
 export function createWorkerHandlers(
-  manualSecret: () => string | undefined,
+  manualSecretName: ManualWorkerSecretName,
   run: () => Promise<unknown>,
   unavailableMessage: string,
+  requiredConfiguration: readonly string[] = [],
 ) {
   async function execute() {
     try {
@@ -24,12 +31,24 @@ export function createWorkerHandlers(
   }
   return {
     async GET(request: Request) {
+      if (!isWorkerAuthenticationConfigured('CRON_SECRET')) {
+        return NextResponse.json({ error: 'Worker unavailable', code: 'WORKER_CONFIGURATION_UNAVAILABLE' }, { status: 503, headers: NO_STORE });
+      }
       if (!authorizeCronRequest(request)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_STORE });
+      if (hasEnvironmentIssues(requiredConfiguration)) {
+        return NextResponse.json({ error: 'Worker unavailable', code: 'WORKER_CONFIGURATION_UNAVAILABLE' }, { status: 503, headers: NO_STORE });
+      }
       return execute();
     },
     async POST(request: Request) {
-      if (!authorizeManualWorkerRequest(request, manualSecret())) {
+      if (!isWorkerAuthenticationConfigured(manualSecretName)) {
+        return NextResponse.json({ error: 'Worker unavailable', code: 'WORKER_CONFIGURATION_UNAVAILABLE' }, { status: 503, headers: NO_STORE });
+      }
+      if (!authorizeNamedManualWorkerRequest(request, manualSecretName)) {
         return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: NO_STORE });
+      }
+      if (hasEnvironmentIssues(requiredConfiguration)) {
+        return NextResponse.json({ error: 'Worker unavailable', code: 'WORKER_CONFIGURATION_UNAVAILABLE' }, { status: 503, headers: NO_STORE });
       }
       return execute();
     },

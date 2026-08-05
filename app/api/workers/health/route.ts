@@ -12,7 +12,11 @@ export async function GET() {
     const actor = await resolveActorContext(authenticated);
     return NextResponse.json({ data: await getWorkerHealth(actor) }, { headers: HEADERS });
   } catch (error) {
-    const code = error instanceof ActorContextError ? error.code : error instanceof Error ? error.message : 'WORKER_HEALTH_UNAVAILABLE';
+    const code = error instanceof ActorContextError
+      ? error.code
+      : error instanceof Error && error.message === 'WORKER_HEALTH_FORBIDDEN'
+        ? error.message
+        : 'WORKER_HEALTH_UNAVAILABLE';
     const status = code === 'UNAUTHENTICATED' ? 401 : code.endsWith('FORBIDDEN') || code === 'ACCOUNT_INACTIVE' ? 403 : 503;
     return NextResponse.json({ error: code }, { status, headers: HEADERS });
   }
