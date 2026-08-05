@@ -5,7 +5,7 @@ export const recurringMessages = {
     open: 'Open', closed: 'Closed', weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
     active: 'Active', paused: 'Paused', ended: 'Ended', unresolved: 'Unresolved',
     loading: 'Loading routines…', failed: 'Recurring routines are temporarily unavailable.', retry: 'Retry',
-    empty: 'No recurring routines yet.', name: 'Routine name', taskTitle: 'Task title', taskDescription: 'Task description',
+    empty: 'No recurring routines yet.', name: 'Routine name', routineDescription: 'Routine description', taskTitle: 'Task title', taskDescription: 'Task description',
     location: 'Location', timezone: 'Timezone', recurrence: 'Recurrence', daily: 'Every day',
     selected: 'Selected weekdays', except: 'Every day except', weekly: 'Weekly',
     fixed: 'Fixed local time', opening: 'Location opening', closing: 'Location closing',
@@ -20,6 +20,7 @@ export const recurringMessages = {
     advisory: 'Tasks are generated at most 24 hours ahead and employees are revalidated against concrete shifts.',
   },
   ar: {
+    routineDescription: 'وصف الروتين',
     open: 'مفتوح', weekdays: ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'],
     eyebrow: 'الأتمتة', title: 'الروتينات المتكررة', description: 'إنشاء مهام حتمي ومتوافق مع الورديات.',
     create: 'روتين جديد', operatingHours: 'ساعات التشغيل', configureHours: 'ضبط أوقات الافتتاح والإغلاق', closed: 'مغلق', active: 'نشط', paused: 'متوقف مؤقتاً', ended: 'منتهي', unresolved: 'غير محلول',

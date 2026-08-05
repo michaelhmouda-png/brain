@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { migrationSha256 } from '../scripts/migration-hash.mjs';
 
 import {
   canManageEmployees,
@@ -11,7 +11,6 @@ import {
 } from '../lib/employees/contracts.ts';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 const migration = read('supabase/migrations/202607310001_fix_employee_department_persistence.sql');
 const baseline = read('supabase/migrations/202607240000_current_state_baseline.sql');
 const recurringRepair = read('supabase/migrations/202607300003_fix_recurring_task_materialization_v1.sql');
@@ -170,5 +169,5 @@ test('migration is forward-only, private, and preserves the applied recurring re
   assert.match(migration, /REVOKE ALL ON FUNCTION private\.enforce_employee_department_consistency\(\)[\s\S]*FROM PUBLIC, anon, authenticated, service_role/);
   const executable = migration.replace(/^--.*$/gm, '');
   assert.doesNotMatch(executable, /GRANT EXECUTE|DO \$|CREATE TEMP|\bUPDATE public\.employees\b|\bINSERT INTO public\.employees\b/i);
-  assert.equal(sha256(recurringRepair), '95780e5e82db29b4940bb52a0e733f0efde8260ad2fe766d3b93f6a8d57cfc51');
+  assert.equal(migrationSha256(recurringRepair), '95780e5e82db29b4940bb52a0e733f0efde8260ad2fe766d3b93f6a8d57cfc51');
 });

@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    { "path": "/api/internal/notification-worker", "schedule": "* * * * *" },
+    { "path": "/api/internal/recurring-task-worker", "schedule": "*/5 * * * *" },
+    { "path": "/api/internal/weekly-shift-worker", "schedule": "0 * * * *" },
+    { "path": "/api/internal/task-evidence-worker", "schedule": "* * * * *" }
+  ]
+}

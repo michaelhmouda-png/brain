@@ -138,6 +138,10 @@ export default function OperationsDashboard() {
           Ask Brain
         </button>
       </div>
+      <Link href="/dashboard/operations/worker-health" className="block rounded-2xl border border-slate-200 bg-white p-6 text-slate-900 shadow-sm hover:bg-slate-50">
+        <h2 className="text-lg font-semibold">Worker health</h2>
+        <p className="mt-1 text-sm text-slate-500">Review schedules, queue pressure, failures, and materialization freshness.</p>
+      </Link>
     </div>
   );
 }

@@ -2,6 +2,8 @@
 
 :root {
   /* Brain V3 dark theme: recovered navy/cyan identity and semantic contrast. */
+  --font-geist-sans: "Segoe UI Variable", "Segoe UI", Arial, sans-serif;
+  --font-geist-mono: "Cascadia Mono", "Segoe UI Mono", Consolas, monospace;
   --background: #020617;
   --foreground: #f8fafc;
   --brain-canvas: #020617;

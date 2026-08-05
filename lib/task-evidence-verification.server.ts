@@ -218,8 +218,7 @@ async function processSubmission(job: ClaimedJob, context: EvidenceContext): Pro
   if (error) throw new Error(`EVIDENCE_JOB_COMPLETE_FAILED:${error.code ?? 'unknown'}`);
 }
 
-export async function processOneEvidenceVerification(): Promise<'idle' | 'completed' | 'failed'> {
-  const supabase = createSupabaseServer();
+export async function processOneEvidenceVerification(supabase = createSupabaseServer()): Promise<'idle' | 'completed' | 'failed'> {
   const { data, error } = await supabase.rpc('claim_task_evidence_verification_job', { p_lease_seconds: 180 });
   if (error) throw new Error(`EVIDENCE_JOB_CLAIM_FAILED:${error.code ?? 'unknown'}`);
   const job = claimedJob(data);
