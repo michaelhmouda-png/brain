@@ -301,7 +301,10 @@ test('service-role client normalizes validated values and has no browser session
 
 test('CI has no deployment step or production secret dependency', async () => {
   const workflow = await read('.github/workflows/release-gate.yml');
+  const tsconfig = JSON.parse(await read('tsconfig.json'));
   for (const command of ['npm ci','check:secrets','check:migrations','test:release','test:all','typecheck','lint:changed','npm run build','git diff --check']) assert.match(workflow, new RegExp(command.replaceAll(' ', '\\s+')));
+  assert.match(workflow, /npm ci --include=dev/);
+  assert.deepEqual(tsconfig.compilerOptions.types, ['node']);
   assert.doesNotMatch(workflow, /vercel deploy|supabase db push|environment:\s*production|secrets\./i);
 });
 
