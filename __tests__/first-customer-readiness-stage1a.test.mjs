@@ -13,6 +13,11 @@ import {
   authorizeNamedManualWorkerRequest,
   isWorkerAuthenticationConfigured,
 } from '../lib/internal-worker-auth.ts';
+import { inspectSupabaseServiceConfiguration } from '../lib/supabase-service-configuration.ts';
+import {
+  normalizeWorkerHealthPayload,
+  rpcFailureDiagnostic,
+} from '../lib/worker-health-diagnostics.ts';
 
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -224,7 +229,73 @@ test('health exposes safe diagnostics only after management authorization', asyn
   assert.match(route, /WORKER_HEALTH_FORBIDDEN/);
   assert.match(page, /configuration\?\.issues/);
   assert.match(page, /item\.variableNames\.join/);
+  assert.match(page, /telemetryDiagnostic\.postgrestCode/);
   assert.doesNotMatch(`${route}\n${internal}`, /process\.env\.(?:CRON_SECRET|SUPABASE_SERVICE_ROLE_KEY).*NextResponse/s);
+});
+
+test('service client classification checks role and project binding without exposing identifiers', () => {
+  const secret = inspectSupabaseServiceConfiguration({
+    NEXT_PUBLIC_SUPABASE_URL: 'https://project-one.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: `sb_secret_${'a'.repeat(22)}_${'b'.repeat(8)}`,
+  });
+  assert.deepEqual(secret, {
+    usable: true,
+    code: 'SUPABASE_SERVICE_CONFIGURATION_VALID',
+    credentialKind: 'secret_key',
+    credentialRoleValid: true,
+    projectBinding: 'request_required',
+  });
+
+  const payload = Buffer.from(JSON.stringify({ role: 'service_role', ref: 'project-two' })).toString('base64url');
+  const mismatch = inspectSupabaseServiceConfiguration({
+    NEXT_PUBLIC_SUPABASE_URL: 'https://project-one.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: `eyJ.${payload}.signature`,
+  });
+  assert.equal(mismatch.usable, false);
+  assert.equal(mismatch.code, 'SUPABASE_SERVICE_PROJECT_MISMATCH');
+  assert.equal(JSON.stringify(mismatch).includes('project-one'), false);
+  assert.equal(JSON.stringify(mismatch).includes('project-two'), false);
+});
+
+test('worker health normalizes valid PostgREST JSON shapes and rejects malformed responses', () => {
+  const payload = { workers: [], queues: {}, materialization: {}, observedAt: '2026-08-05T12:00:00Z' };
+  assert.deepEqual(normalizeWorkerHealthPayload(payload), payload);
+  assert.deepEqual(normalizeWorkerHealthPayload([payload]), payload);
+  assert.deepEqual(normalizeWorkerHealthPayload(JSON.stringify(payload)), payload);
+  assert.equal(normalizeWorkerHealthPayload([]), null);
+  assert.equal(normalizeWorkerHealthPayload({ workers: [], queues: {} }), null);
+});
+
+test('PostgREST diagnostics retain only safe code, status, and stage', () => {
+  const configuration = inspectSupabaseServiceConfiguration({
+    NEXT_PUBLIC_SUPABASE_URL: 'https://project-one.supabase.co',
+    SUPABASE_SERVICE_ROLE_KEY: `sb_secret_${'a'.repeat(22)}_${'b'.repeat(8)}`,
+  });
+  const diagnostic = rpcFailureDiagnostic({
+    data: { tenant: 'must-not-escape' },
+    error: { code: 'PGRST202', message: 'raw database message with identifiers' },
+    status: 404,
+  }, configuration);
+  assert.deepEqual(diagnostic, {
+    code: 'WORKER_HEALTH_RPC_UNAVAILABLE',
+    stage: 'rpc_request',
+    postgrestCode: 'PGRST202',
+    httpStatus: 404,
+    credentialKind: 'secret_key',
+    credentialRoleValid: true,
+    projectBinding: 'confirmed',
+  });
+  assert.equal(JSON.stringify(diagnostic).includes('must-not-escape'), false);
+  assert.equal(JSON.stringify(diagnostic).includes('raw database message'), false);
+});
+
+test('service-role client normalizes validated values and has no browser session lifecycle', async () => {
+  const source = await read('lib/supabaseServer.ts');
+  assert.match(source, /SUPABASE_SERVICE_ROLE_KEY\?\.trim\(\)/);
+  assert.match(source, /NEXT_PUBLIC_SUPABASE_URL\?\.trim\(\)/);
+  assert.match(source, /autoRefreshToken: false/);
+  assert.match(source, /detectSessionInUrl: false/);
+  assert.match(source, /db: \{ schema: 'public' \}/);
 });
 
 test('CI has no deployment step or production secret dependency', async () => {

@@ -2,14 +2,20 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 
+function serverConfiguration() {
+  return {
+    url: process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() ?? "",
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() ?? "",
+  };
+}
+
 /**
  * Create an admin Supabase client using service role key.
  * Use ONLY for admin operations that bypass RLS.
  * NEVER use with user data unless explicitly needed.
  */
 export function createSupabaseServer(): SupabaseClient {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
+  const { url: supabaseUrl, serviceRoleKey: supabaseServiceRoleKey } = serverConfiguration();
 
   if (!supabaseUrl || !supabaseServiceRoleKey) {
     throw new Error("Missing SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL for server-side Supabase operations.");
@@ -17,8 +23,11 @@ export function createSupabaseServer(): SupabaseClient {
 
   return createClient(supabaseUrl, supabaseServiceRoleKey, {
     auth: {
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
       persistSession: false,
     },
+    db: { schema: 'public' },
   });
 }
 

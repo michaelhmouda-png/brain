@@ -11,6 +11,12 @@ type Health = {
   observedAt?: string;
   telemetryAvailable?: boolean;
   telemetryErrorCode?: string;
+  telemetryDiagnostic?: {
+    code: string;
+    stage: string;
+    postgrestCode: string | null;
+    httpStatus: number | null;
+  };
   configuration?: {
     deploymentEnvironment: string;
     valid: boolean;
@@ -53,7 +59,12 @@ export default function WorkerHealthPage() {
         </ul> : null}
       </section>
       {health.telemetryAvailable === false ? <div role="alert" className="brain-surface p-5 text-amber-800">
-        {ar ? 'بيانات تشغيل المعالجات غير متاحة.' : 'Worker telemetry is unavailable.'} <span className="font-mono">{health.telemetryErrorCode}</span>
+        <p>{ar ? 'بيانات تشغيل المعالجات غير متاحة.' : 'Worker telemetry is unavailable.'} <span className="font-mono">{health.telemetryErrorCode}</span></p>
+        {health.telemetryDiagnostic ? <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
+          <div><dt>{ar ? 'المرحلة' : 'Stage'}</dt><dd className="font-mono">{health.telemetryDiagnostic.stage}</dd></div>
+          <div><dt>{ar ? 'رمز PostgREST' : 'PostgREST code'}</dt><dd className="font-mono">{value(health.telemetryDiagnostic.postgrestCode)}</dd></div>
+          <div><dt>{ar ? 'حالة HTTP' : 'HTTP status'}</dt><dd className="font-mono">{value(health.telemetryDiagnostic.httpStatus)}</dd></div>
+        </dl> : null}
       </div> : null}
       {health.telemetryAvailable !== false ? <>
         <section className="grid gap-4 md:grid-cols-2">{(health.workers ?? []).map((worker) => <article key={String(worker.name)} className="brain-surface p-5">
