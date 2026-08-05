@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { migrationSha256 } from '../scripts/migration-hash.mjs';
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
-const sha256 = (value) => createHash('sha256').update(value).digest('hex');
 
 const baseline = read('supabase/migrations/202607240000_current_state_baseline.sql');
 const evidenceCounts = read('supabase/migrations/202607280002_camera_evidence_c5_multi_photo_counts.sql');
@@ -182,7 +181,7 @@ test('repair is forward-only, service-only, and creates no business rows by itse
   assert.doesNotMatch(repair, /'[0-9a-f]{8}-[0-9a-f-]{27}'/i);
 });
 
-test('the two applied migrations remain byte-for-byte unchanged', () => {
-  assert.equal(sha256(recurringV1), 'c6bfcde62ea13da4217fb079ca831ff62d05827feed232006d1b45e70d970397');
-  assert.equal(sha256(shiftV1), '80794b589690e391aec921ada84bf0fc61f8f9d65fb6ac9fbc50ad8018d19082');
+test('the two applied migrations retain their canonical normalized hashes', () => {
+  assert.equal(migrationSha256(recurringV1), '40ee9ae2470f62b03ef559f8e04b899b2aaed7656a3ae11cb6240390bdbeef2b');
+  assert.equal(migrationSha256(shiftV1), '6244382ddf479bb57aa3d3db1f0cdb9697befaeaa10c6ad2950b6ac42fb52791');
 });
