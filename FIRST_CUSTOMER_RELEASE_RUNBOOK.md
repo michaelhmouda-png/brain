@@ -40,6 +40,7 @@ Vercel runs cron jobs only for Production deployments. Preview verifies the same
 | Recurring tasks | Every five minutes | Reminder batch 100; occurrence batch 10; 24-hour horizon |
 | Weekly shifts | Hourly | Series batch 25; 42-day horizon |
 | Evidence | Every minute | One evidence job; OpenAI is called only after a canonical job is claimed |
+| Operational health | Every five minutes | Read-only evaluation of worker freshness, stale/dead-letter queues, offline agents, and recurring-task failures |
 
 The notification worker retains its existing best-effort recurring materialization for compatibility; the dedicated schedules guarantee independent execution. Replays overlap safely because database leases, retry limits, unique constraints, deterministic provenance, and RPC idempotency remain authoritative. Do not add a second Supabase `pg_cron` schedule for these endpoints.
 
@@ -85,3 +86,14 @@ The notification worker retains its existing best-effort recurring materializati
 - Security/environment: two-person review and Preview fail-closed verification.
 - Deployment: all CI gates green on the exact revision; no automatic deployment from this workflow.
 - Destructive action, paid service, Production access, or external communication: explicit separate approval.
+
+## Stage 1B activation order
+
+1. Pass the complete Release Gate and review `202608060001_first_customer_readiness_stage1b.sql` independently.
+2. Apply the migration to an isolated Preview project only after database approval. Verify forced RLS and service-only grants.
+3. Deploy Preview and test `/api/health`, protected operational-health replay, management Worker Health alerts, and one disposable customer onboarding. Use non-customer email addresses owned by the test team.
+4. Rehearse [backup restoration](BACKUP_RESTORE_RUNBOOK.md) against a disposable non-Production Supabase project. Production is the read-only dump source only after separate approval.
+5. Rehearse [Windows Agent installation and rollback](BRAIN_AGENT_WINDOWS_RUNBOOK.md) on a supported test host using a test venue/location.
+6. Complete [the launch checklist](FIRST_CUSTOMER_LAUNCH_CHECKLIST.md), then request separate approvals for Production migration, deployment, monitoring configuration, invitation email delivery, and launch.
+
+The public `/api/health` response exposes only `ok`/`degraded`, a stable code, and a check timestamp. Detailed counts, configuration variable names, and alert codes remain management-authorized. Server request instrumentation logs only stable error code, method, router kind, and operation type; it never logs paths, query strings, headers, bodies, tenant identifiers, or raw error messages.

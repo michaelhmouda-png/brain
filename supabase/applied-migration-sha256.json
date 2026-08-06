@@ -25,5 +25,6 @@
   "202607300003_fix_recurring_task_materialization_v1.sql": "95780e5e82db29b4940bb52a0e733f0efde8260ad2fe766d3b93f6a8d57cfc51",
   "202607310001_fix_employee_department_persistence.sql": "be1c07708fc8ca5c9a7e475004871a5a8137a876299a0dc563c86183fbcc0fb0",
   "202608030001_recurring_weekly_shifts_v1.sql": "fb42fca9bb3e3739254ef67e7998509d2fc39186a9966ecf081b182f0ab43d1c",
-  "202608030002_fix_weekly_shift_correlation_v1.sql": "6a1f33e91091d9e007b9d702776bb1bce7e3dc56c114925966782e48381b649c"
+  "202608030002_fix_weekly_shift_correlation_v1.sql": "6a1f33e91091d9e007b9d702776bb1bce7e3dc56c114925966782e48381b649c",
+  "202608030003_worker_health_v1.sql": "218fb82f139e05a0d0b98067f1962b606487f6ba7e082fb12f578d0e22aceb37"
 }

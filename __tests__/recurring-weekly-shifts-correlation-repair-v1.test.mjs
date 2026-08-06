@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { migrationSha256 } from '../scripts/migration-hash.mjs';
 
 const read=(path)=>readFileSync(new URL(`../${path}`,import.meta.url),'utf8');
 const repair=read('supabase/migrations/202608030002_fix_weekly_shift_correlation_v1.sql');
@@ -44,6 +44,6 @@ test('atomicity DST exceptions authorization and 42-day behavior remain intact',
   for(const fragment of ["private.weekly_shift_preview","WEEKLY_SHIFT_STALE_PREVIEW","private.strict_local_to_utc","day_off','approved_leave","p_horizon_days integer DEFAULT 42","location.company_id=v_series.company_id","employee.company_id=v_series.company_id","SECURITY DEFINER SET search_path=''","TO service_role"])assert.ok(repair.includes(fragment),fragment);
 });
 
-test('already-applied 202608030001 remains byte-for-byte unchanged',()=>{
-  assert.equal(createHash('sha256').update(applied).digest('hex'),'fb42fca9bb3e3739254ef67e7998509d2fc39186a9966ecf081b182f0ab43d1c');
+test('already-applied 202608030001 remains canonically unchanged',()=>{
+  assert.equal(migrationSha256(applied),'fb42fca9bb3e3739254ef67e7998509d2fc39186a9966ecf081b182f0ab43d1c');
 });

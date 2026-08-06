@@ -9,7 +9,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test:all": "node --experimental-strip-types --test __tests__/*.test.mjs",
-    "test:release": "node --experimental-strip-types --test __tests__/stage0a-security.test.mjs __tests__/stage-k2-tenant-scope.test.mjs __tests__/recurring-task-engine-v1.test.mjs __tests__/recurring-weekly-shifts-v1.test.mjs __tests__/recurring-weekly-shifts-correlation-repair-v1.test.mjs __tests__/camera-evidence-c3.test.mjs __tests__/notification-foundation-n1.test.mjs __tests__/first-customer-readiness-stage1a.test.mjs",
+    "test:release": "node --experimental-strip-types --test __tests__/stage0a-security.test.mjs __tests__/stage-k2-tenant-scope.test.mjs __tests__/recurring-task-engine-v1.test.mjs __tests__/recurring-weekly-shifts-v1.test.mjs __tests__/recurring-weekly-shifts-correlation-repair-v1.test.mjs __tests__/camera-evidence-c3.test.mjs __tests__/notification-foundation-n1.test.mjs __tests__/first-customer-readiness-stage1a.test.mjs __tests__/first-customer-readiness-stage1b.test.mjs",
     "lint:changed": "node scripts/lint-changed.mjs",
     "check:migrations": "node scripts/check-migrations.mjs",
     "check:secrets": "node scripts/check-secrets.mjs",
