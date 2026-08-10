@@ -69,6 +69,7 @@ const productionRules: EnvironmentRule[] = [
   { name: 'OPENAI_VISION_MODEL', area: 'evidence', validate: nonEmpty },
   { name: 'BRAIN_AGENT_TOKEN_PEPPER', area: 'brain_agent', validate: secretShape },
   { name: 'BRAIN_AGENT_RATE_LIMIT_PEPPER', area: 'brain_agent', validate: secretShape },
+  { name: 'BRAIN_AGENT_READINESS', area: 'brain_agent', validate: (value) => value === 'deferred' || value === 'required' },
 ];
 
 function issue(code: string, variableNames: string[], area: EnvironmentArea): EnvironmentConfigurationIssue {

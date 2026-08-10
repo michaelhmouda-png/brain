@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import sharp from 'sharp';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { TASK_EVIDENCE_BUCKET } from '@/lib/task-evidence';
+import { isPermanentEvidenceFailure, safeEvidenceFailureCode } from '@/lib/task-evidence-failure-codes';
 import { EVIDENCE_RESULT_JSON_SCHEMA, parseEvidenceVerificationResult, routeEvidenceVerdict } from '@/lib/task-evidence-verification';
 import {
   EVIDENCE_SET_RESULT_JSON_SCHEMA,
@@ -93,16 +94,15 @@ async function loadAnalysisImage(
   let bytes: Uint8Array = new Uint8Array(await image.arrayBuffer());
   let mimeType = item.mimeType;
   if (mimeType === 'image/heic' || mimeType === 'image/heif') {
-    bytes = await sharp(bytes, { failOn: 'error' })
-      .rotate()
-      .resize({
-        width: 2048,
-        height: 2048,
-        fit: 'inside',
-        withoutEnlargement: true,
-      })
-      .jpeg({ quality: 85 })
-      .toBuffer();
+    try {
+      bytes = await sharp(bytes, { failOn: 'error' })
+        .rotate()
+        .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 85 })
+        .toBuffer();
+    } catch {
+      throw new Error('EVIDENCE_IMAGE_PROCESSING_FAILED');
+    }
     mimeType = 'image/jpeg';
     const derivativeHash = createHash('sha256').update(bytes).digest('hex');
     if (!context.submissionId) throw new Error('SUBMISSION_CONTEXT_MISSING');
@@ -242,7 +242,11 @@ export async function processOneEvidenceVerification(supabase = createSupabaseSe
     let bytes: Uint8Array = new Uint8Array(await image.arrayBuffer());
     let analysisMime = job.mime_type;
     if (job.mime_type === 'image/heic' || job.mime_type === 'image/heif') {
-      bytes = await sharp(bytes, { failOn: 'error' }).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      try {
+        bytes = await sharp(bytes, { failOn: 'error' }).rotate().resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true }).jpeg({ quality: 85 }).toBuffer();
+      } catch {
+        throw new Error('EVIDENCE_IMAGE_PROCESSING_FAILED');
+      }
       analysisMime = 'image/jpeg';
       const derivativeHash = createHash('sha256').update(bytes).digest('hex');
       const derivativePath = `${job.company_id}/${job.evidence_id}/derived/${derivativeHash}.jpg`;
@@ -276,11 +280,14 @@ export async function processOneEvidenceVerification(supabase = createSupabaseSe
     if (completionError) throw new Error(`EVIDENCE_JOB_COMPLETE_FAILED:${completionError.code ?? 'unknown'}`);
     return 'completed';
   } catch (error) {
-    const code = error instanceof Error ? error.message.split(':')[0].slice(0, 80) : 'VERIFICATION_FAILED';
-    const permanent = code === 'MALFORMED_AI_OUTPUT' || code === 'OPENAI_VISION_MODEL_MISSING';
-    await supabase.rpc('fail_task_evidence_verification_job', { p_job_id: job.job_id, p_lease_token: job.lease_token, p_failure_code: code, p_retryable: !permanent });
-    console.error('[Task Evidence Worker] verification failed', { evidenceId: job.evidence_id, jobId: job.job_id, attempt: job.attempt_number, code,
-      errorName: error instanceof Error ? error.name : 'UnknownError', errorMessage: error instanceof Error ? error.message : 'unknown_error' });
+    const code = safeEvidenceFailureCode(error);
+    await supabase.rpc('fail_task_evidence_verification_job', {
+      p_job_id: job.job_id,
+      p_lease_token: job.lease_token,
+      p_failure_code: code,
+      p_retryable: !isPermanentEvidenceFailure(code),
+    });
+    console.error('[Task Evidence Worker] verification failed', { attempt: job.attempt_number, code });
     return 'failed';
   }
 }
