@@ -17,4 +17,4 @@ for (const file of files) {
   for (const [name, pattern] of rules) if (pattern.test(source)) findings.push(`${file}: ${name}`);
 }
 if (findings.length) throw new Error(`Potential committed secrets detected:\n${findings.join('\n')}`);
-console.log(`Secret scan passed for ${files.length} tracked files.`);
+console.log(`Secret scan passed for ${files.length} tracked and untracked repository files.`);

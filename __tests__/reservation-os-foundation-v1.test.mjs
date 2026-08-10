@@ -187,7 +187,7 @@ test('reservation location loading uses one canonical active company-scoped quer
   assert.match(locationsRoute, /LOCATION_LIST_FORBIDDEN/);
 
   const accessibleLocationFunction = locationService.match(
-    /export async function getAccessibleLocations[\s\S]+?\n}\n/,
+    /export async function getAccessibleLocations[\s\S]+?\r?\n}\r?\n/,
   )?.[0] ?? '';
   assert.match(accessibleLocationFunction, /\.select\('id,name'\)/);
   assert.match(accessibleLocationFunction, /\.eq\('company_id', actor\.companyId\)/);

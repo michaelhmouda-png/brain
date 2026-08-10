@@ -4,6 +4,7 @@ import type { ActorContext } from '@/lib/brain/kernel/actor-context';
 import { safeEnvironmentDiagnostics } from '@/lib/environment.server';
 import { inspectSupabaseServiceConfiguration } from '@/lib/supabase-service-configuration';
 import { createSupabaseServer } from '@/lib/supabaseServer';
+import { classifyOperationalHealth } from '@/lib/operational-health';
 import {
   configurationDiagnostic,
   normalizeWorkerHealthPayload,
@@ -38,7 +39,7 @@ export async function getWorkerHealth(actor: ActorContext) {
       reportTelemetryFailure(telemetryDiagnostic);
       return { telemetryAvailable: false, telemetryErrorCode: telemetryDiagnostic.code, telemetryDiagnostic, configuration };
     }
-    return { ...data, telemetryAvailable: true, configuration };
+    return { ...data, operational: classifyOperationalHealth(data), telemetryAvailable: true, configuration };
   } catch (error) {
     const envelope = { data: null, error: { code: error instanceof TypeError ? 'FETCH_FAILED' : null }, status: 0 };
     const telemetryDiagnostic = rpcFailureDiagnostic(envelope, serviceConfiguration);

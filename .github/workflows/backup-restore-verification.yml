@@ -1,0 +1,42 @@
+name: Backup restore verification
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: brain-backup-restore-verification
+  cancel-in-progress: false
+
+jobs:
+  restore-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment: backup-restore-verification
+    env:
+      BACKUP_SOURCE_PROJECT_REF: ${{ vars.BACKUP_SOURCE_PROJECT_REF }}
+      RESTORE_TARGET_PROJECT_REF: ${{ vars.RESTORE_TARGET_PROJECT_REF }}
+      PRODUCTION_PROJECT_REF: ${{ vars.PRODUCTION_PROJECT_REF }}
+      RESTORE_TARGET_DISPOSABLE: ${{ vars.RESTORE_TARGET_DISPOSABLE }}
+      BACKUP_SOURCE_DATABASE_URL: ${{ secrets.BACKUP_SOURCE_DATABASE_URL }}
+      RESTORE_TARGET_DATABASE_URL: ${{ secrets.RESTORE_TARGET_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Verify destructive-operation boundary
+        run: node scripts/verify-backup-boundary.mjs
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Create ephemeral custom-format backup
+        run: node scripts/run-backup-restore.mjs dump
+      - name: Restore only to approved disposable project
+        run: node scripts/run-backup-restore.mjs restore
+      - name: Verify restored catalog
+        run: node scripts/verify-restored-database.mjs
+      - name: Remove ephemeral backup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/brain-restore-check.dump"

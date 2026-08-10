@@ -1,9 +1,15 @@
-import CompanyForm from "../../../../components/CompanyForm";
+import CustomerOnboardingForm from '@/components/CustomerOnboardingForm';
+import { resolveActorContext } from '@/lib/brain/kernel/actor-context.server';
+import { createSupabaseServerAuth } from '@/lib/supabaseServer';
 
-export default function NewCompanyPage() {
+export default async function NewCompanyPage() {
+  const actor = await resolveActorContext(await createSupabaseServerAuth());
+  if (actor.role !== 'super_admin') {
+    return <div role="alert" className="brain-surface p-6 text-red-700">Customer provisioning requires super-admin authorization.</div>;
+  }
   return (
-    <div className="space-y-8 rounded-[36px] border border-white/10 bg-white/5 p-8 shadow-[0_30px_90px_rgba(0,0,0,0.3)] backdrop-blur-xl">
-      <CompanyForm mode="create" />
+    <div className="space-y-8">
+      <CustomerOnboardingForm />
     </div>
   );
 }
