@@ -57,6 +57,15 @@ test('future evidence failures use only stable allowlisted sanitized codes', () 
   assert.equal(isPermanentEvidenceFailure('VISION_PROVIDER_RATE_LIMITED'), false);
 });
 
+test('external uptime logs the public response diagnostic and keeps the strict contract', async () => {
+  const script = await read('scripts/check-external-health.mjs');
+  assert.match(script, /JSON\.stringify\(\{ httpStatus: response\.status, responseBody: body \}\)/);
+  assert.match(script, /response\.status !== 200/);
+  assert.match(script, /body\.status !== 'ok'/);
+  assert.match(script, /body\.code !== 'BRAIN_HEALTHY'/);
+  assert.match(script, /BRAIN_EXTERNAL_HEALTH_FAILED/);
+});
+
 test('management, worker authentication, lease, RLS, and tenant boundaries remain intact', async () => {
   const [route, workerRoute, baseline, page] = await Promise.all([
     read('app/api/workers/health/route.ts'),

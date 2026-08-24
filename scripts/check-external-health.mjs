@@ -4,5 +4,6 @@ try { target = new URL(candidate); } catch { throw new Error('HEALTH_TARGET_INVA
 if (target.protocol !== 'https:' || target.username || target.password || target.pathname !== '/api/health' || target.search || target.hash) throw new Error('HEALTH_TARGET_INVALID');
 const response = await fetch(target, { headers: { accept: 'application/json' }, signal: AbortSignal.timeout(15_000), redirect: 'error' });
 const body = await response.json().catch(() => null);
+console.log('External health diagnostic:', JSON.stringify({ httpStatus: response.status, responseBody: body }));
 if (response.status !== 200 || !body || body.status !== 'ok' || body.code !== 'BRAIN_HEALTHY') throw new Error('BRAIN_EXTERNAL_HEALTH_FAILED');
 console.log('External health contract valid: BRAIN_HEALTHY.');
