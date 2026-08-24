@@ -31,7 +31,7 @@ export function classifyOperationalHealth(payload: Record<string, unknown>, now 
   const hasAgents = payload.agents && typeof payload.agents === 'object' && !Array.isArray(payload.agents);
   const agents = hasAgents ? payload.agents as Record<string, unknown> : {};
   if (!hasAgents) alerts.push({ code: 'OPERATIONAL_AGENT_SIGNAL_UNAVAILABLE', severity: 'critical' });
-  if (count(agents.offline) > 0) alerts.push({ code: 'BRAIN_AGENTS_OFFLINE', severity: 'high' });
+  if (agents.required === true && count(agents.offline) > 0) alerts.push({ code: 'BRAIN_AGENTS_OFFLINE', severity: 'high' });
   const hasRecurring = payload.recurring && typeof payload.recurring === 'object' && !Array.isArray(payload.recurring);
   const recurring = hasRecurring ? payload.recurring as Record<string, unknown> : {};
   if (!hasRecurring) alerts.push({ code: 'OPERATIONAL_RECURRING_SIGNAL_UNAVAILABLE', severity: 'critical' });

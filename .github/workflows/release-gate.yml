@@ -30,6 +30,7 @@ jobs:
       VAPID_SUBJECT: mailto:ci@example.com
       BRAIN_AGENT_TOKEN_PEPPER: ci-agent-token-placeholder-000000000
       BRAIN_AGENT_RATE_LIMIT_PEPPER: ci-agent-rate-placeholder-0000000000
+      BRAIN_AGENT_READINESS: deferred
     steps:
       - uses: actions/checkout@v4
         with:

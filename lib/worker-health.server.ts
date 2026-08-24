@@ -5,6 +5,7 @@ import { safeEnvironmentDiagnostics } from '@/lib/environment.server';
 import { inspectSupabaseServiceConfiguration } from '@/lib/supabase-service-configuration';
 import { createSupabaseServer } from '@/lib/supabaseServer';
 import { classifyOperationalHealth } from '@/lib/operational-health';
+import { applyAgentReadinessPolicy, resolveAgentReadinessPolicy } from '@/lib/agent-readiness-policy';
 import {
   configurationDiagnostic,
   normalizeWorkerHealthPayload,
@@ -33,12 +34,13 @@ export async function getWorkerHealth(actor: ActorContext) {
       reportTelemetryFailure(telemetryDiagnostic);
       return { telemetryAvailable: false, telemetryErrorCode: telemetryDiagnostic.code, telemetryDiagnostic, configuration };
     }
-    const data = normalizeWorkerHealthPayload(envelope.data);
-    if (!data) {
+    const payload = normalizeWorkerHealthPayload(envelope.data);
+    if (!payload) {
       const telemetryDiagnostic = responseFailureDiagnostic(envelope, serviceConfiguration);
       reportTelemetryFailure(telemetryDiagnostic);
       return { telemetryAvailable: false, telemetryErrorCode: telemetryDiagnostic.code, telemetryDiagnostic, configuration };
     }
+    const data = applyAgentReadinessPolicy(payload, resolveAgentReadinessPolicy());
     return { ...data, operational: classifyOperationalHealth(data), telemetryAvailable: true, configuration };
   } catch (error) {
     const envelope = { data: null, error: { code: error instanceof TypeError ? 'FETCH_FAILED' : null }, status: 0 };

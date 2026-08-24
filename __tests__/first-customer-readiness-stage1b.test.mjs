@@ -20,6 +20,7 @@ test('operational health detects stale workers, queues, offline agents, and recu
   degraded.queues.evidence.deadLetter = 2;
   degraded.queues.notifications.oldestPendingAt = '2026-08-06T11:30:00.000Z';
   degraded.agents.offline = 1;
+  degraded.agents.required = true;
   degraded.recurring.failedLast24Hours = 3;
   const result = classifyOperationalHealth(degraded, now);
   assert.equal(result.status, 'degraded');

@@ -29,6 +29,7 @@ const validEnvironment = {
   SUPABASE_SERVICE_ROLE_KEY: 'service-placeholder-0000000000000', CRON_SECRET: 'cron-placeholder-00000000000000000',
   NOTIFICATION_WORKER_SECRET: 'notification-placeholder-0000000000', TASK_EVIDENCE_WORKER_SECRET: 'evidence-placeholder-00000000000000',
   BRAIN_AGENT_TOKEN_PEPPER: 'agent-token-placeholder-0000000000', BRAIN_AGENT_RATE_LIMIT_PEPPER: 'agent-rate-placeholder-00000000000',
+  BRAIN_AGENT_READINESS: 'deferred',
   OPENAI_API_KEY: 'provider-placeholder', OPENAI_VISION_MODEL: 'vision-model', NEXT_PUBLIC_VAPID_PUBLIC_KEY: 'public-vapid-placeholder',
   VAPID_PRIVATE_KEY: 'private-vapid-placeholder', VAPID_SUBJECT: 'mailto:ops@example.com',
 };
